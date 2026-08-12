@@ -14,7 +14,7 @@ export function QualityAnalysis() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="품질 분석" description="불량 유형 TOP 10과 품번/금형/설비 연계 분석입니다. Pareto는 사용하지 않습니다." />
+      <PageHeader title="품질 분석" description="불량 유형 TOP 10과 품번/금형/설비 연계 분석입니다. " />
       <Panel title="불량 유형 TOP 10">
         <DefectBarChart data={defectTypes} onSelect={setSelected} />
         <ul className="mt-3 space-y-1.5 text-sm">

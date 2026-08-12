@@ -1,5 +1,6 @@
 import type { FilterState } from '../context/FilterContext'
 import { ANALYSIS_GROUPS, isAnalyzable, matchesAnalysisGroup } from './groups'
+import { toEntityId } from './entityId'
 import type {
   Analytics,
   AnomalyItem,
@@ -335,12 +336,12 @@ function buildInspectors(records: InspectionRecord[]): InspectorRow[] {
   }
 
   return [...map.entries()]
-    .map(([name, list], idx) => {
+    .map(([name, list]) => {
       const qty = sum(list, 'qty')
       const fail = sum(list, 'fail')
       const hours = sum(list, 'hours')
       return {
-        id: `ins-${idx + 1}`,
+        id: toEntityId('ins', name),
         name,
         team: list[0]?.team || '미지정',
         count: list.length,
@@ -373,7 +374,7 @@ function buildProducts(records: InspectionRecord[], previous: InspectionRecord[]
   }
 
   return [...map.entries()]
-    .map(([name, list], idx) => {
+    .map(([name, list]) => {
       const qty = sum(list, 'qty')
       const pass = sum(list, 'pass')
       const fail = sum(list, 'fail')
@@ -383,7 +384,7 @@ function buildProducts(records: InspectionRecord[], previous: InspectionRecord[]
       const failTotal = defects.reduce((s, d) => s + d.count, 0)
       const prevRate = failRateOf(prevMap.get(name) ?? [])
       return {
-        id: `prd-${idx + 1}`,
+        id: toEntityId('prd', name),
         name,
         type: list[0]?.productType || '미지정',
         qty,
@@ -415,14 +416,14 @@ function buildWorkerProductUph(records: InspectionRecord[]): WorkerProductUph[] 
   }
 
   return [...map.entries()]
-    .map(([key, list], idx) => {
+    .map(([key, list]) => {
       const [worker, product] = key.split('||')
       const qty = sum(list, 'qty')
       const fail = sum(list, 'fail')
       const hours = sum(list, 'hours')
       const defects = aggregateDefects(list)
       return {
-        id: `wpu-${idx + 1}`,
+        id: toEntityId('wrk', key),
         worker,
         product,
         productType: list[0]?.productType || '미지정',
@@ -452,13 +453,13 @@ function buildWorkers(records: InspectionRecord[], workerProductUph: WorkerProdu
   }
 
   return [...map.entries()]
-    .map(([name, list], idx) => {
+    .map(([name, list]) => {
       const qty = sum(list, 'qty')
       const fail = sum(list, 'fail')
       const hours = sum(list, 'hours')
       const products = workerProductUph.filter((p) => p.worker === name)
       return {
-        id: `wrk-${idx + 1}`,
+        id: toEntityId('wrk', name),
         name,
         count: list.length,
         qty,
@@ -491,14 +492,14 @@ function buildMolds(records: InspectionRecord[], previous: InspectionRecord[]): 
   }
 
   return [...map.entries()]
-    .map(([moldNo, list], idx) => {
+    .map(([moldNo, list]) => {
       const qty = sum(list, 'qty')
       const fail = sum(list, 'fail')
       const failRate = qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0
       const prevRate = failRateOf(prevMap.get(moldNo) ?? [])
       const diff = Math.round((failRate - prevRate) * 100) / 100
       return {
-        id: `mld-${idx + 1}`,
+        id: toEntityId('mld', moldNo),
         moldNo,
         product: list[0]?.product || '-',
         qty,
@@ -531,7 +532,7 @@ function buildEquipment(records: InspectionRecord[], previous: InspectionRecord[
   }
 
   return [...map.entries()]
-    .map(([name, list], idx) => {
+    .map(([name, list]) => {
       const qty = sum(list, 'qty')
       const fail = sum(list, 'fail')
       const hours = sum(list, 'hours')
@@ -539,7 +540,7 @@ function buildEquipment(records: InspectionRecord[], previous: InspectionRecord[
       const prevRate = failRateOf(prevMap.get(name) ?? [])
       const diff = Math.round((failRate - prevRate) * 100) / 100
       return {
-        id: `eq-${idx + 1}`,
+        id: toEntityId('eq', name),
         name,
         qty,
         fail,
