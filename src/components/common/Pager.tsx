@@ -19,7 +19,7 @@ export function Pager({
           type="button"
           disabled={page <= 1}
           onClick={() => onPage(page - 1)}
-          className="rounded-lg border border-line px-3 py-1.5 disabled:opacity-40"
+          className="rounded-full border border-line px-3 py-1.5 disabled:opacity-40"
         >
           이전
         </button>
@@ -27,7 +27,7 @@ export function Pager({
           type="button"
           disabled={page >= totalPages}
           onClick={() => onPage(page + 1)}
-          className="rounded-lg border border-line px-3 py-1.5 disabled:opacity-40"
+          className="rounded-full border border-line px-3 py-1.5 disabled:opacity-40"
         >
           다음
         </button>

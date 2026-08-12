@@ -14,18 +14,12 @@ export function Panel({
   className?: string
 }) {
   return (
-    <section
-      className={`rounded-xl border border-line bg-surface ${className}`}
-    >
+    <section className={`card ${className}`}>
       {(title || actions) && (
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5">
           <div>
-            {title ? (
-              <h2 className="text-[15px] font-semibold text-ink">{title}</h2>
-            ) : null}
-            {description ? (
-              <p className="mt-0.5 text-sm text-muted">{description}</p>
-            ) : null}
+            {title ? <h2 className="text-[15px] font-semibold text-ink">{title}</h2> : null}
+            {description ? <p className="mt-0.5 text-sm text-muted">{description}</p> : null}
           </div>
           {actions}
         </div>

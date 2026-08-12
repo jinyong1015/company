@@ -32,7 +32,7 @@ export function SortSearchBar({
           value={query}
           onChange={(e) => onQuery(e.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-lg border border-line bg-white px-3 py-2 text-sm outline-none focus:border-accent"
+          className="w-full rounded-full border border-line bg-white px-4 py-2 text-sm outline-none focus:border-accent"
         />
       </div>
 
@@ -42,7 +42,7 @@ export function SortSearchBar({
           <select
             value={sortKey}
             onChange={(e) => onSortKey(e.target.value)}
-            className="rounded-lg border border-line bg-white px-3 py-2 text-sm"
+            className="rounded-full border border-line bg-white px-3 py-2 text-sm"
           >
             {sortKeys.map((k) => (
               <option key={k.id} value={k.id}>
@@ -53,7 +53,7 @@ export function SortSearchBar({
           <button
             type="button"
             onClick={onToggleDir}
-            className="rounded-lg border border-line px-3 py-2 text-sm hover:bg-canvas"
+            className="rounded-full border border-line px-3 py-2 text-sm hover:bg-canvas"
           >
             {asc ? '↑ 오름차순' : '↓ 내림차순'}
           </button>
@@ -67,7 +67,7 @@ export function SortSearchBar({
             <button
               type="button"
               onClick={onDownload}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-2 text-sm hover:bg-canvas"
+              className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-2 text-sm hover:bg-canvas"
             >
               <Download size={14} />
               Excel 다운로드

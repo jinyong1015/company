@@ -14,16 +14,16 @@ import { useMemo } from 'react'
 import type { DefectType } from '../../types'
 
 const colors = [
-  '#0f766e',
-  '#0d9488',
-  '#14b8a6',
-  '#2dd4bf',
-  '#5eead4',
-  '#99f6e4',
-  '#ccfbf1',
-  '#a8a29e',
-  '#78716c',
-  '#57534e',
+  '#2563eb',
+  '#3b82f6',
+  '#60a5fa',
+  '#93c5fd',
+  '#bfdbfe',
+  '#1d4ed8',
+  '#38bdf8',
+  '#64748b',
+  '#94a3b8',
+  '#cbd5e1',
 ]
 
 export function DefectBarChart({

@@ -18,6 +18,8 @@ import { StatusBadge } from '../components/common/StatusBadge'
 import { useData } from '../context/DataContext'
 import { groupLabel } from '../lib/groups'
 import { useFilters } from '../context/FilterContext'
+import { downloadExcel } from '../lib/download'
+import { Sparkles } from 'lucide-react'
 
 const trendMetrics = [
   { id: 'qty', label: '검수량' },
@@ -40,11 +42,40 @@ export function Dashboard() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="Dashboard"
+        title="대시보드"
         description={
           hasUploadedData
             ? `${meta.fileName} · ${groupLabel(filters.analysisGroup)} 기준 품질 현황`
             : `${groupLabel(filters.analysisGroup)} 기준 품질 현황`
+        }
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                downloadExcel(
+                  '대시보드.xlsx',
+                  groupSummaries.map((g) => ({
+                    그룹: g.label,
+                    검수량: g.qty,
+                    부적합률: g.failRate,
+                    부적합수량: g.fail,
+                    폐기비용: g.scrapCost,
+                  })),
+                )
+              }
+              className="rounded-full border border-line bg-white px-3.5 py-2 text-sm hover:bg-canvas"
+            >
+              Excel 다운로드
+            </button>
+            <Link
+              to="/ai"
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-sm font-medium text-white hover:bg-blue-600"
+            >
+              <Sparkles size={14} />
+              AI 분석
+            </Link>
+          </div>
         }
       />
 
@@ -91,8 +122,8 @@ export function Dashboard() {
                   key={m.id}
                   type="button"
                   onClick={() => setMetric(m.id)}
-                  className={`rounded-md px-2.5 py-1 text-xs ${
-                    metric === m.id ? 'bg-ink text-white' : 'bg-canvas text-muted'
+                  className={`rounded-full px-2.5 py-1 text-xs ${
+                    metric === m.id ? 'bg-accent text-white' : 'bg-canvas text-muted'
                   }`}
                 >
                   {m.label}
@@ -108,7 +139,7 @@ export function Dashboard() {
                 <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#5b6577' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: '#5b6577' }} axisLine={false} tickLine={false} width={48} />
                 <Tooltip contentStyle={{ border: '1px solid #e2e6ec', borderRadius: 12, boxShadow: 'none', fontSize: 12 }} />
-                <Line type="monotone" dataKey={metric} stroke="#0f766e" strokeWidth={2.2} dot={false} />
+                <Line type="monotone" dataKey={metric} stroke="#3b82f6" strokeWidth={2.4} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -144,7 +175,7 @@ export function Dashboard() {
                 <XAxis type="number" tick={{ fontSize: 11, fill: '#5b6577' }} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="name" width={84} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
                 <Tooltip contentStyle={{ border: '1px solid #e2e6ec', borderRadius: 12, boxShadow: 'none', fontSize: 12 }} />
-                <Bar dataKey="count" fill="#0f766e" radius={[0, 4, 4, 0]} maxBarSize={16} />
+                <Bar dataKey="count" fill="#3b82f6" radius={[0, 6, 6, 0]} maxBarSize={16} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -183,7 +214,7 @@ export function Dashboard() {
               <Link
                 key={p.id}
                 to={`/products/${p.id}`}
-                className="flex items-center justify-between rounded-lg border border-line px-3 py-2.5 hover:bg-canvas"
+                className="flex items-center justify-between rounded-xl bg-canvas/70 px-3 py-2.5 hover:bg-accent-soft"
               >
                 <div>
                   <p className="text-sm font-medium">{p.name}</p>

@@ -5,18 +5,21 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 
   --color-surface: #ffffff;
-  --color-canvas: #f4f6f8;
-  --color-ink: #0b1220;
-  --color-muted: #5b6577;
-  --color-line: #e2e6ec;
-  --color-accent: #0f766e;
-  --color-accent-soft: #ecfdf8;
-  --color-danger: #c2410c;
-  --color-danger-soft: #fff7ed;
-  --color-warn: #b45309;
+  --color-canvas: #f4f7fe;
+  --color-ink: #111827;
+  --color-muted: #6b7280;
+  --color-line: #e8eef7;
+  --color-accent: #3b82f6;
+  --color-accent-soft: #eff6ff;
+  --color-danger: #ef4444;
+  --color-danger-soft: #fef2f2;
+  --color-warn: #d97706;
   --color-warn-soft: #fffbeb;
-  --color-ok: #047857;
+  --color-ok: #10b981;
   --color-ok-soft: #ecfdf5;
+  --color-sidebar: #152033;
+  --color-sidebar-muted: #8b9bb3;
+  --shadow-card: 0 8px 24px rgba(15, 23, 42, 0.04);
 }
 
 * {
@@ -33,10 +36,7 @@ body {
   margin: 0;
   font-family: var(--font-sans);
   color: var(--color-ink);
-  background:
-    radial-gradient(1200px 500px at 0% -10%, #dbeafe55, transparent 55%),
-    radial-gradient(900px 400px at 100% 0%, #ccfbf155, transparent 50%),
-    var(--color-canvas);
+  background: var(--color-canvas);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -50,6 +50,13 @@ select {
 .num {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-card);
 }
 
 ::-webkit-scrollbar {

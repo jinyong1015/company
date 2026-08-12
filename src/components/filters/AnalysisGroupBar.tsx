@@ -11,9 +11,9 @@ export function AnalysisGroupBar() {
           key={g.id}
           type="button"
           onClick={() => setAnalysisGroup(g.id)}
-          className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+          className={`rounded-full px-3.5 py-1.5 text-sm transition-colors ${
             filters.analysisGroup === g.id
-              ? 'bg-ink text-white'
+              ? 'bg-accent text-white'
               : 'bg-canvas text-muted hover:text-ink'
           }`}
         >
