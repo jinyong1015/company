@@ -6,7 +6,6 @@ export function AnalysisGroupBar() {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <span className="text-xs font-medium text-muted">분석 그룹</span>
       {ANALYSIS_GROUPS.map((g) => (
         <button
           key={g.id}

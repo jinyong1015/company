@@ -27,26 +27,27 @@ export function GlobalFilter() {
   ]
 
   return (
-    <div className="rounded-xl border border-line bg-surface px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-xs font-medium text-muted">기간</span>
-        {periodPresets.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => setPeriod(p.id)}
-            className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
-              filters.period === p.id
-                ? 'bg-ink text-white'
-                : 'bg-canvas text-muted hover:text-ink'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-
+    <div className="space-y-3">
+      <div className="rounded-xl border border-line bg-surface px-4 py-3">
+        <p className="mb-2 text-xs font-medium text-muted">기간</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {periodPresets.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setPeriod(p.id)}
+              className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${
+                filters.period === p.id
+                  ? 'bg-ink text-white'
+                  : 'bg-canvas text-muted hover:text-ink'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         {filters.period === 'custom' && (
-          <div className="ml-1 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <input
               type="date"
               value={filters.startDate}
@@ -62,67 +63,72 @@ export function GlobalFilter() {
             />
           </div>
         )}
-
-        <div className="ml-auto flex items-center gap-2">
-          {activeFilterCount > 0 && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-muted hover:bg-canvas hover:text-ink"
-            >
-              <FilterX size={14} />
-              초기화
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setOpen((v) => !v)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm text-ink hover:bg-canvas"
-          >
-            <SlidersHorizontal size={14} />
-            추가 필터
-            {activeFilterCount > 0 && (
-              <span className="num rounded-md bg-accent-soft px-1.5 py-0.5 text-xs font-medium text-accent">
-                {activeFilterCount}
-              </span>
-            )}
-            <ChevronDown size={14} className={`transition ${open ? 'rotate-180' : ''}`} />
-          </button>
-        </div>
       </div>
 
-      {open && (
-        <div className="mt-3 grid gap-3 border-t border-line pt-3 md:grid-cols-2 xl:grid-cols-3">
-          {multiGroups.map((group) => (
-            <div key={group.key} className="rounded-lg border border-line p-3">
-              <p className="mb-2 text-xs font-medium text-muted">{group.label}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {group.options.length === 0 ? (
-                  <span className="text-xs text-muted">데이터 없음</span>
-                ) : (
-                  group.options.map((opt) => {
-                    const selected = filters[group.key].includes(opt)
-                    return (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => toggleMulti(group.key, opt)}
-                        className={`rounded-md px-2 py-1 text-xs transition-colors ${
-                          selected
-                            ? 'bg-accent text-white'
-                            : 'bg-canvas text-muted hover:text-ink'
-                        }`}
-                      >
-                        {opt}
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-          ))}
+      <div className="rounded-xl border border-line bg-surface px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted">필터</p>
+          <div className="flex items-center gap-2">
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm text-muted hover:bg-canvas hover:text-ink"
+              >
+                <FilterX size={14} />
+                초기화
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm text-ink hover:bg-canvas"
+            >
+              <SlidersHorizontal size={14} />
+              추가 필터
+              {activeFilterCount > 0 && (
+                <span className="num rounded-md bg-accent-soft px-1.5 py-0.5 text-xs font-medium text-accent">
+                  {activeFilterCount}
+                </span>
+              )}
+              <ChevronDown size={14} className={`transition ${open ? 'rotate-180' : ''}`} />
+            </button>
+          </div>
         </div>
-      )}
+
+        {open && (
+          <div className="mt-3 grid gap-3 border-t border-line pt-3 md:grid-cols-2 xl:grid-cols-3">
+            {multiGroups.map((group) => (
+              <div key={group.key} className="rounded-lg border border-line p-3">
+                <p className="mb-2 text-xs font-medium text-muted">{group.label}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {group.options.length === 0 ? (
+                    <span className="text-xs text-muted">데이터 없음</span>
+                  ) : (
+                    group.options.map((opt) => {
+                      const selected = filters[group.key].includes(opt)
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          onClick={() => toggleMulti(group.key, opt)}
+                          className={`rounded-md px-2 py-1 text-xs transition-colors ${
+                            selected
+                              ? 'bg-accent text-white'
+                              : 'bg-canvas text-muted hover:text-ink'
+                          }`}
+                        >
+                          {opt}
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

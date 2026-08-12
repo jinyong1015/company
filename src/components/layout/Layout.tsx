@@ -125,12 +125,15 @@ export function Layout() {
           </div>
         </header>
 
-        <main className="space-y-5 px-5 py-5 lg:px-7 lg:py-6">
+        <main className="space-y-3 px-5 py-5 lg:px-7 lg:py-6">
           <div className="rounded-xl border border-line bg-surface px-4 py-3">
+            <p className="mb-2 text-xs font-medium text-muted">분석 그룹</p>
             <AnalysisGroupBar />
           </div>
           <GlobalFilter />
-          <Outlet />
+          <div className="pt-2">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
