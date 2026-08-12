@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --color-surface: #ffffff;
+  --color-canvas: #f4f6f8;
+  --color-ink: #0b1220;
+  --color-muted: #5b6577;
+  --color-line: #e2e6ec;
+  --color-accent: #0f766e;
+  --color-accent-soft: #ecfdf8;
+  --color-danger: #c2410c;
+  --color-danger-soft: #fff7ed;
+  --color-warn: #b45309;
+  --color-warn-soft: #fffbeb;
+  --color-ok: #047857;
+  --color-ok-soft: #ecfdf5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background:
+    radial-gradient(1200px 500px at 0% -10%, #dbeafe55, transparent 55%),
+    radial-gradient(900px 400px at 100% 0%, #ccfbf155, transparent 50%),
+    var(--color-canvas);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c5ccd6;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
