@@ -27,15 +27,26 @@ const COLUMN_ALIASES: Record<
   keyof Omit<InspectionRecord, 'id' | 'hours' | 'failRate' | 'defects' | 'rowClass' | 'issues'>,
   string[]
 > = {
-  date: ['날짜', '일자', '검사일', 'date', 'inspection_date'],
+  date: ['날짜', '일자', '검사일', '검사일자', 'date', 'inspection_date', 'inspectiondate'],
   workType: ['작업구분', '작업 구분', '작업유형', 'work_type', 'worktype'],
-  inspector: ['검사원', '검사자', 'inspector'],
+  inspector: ['검사원', '검사자', '검사작업자', 'inspector'],
   team: ['소속', '팀', '공장', 'team', 'department'],
   productType: ['제품 유형', '제품유형', '제품타입', 'product_type', 'type'],
   lot: ['성형 lot', '성형lot', 'lot', '로트', '성형로트'],
   worker: ['작업자', '생산자', 'worker', 'operator'],
   equipment: ['설비', '설비명', 'equipment', 'machine'],
-  product: ['품번', '제품', '제품명', '품명', 'product', 'product_name', 'part_no', 'partno'],
+  product: [
+    '품번',
+    '제품',
+    '제품명',
+    '품명',
+    '제품(품번)',
+    '품번(제품)',
+    'product',
+    'product_name',
+    'part_no',
+    'partno',
+  ],
   moldNo: ['금형번호', '금형', '금형 no', 'mold', 'mold_no', 'moldno'],
   start: ['시작', '시작시간', 'start', 'start_time'],
   end: ['종료', '종료시간', 'end', 'end_time'],
@@ -61,18 +72,40 @@ function normalizeHeader(value: unknown): string {
     .replace(/\s+/g, ' ')
 }
 
+function compactHeader(value: string): string {
+  return normalizeHeader(value).replace(/[\s_\-./]/g, '')
+}
+
+/** 날짜/검사일자, 제품(품번)처럼 표기만 다른 헤더를 같은 컬럼으로 본다. */
+function headerTokens(value: unknown): string[] {
+  const normalized = normalizeHeader(value)
+  const compact = compactHeader(normalized)
+  const withoutParen = compact.replace(/[()[\]{}]/g, '')
+  const tokens = [normalized, compact, withoutParen]
+
+  for (const match of normalized.matchAll(/[([【［]([^)\]】］]+)[)\]】］]/g)) {
+    const inner = compactHeader(match[1])
+    if (inner) tokens.push(inner)
+  }
+
+  const outer = compactHeader(normalized.replace(/[([【［][^)\]】］]*[)\]】］]/g, ''))
+  if (outer) tokens.push(outer)
+
+  return [...new Set(tokens.filter(Boolean))]
+}
+
 function headerMatches(header: string, alias: string) {
-  const h = normalizeHeader(header)
-  const a = normalizeHeader(alias)
-  return h === a || h.replace(/\s/g, '') === a.replace(/\s/g, '')
+  const headerTokensList = headerTokens(header)
+  const aliasTokens = headerTokens(alias)
+  return headerTokensList.some((token) => aliasTokens.includes(token))
 }
 
 function findHeaderRowIndex(matrix: unknown[][]): number {
   const groups = [
-    ['날짜', '일자', '검사일'],
-    ['검사원', '검사자'],
-    ['검수량', '검사량', '검사수량'],
-    ['품번', '제품', '제품명', '품명'],
+    COLUMN_ALIASES.date,
+    COLUMN_ALIASES.inspector,
+    COLUMN_ALIASES.qty,
+    COLUMN_ALIASES.product,
   ]
 
   for (let i = 0; i < Math.min(matrix.length, 40); i++) {
