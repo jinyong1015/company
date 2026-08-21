@@ -16,7 +16,7 @@ export function CostAnalysis() {
   const [sortKey, setSortKey] = useState('scrapCost')
   const [asc, setAsc] = useState(false)
   const [page, setPage] = useState(1)
-  const pageSize = 12
+  const [pageSize, setPageSize] = useState(10)
 
   const source = useMemo(() => {
     if (dim === 'product')
@@ -135,6 +135,11 @@ export function CostAnalysis() {
           asc={asc}
           onSortKey={setSortKey}
           onToggleDir={() => setAsc((v) => !v)}
+          pageSize={pageSize}
+          onPageSize={(size) => {
+            setPageSize(size)
+            setPage(1)
+          }}
           onDownload={() => downloadExcel('비용분석.xlsx', rows)}
         />
         <div className="overflow-x-auto">

@@ -360,12 +360,15 @@ function QualityTrendChart({
   metricLabel,
   trendGrain,
   groups,
+  barColor = "#93c5fd",
 }: {
   data: Record<string, string | number>[];
   metric: TrendMetricId;
   metricLabel: string;
   trendGrain: "day" | "month";
   groups?: { id: string; label: string; color: string }[];
+  /** 단일 그룹(비묶음) 막대 색 — 전체 뷰의 해당 그룹 색과 맞춤 */
+  barColor?: string;
 }) {
   const tilt = trendGrain === "day" && data.length > 14;
   const grouped = Boolean(groups?.length);
@@ -436,7 +439,7 @@ function QualityTrendChart({
             <Bar
               dataKey={metric}
               name={metricLabel}
-              fill="#93c5fd"
+              fill={barColor}
               radius={[4, 4, 0, 0]}
               maxBarSize={trendGrain === "month" ? 40 : 28}
             />
@@ -480,7 +483,7 @@ export function Dashboard() {
   } = analytics;
   const [metric, setMetric] = useState<TrendMetricId>("qty");
   const [productSort, setProductSort] = useState<
-    "fail" | "failRate" | "qty" | "scrapCost" | "changeRate"
+    "fail" | "failRate" | "qty" | "scrapCost"
   >("fail");
 
   const productTop = [...products]
@@ -489,6 +492,9 @@ export function Dashboard() {
 
   const metricLabel = trendMetrics.find((m) => m.id === metric)?.label ?? "";
   const showGrouped = filters.analysisGroup === "all";
+  const selectedGroupColor =
+    GROUP_BAR_STYLE.find((c) => c.id === filters.analysisGroup)?.color ??
+    LINE_COLOR;
 
   const chartGroups = useMemo(
     () =>
@@ -607,6 +613,7 @@ export function Dashboard() {
           metricLabel={metricLabel}
           trendGrain={trendGrain}
           groups={showGrouped ? chartGroups : undefined}
+          barColor={selectedGroupColor}
         />
       </Panel>
 
@@ -657,7 +664,6 @@ export function Dashboard() {
               <option value="failRate">부적합률</option>
               <option value="qty">검수량</option>
               <option value="scrapCost">폐기비용</option>
-              <option value="changeRate">증가율</option>
             </select>
           }
         >

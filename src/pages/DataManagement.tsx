@@ -97,7 +97,7 @@ export function DataManagement() {
           </div>
           <p className="text-sm font-medium">엑셀 파일을 드래그하거나 클릭하여 업로드</p>
           <p className="mt-1 text-xs text-muted">
-            .xlsx, .xls · 작업구분은 사상작업 또는 검사작업만 허용 · 헤더 자동 인식
+            .xlsx, .xls · 작업구분은 검사작업만 허용 · 헤더 자동 인식
           </p>
           <input
             ref={inputRef}

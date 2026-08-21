@@ -26,7 +26,7 @@ export function MoldAnalysis() {
   const [sortKey, setSortKey] = useState('failRate')
   const [asc, setAsc] = useState(false)
   const [page, setPage] = useState(1)
-  const pageSize = 12
+  const [pageSize, setPageSize] = useState(10)
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -62,6 +62,11 @@ export function MoldAnalysis() {
           asc={asc}
           onSortKey={setSortKey}
           onToggleDir={() => setAsc((v) => !v)}
+          pageSize={pageSize}
+          onPageSize={(size) => {
+            setPageSize(size)
+            setPage(1)
+          }}
           onDownload={() =>
             downloadExcel(
               '금형분석.xlsx',

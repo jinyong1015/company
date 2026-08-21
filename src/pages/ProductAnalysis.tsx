@@ -29,7 +29,7 @@ export function ProductAnalysis() {
   const [asc, setAsc] = useState(false)
   const [grouped, setGrouped] = useState(false)
   const [page, setPage] = useState(1)
-  const pageSize = 12
+  const [pageSize, setPageSize] = useState(10)
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -74,6 +74,11 @@ export function ProductAnalysis() {
           asc={asc}
           onSortKey={setSortKey}
           onToggleDir={() => setAsc((v) => !v)}
+          pageSize={pageSize}
+          onPageSize={(size) => {
+            setPageSize(size)
+            setPage(1)
+          }}
           extra={
             <label className="inline-flex items-center gap-2 text-sm text-muted">
               <input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} />

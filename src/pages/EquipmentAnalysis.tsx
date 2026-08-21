@@ -25,8 +25,8 @@ export function EquipmentAnalysis() {
   const [sortKey, setSortKey] = useState('qty')
   const [asc, setAsc] = useState(false)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [openId, setOpenId] = useState<string | null>(null)
-  const pageSize = 10
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -65,6 +65,11 @@ export function EquipmentAnalysis() {
           asc={asc}
           onSortKey={setSortKey}
           onToggleDir={() => setAsc((v) => !v)}
+          pageSize={pageSize}
+          onPageSize={(size) => {
+            setPageSize(size)
+            setPage(1)
+          }}
           onDownload={() =>
             downloadExcel(
               '설비분석.xlsx',

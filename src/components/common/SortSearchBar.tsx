@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { Download } from 'lucide-react'
 
+export const PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
+
 export function SortSearchBar({
   query,
   onQuery,
@@ -10,6 +12,8 @@ export function SortSearchBar({
   asc,
   onSortKey,
   onToggleDir,
+  pageSize,
+  onPageSize,
   onDownload,
   extra,
 }: {
@@ -21,6 +25,8 @@ export function SortSearchBar({
   asc: boolean
   onSortKey: (id: string) => void
   onToggleDir: () => void
+  pageSize?: number
+  onPageSize?: (size: number) => void
   onDownload?: () => void
   extra?: ReactNode
 }) {
@@ -57,6 +63,20 @@ export function SortSearchBar({
           >
             {asc ? '↑ 오름차순' : '↓ 내림차순'}
           </button>
+          {pageSize != null && onPageSize && (
+            <select
+              value={pageSize}
+              onChange={(e) => onPageSize(Number(e.target.value))}
+              className="rounded-full border border-line bg-white px-3 py-2 text-sm"
+              aria-label="페이지당 표시 개수"
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size}개
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 

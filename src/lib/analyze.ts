@@ -955,6 +955,15 @@ export function filterRecords(
   );
 }
 
+/** 기간 필터 기준 추이. 올해·긴 기간은 월별, 그 외는 일별. */
+export function buildPeriodTrends(
+  records: InspectionRecord[],
+  filters: FilterState,
+): { trends: DailyTrend[]; grain: "day" | "month" } {
+  const { start, end } = resolvePeriodRange(filters);
+  return buildDailyTrends(records, filters.period, { start, end });
+}
+
 export function analyzeRecords(
   allRecords: InspectionRecord[],
   filters: FilterState,

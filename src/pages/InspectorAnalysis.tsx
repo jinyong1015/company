@@ -26,8 +26,8 @@ export function InspectorAnalysis() {
   const [sortKey, setSortKey] = useState('qty')
   const [asc, setAsc] = useState(false)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
   const [openId, setOpenId] = useState<string | null>(null)
-  const pageSize = 10
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -70,6 +70,11 @@ export function InspectorAnalysis() {
           asc={asc}
           onSortKey={setSortKey}
           onToggleDir={() => setAsc((v) => !v)}
+          pageSize={pageSize}
+          onPageSize={(size) => {
+            setPageSize(size)
+            setPage(1)
+          }}
           onDownload={() =>
             downloadExcel(
               '검사자분석.xlsx',
@@ -128,6 +133,7 @@ export function InspectorAnalysis() {
                               <th className="py-1 text-left">검수량</th>
                               <th className="py-1 text-left">부적합수량</th>
                               <th className="py-1 text-left">부적합률</th>
+                              <th className="py-1 text-left">UPH</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -137,6 +143,7 @@ export function InspectorAnalysis() {
                                 <td className="num py-1">{p.qty.toLocaleString()}</td>
                                 <td className="num py-1">{p.fail.toLocaleString()}</td>
                                 <td className="num py-1">{formatPpm(p.failRate)}</td>
+                                <td className="num py-1 font-semibold">{p.uph}</td>
                               </tr>
                             ))}
                           </tbody>
