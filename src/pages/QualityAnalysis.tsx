@@ -103,8 +103,8 @@ export function QualityAnalysis() {
         description="불량 유형 TOP 10과 품번 TOP 10을 함께 확인합니다."
       />
 
-      <Panel title="불량 유형 TOP 10" description="막대 또는 아래 버튼으로 유형을 선택하세요">
-        <DefectBarChart data={defectTypes} onSelect={pickDefect} />
+      <Panel title="불량 유형 TOP 10" description="아래 버튼으로 유형을 선택하세요">
+        <DefectBarChart data={defectTypes} />
 
         <div className="mt-4 rounded-2xl border border-line bg-canvas/50 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

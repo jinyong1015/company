@@ -17,14 +17,14 @@ export function DataQuality() {
     <div className="space-y-5">
       <PageHeader
         title="데이터 품질"
-        description="오류는 업로드 차단, 경고는 확인 후 저장, #N/A는 분석에서만 제외합니다."
+        description="오류(#N/A 포함)는 업로드 차단, 경고는 확인 후 저장합니다."
       />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ["정상", counts.ok, "text-ok"],
           ["경고", counts.warn, "text-warn"],
-          ["오류", counts.error, "text-danger"],
-          ["분석 제외 (#N/A)", counts.excluded, "text-muted"],
+          ["오류 (#N/A 포함)", counts.error, "text-danger"],
+          ["분석 제외", counts.excluded, "text-muted"],
         ].map(([label, value, color]) => (
           <div
             key={String(label)}
@@ -69,7 +69,7 @@ export function DataQuality() {
       </Panel>
       <Panel
         title="이슈 행 미리보기"
-        description="오류는 업로드 차단, 경고는 확인 후 저장, #N/A는 분석 제외"
+        description="오류(#N/A 포함)는 업로드 차단, 경고는 확인 후 저장"
       >
         <div className="overflow-x-auto">
           <table className="min-w-[860px] w-full text-left text-sm">

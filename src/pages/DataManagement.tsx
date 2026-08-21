@@ -56,7 +56,7 @@ export function DataManagement() {
     <div className="space-y-5">
       <PageHeader
         title="데이터 업로드"
-        description="Excel 선택 → 컬럼 확인 → 검증 → 오류 차단 / 경고 확인 / #N/A 분석 제외 → 저장 → Dashboard 갱신"
+        description="Excel 선택 → 컬럼 확인 → 검증 → 오류 차단(#N/A 포함) / 경고 확인 → 저장 → Dashboard 갱신"
         actions={
           <div className="flex flex-wrap gap-2">
             <button
@@ -181,8 +181,8 @@ export function DataManagement() {
             {[
               ['정상', counts.ok, 'text-ok'],
               ['경고', counts.warn, 'text-warn'],
-              ['오류', counts.error, 'text-danger'],
-              ['분석 제외 (#N/A)', counts.excluded, 'text-muted'],
+              ['오류 (#N/A 포함)', counts.error, 'text-danger'],
+              ['분석 제외', counts.excluded, 'text-muted'],
             ].map(([label, value, color]) => (
               <div key={String(label)} className="rounded-xl border border-line bg-surface px-4 py-3">
                 <p className="text-xs text-muted">{label}</p>
@@ -212,7 +212,7 @@ export function DataManagement() {
           {!pending && hasUploadedData && (
             <Panel
               title="분석 반영 완료"
-              description="업로드한 엑셀 기준으로 KPI · 차트 · 상세 분석이 재계산되었습니다. #N/A는 분석에서 제외됩니다."
+              description="업로드한 엑셀 기준으로 KPI · 차트 · 상세 분석이 재계산되었습니다. #N/A 행은 오류로 차단되거나 제외됩니다."
               actions={
                 <Link to="/" className="text-sm font-medium text-accent hover:underline">
                   Dashboard 보기

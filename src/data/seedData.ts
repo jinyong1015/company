@@ -105,8 +105,8 @@ export const seedRecords: InspectionRecord[] = rawRecords.map((r, i) => {
     workType: '검사작업',
     team: r.team === '2공장' ? '2공장' : '본사',
     productType,
-    rowClass: i === 5 ? 'excluded' : 'ok',
-    issues: i === 5 ? ['#N/A'] : [],
+    rowClass: i === 5 ? 'error' : 'ok',
+    issues: i === 5 ? ['#N/A', '제품 유형 #N/A'] : [],
   }
 })
 

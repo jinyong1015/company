@@ -23,6 +23,7 @@ import { useData } from "../context/DataContext";
 import { groupLabel } from "../lib/groups";
 import { useFilters } from "../context/FilterContext";
 import { downloadExcel } from "../lib/download";
+import { DEFECT_TYPE_COLORS } from "../lib/defectColors";
 import { formatPpm } from "../lib/format";
 import type { DailyTrend, DefectType, GroupTrendSeries } from "../types";
 import { FileSpreadsheet } from "lucide-react";
@@ -45,25 +46,19 @@ const GROUP_BAR_STYLE: { id: string; color: string }[] = [
 const LINE_COLOR = "#f97316";
 const LABEL_COLOR = "#ef4444";
 
-const DEFECT_PIE_COLORS = [
-  "#3b82f6",
-  "#0ea5e9",
-  "#14b8a6",
-  "#22c55e",
-  "#84cc16",
-  "#eab308",
-  "#f59e0b",
-  "#f97316",
-  "#ef4444",
-  "#a855f7",
-];
-
+const DEFECT_PIE_COLORS = DEFECT_TYPE_COLORS;
 const PIE_LABEL_RADIAN = Math.PI / 180;
 /** 7% 미만: 바깥 / 7% 이상: 조각 안 */
 const PIE_INNER_LABEL_MIN_SHARE = 7;
-const PIE_OUTER_RADIUS = 118;
-const PIE_INNER_RADIUS = 58;
-const PIE_OUTER_LABEL_GAP = 30;
+const PIE_OUTER_RADIUS = 148;
+const PIE_INNER_RADIUS = 72;
+const PIE_OUTER_LABEL_GAP = 28;
+/** 범례를 오른쪽에 두기 위해 원형 그래프를 왼쪽으로 치우침 */
+const PIE_CX_RATIO = 0.42;
+/** Pie와 바깥 라벨이 같은 각도를 쓰도록 맞춤 (Recharts computePieSectors) */
+const PIE_PADDING_ANGLE = 2;
+const PIE_START_ANGLE = 0;
+const PIE_END_ANGLE = 360;
 
 function DefectPieInnerLabel(props: {
   cx?: number;
@@ -97,7 +92,7 @@ function DefectPieInnerLabel(props: {
       fill="#fff"
       textAnchor="middle"
       dominantBaseline="central"
-      style={{ fontSize: 11, fontWeight: 600, pointerEvents: "none" }}
+      style={{ fontSize: 12, fontWeight: 600, pointerEvents: "none" }}
     >
       <tspan x={x} dy="-0.55em">
         {name}
@@ -140,6 +135,37 @@ function spreadLabelYs<T extends { y: number }>(
   return sorted;
 }
 
+/** Recharts Pie.computePieSectors 와 동일한 midAngle 계산 */
+function buildPieSectorMidAngles(items: DefectType[]) {
+  const total = items.reduce((s, d) => s + d.count, 0) || 1;
+  const notZeroItemCount = items.filter((d) => d.count !== 0).length;
+  const absDeltaAngle = Math.min(Math.abs(PIE_END_ANGLE - PIE_START_ANGLE), 360);
+  const sign = Math.sign(PIE_END_ANGLE - PIE_START_ANGLE) || 1;
+  const paddingAngle = items.length <= 1 ? 0 : PIE_PADDING_ANGLE;
+  const totalPaddingAngle =
+    (absDeltaAngle >= 360 ? notZeroItemCount : Math.max(0, notZeroItemCount - 1)) *
+    paddingAngle;
+  const realTotalAngle = absDeltaAngle - totalPaddingAngle;
+
+  const midAngles: number[] = [];
+  let prevEndAngle = PIE_START_ANGLE;
+
+  for (let i = 0; i < items.length; i += 1) {
+    const val = items[i].count;
+    const percent = val / total;
+    const tempStartAngle =
+      i === 0
+        ? PIE_START_ANGLE
+        : prevEndAngle + sign * paddingAngle * (val !== 0 ? 1 : 0);
+    const tempEndAngle =
+      tempStartAngle + sign * (val !== 0 ? percent * realTotalAngle : 0);
+    midAngles.push((tempStartAngle + tempEndAngle) / 2);
+    prevEndAngle = tempEndAngle;
+  }
+
+  return midAngles;
+}
+
 function buildOutsideLabelLayout(
   items: DefectType[],
   width: number,
@@ -148,44 +174,43 @@ function buildOutsideLabelLayout(
 ) {
   if (!width || !height) return [];
 
-  const cx = width / 2;
+  const cx = width * PIE_CX_RATIO;
   const cy = height / 2;
-  const total = items.reduce((s, d) => s + d.count, 0) || 1;
-  let cursor = 0;
+  const midAngles = buildPieSectorMidAngles(items);
 
   const candidates = items
     .map((d, index) => {
-      const sweep = (d.count / total) * 360;
-      const midAngle = cursor + sweep / 2;
-      cursor += sweep;
       if (d.share <= 0 || d.share >= PIE_INNER_LABEL_MIN_SHARE) return null;
+      const midAngle = midAngles[index] ?? 0;
       const cos = Math.cos(-midAngle * PIE_LABEL_RADIAN);
       const sin = Math.sin(-midAngle * PIE_LABEL_RADIAN);
       return {
         key: `${d.name}-${index}`,
         name: d.name,
         share: d.share,
+        midAngle,
         cos,
         sin,
         side: (cos >= 0 ? "right" : "left") as "right" | "left",
+        // 조각 바깥 가장자리 중앙에 붙도록
         anchorX: cx + outerRadius * cos,
         anchorY: cy + outerRadius * sin,
-        x: cx + (outerRadius + 48) * (cos >= 0 ? 1 : -1),
-        y: cy + (outerRadius + 24) * sin,
+        x: cx + (outerRadius + 52) * (cos >= 0 ? 1 : -1),
+        y: cy + (outerRadius + 18) * sin,
       };
     })
     .filter((v): v is NonNullable<typeof v> => !!v);
 
   const right = spreadLabelYs(
     candidates.filter((c) => c.side === "right"),
-    16,
-    height - 16,
+    20,
+    height - 20,
     PIE_OUTER_LABEL_GAP,
   );
   const left = spreadLabelYs(
     candidates.filter((c) => c.side === "left"),
-    16,
-    height - 16,
+    20,
+    height - 20,
     PIE_OUTER_LABEL_GAP,
   );
 
@@ -218,16 +243,18 @@ function DefectTypePieChart({ data }: { data: DefectType[] }) {
   return (
     <div ref={hostRef} className="relative h-full w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
+        <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
           <Pie
             data={data}
             dataKey="count"
             nameKey="name"
-            cx="50%"
+            cx={`${PIE_CX_RATIO * 100}%`}
             cy="50%"
+            startAngle={PIE_START_ANGLE}
+            endAngle={PIE_END_ANGLE}
             innerRadius={PIE_INNER_RADIUS}
             outerRadius={PIE_OUTER_RADIUS}
-            paddingAngle={2}
+            paddingAngle={PIE_PADDING_ANGLE}
             stroke="#fff"
             strokeWidth={2}
             label={DefectPieInnerLabel}
@@ -265,16 +292,22 @@ function DefectTypePieChart({ data }: { data: DefectType[] }) {
           height={size.height}
         >
           {outsideLabels.map((p) => {
-            const elbowX = p.anchorX + (p.side === "right" ? 12 : -12);
+            // 조각 중앙 → 짧은 방사 연장 → 라벨 높이까지 꺾어 가로로 연결
+            const radialX = p.anchorX + p.cos * 10;
+            const radialY = p.anchorY + p.sin * 10;
+            const elbowX = p.x - (p.side === "right" ? 6 : -6);
             const labelX = p.x + (p.side === "right" ? 4 : -4);
             return (
               <g key={p.key}>
                 <path
-                  d={`M${p.anchorX},${p.anchorY}L${elbowX},${p.y}L${p.x},${p.y}`}
+                  d={`M${p.anchorX},${p.anchorY}L${radialX},${radialY}L${elbowX},${p.y}L${p.x},${p.y}`}
                   stroke="#94a3b8"
-                  strokeWidth={1}
+                  strokeWidth={1.25}
                   fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
                 />
+                <circle cx={p.anchorX} cy={p.anchorY} r={2.25} fill="#64748b" />
                 <text
                   x={labelX}
                   y={p.y}
@@ -619,35 +652,39 @@ export function Dashboard() {
 
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel title="불량 유형 TOP 10" description="선택 기간 기준 점유율">
-          <div className="h-[440px]">
+          <div className="flex h-[520px] gap-3">
             {defectTypes.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-sm text-muted">
+              <div className="flex h-full flex-1 items-center justify-center text-sm text-muted">
                 표시할 불량 유형 데이터가 없습니다.
               </div>
             ) : (
-              <DefectTypePieChart data={defectTypes} />
+              <>
+                <div className="min-w-0 flex-1">
+                  <DefectTypePieChart data={defectTypes} />
+                </div>
+                <ul className="flex w-[148px] shrink-0 flex-col justify-center space-y-1.5 self-stretch text-sm">
+                  {defectTypes.map((d, i) => (
+                    <li
+                      key={`${d.name}-${i}`}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span className="inline-flex min-w-0 items-center gap-2">
+                        <span
+                          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor:
+                              DEFECT_PIE_COLORS[i % DEFECT_PIE_COLORS.length],
+                          }}
+                        />
+                        <span className="truncate">{d.name}</span>
+                      </span>
+                      <span className="num shrink-0 text-muted">{d.share}%</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </div>
-          <ul className="mt-3 space-y-1.5 text-sm">
-            {defectTypes.map((d, i) => (
-              <li
-                key={`${d.name}-${i}`}
-                className="flex items-center justify-between gap-3"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <span
-                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{
-                      backgroundColor:
-                        DEFECT_PIE_COLORS[i % DEFECT_PIE_COLORS.length],
-                    }}
-                  />
-                  {d.name}
-                </span>
-                <span className="num text-muted">{d.share}%</span>
-              </li>
-            ))}
-          </ul>
         </Panel>
 
         <Panel

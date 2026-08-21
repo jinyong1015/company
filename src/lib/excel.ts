@@ -411,6 +411,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     equipmentMissing: 0,
     moldMissing: 0,
     lotMissing: 0,
+    naValue: 0,
     error: 0,
     missing: 0,
   }
@@ -435,19 +436,18 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     const scrapCost = toNumber(cell(row, headerMap.scrapCost)) ?? 0
     const workType = str(cell(row, headerMap.workType))
     const team = str(cell(row, headerMap.team))
-    const productType = isPlaceholder(str(cell(row, headerMap.productType)))
-      ? ''
-      : str(cell(row, headerMap.productType))
-    const lot = isPlaceholder(str(cell(row, headerMap.lot))) ? '' : str(cell(row, headerMap.lot))
-    const worker = isPlaceholder(str(cell(row, headerMap.worker)))
-      ? ''
-      : str(cell(row, headerMap.worker))
-    const equipment = isPlaceholder(str(cell(row, headerMap.equipment)))
-      ? ''
-      : str(cell(row, headerMap.equipment))
-    const moldNo = isPlaceholder(str(cell(row, headerMap.moldNo)))
-      ? ''
-      : str(cell(row, headerMap.moldNo))
+    const productTypeRaw = str(cell(row, headerMap.productType))
+    const productType =
+      isPlaceholder(productTypeRaw) || isNaValue(productTypeRaw) ? '' : productTypeRaw
+    const lotRaw = str(cell(row, headerMap.lot))
+    const lot = isPlaceholder(lotRaw) || isNaValue(lotRaw) ? '' : lotRaw
+    const workerRaw = str(cell(row, headerMap.worker))
+    const worker = isPlaceholder(workerRaw) || isNaValue(workerRaw) ? '' : workerRaw
+    const equipmentRaw = str(cell(row, headerMap.equipment))
+    const equipment =
+      isPlaceholder(equipmentRaw) || isNaValue(equipmentRaw) ? '' : equipmentRaw
+    const moldRaw = str(cell(row, headerMap.moldNo))
+    const moldNo = isPlaceholder(moldRaw) || isNaValue(moldRaw) ? '' : moldRaw
     const start = excelTimeToHm(cell(row, headerMap.start))
     const end = excelTimeToHm(cell(row, headerMap.end))
     const durationRaw = cell(row, headerMap.duration)
@@ -461,7 +461,12 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     let blocking = false
     let warning = false
 
-    if (hasNa) issues.push('#N/A')
+    if (hasNa) {
+      quality.naValue += 1
+      issues.push('#N/A')
+      // 제품유형 등 어떤 컬럼이든 #N/A면 오류 — 업로드 차단 / 오류 행 제외 대상
+      blocking = true
+    }
 
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       quality.invalidDate += 1
@@ -496,8 +501,11 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     }
     if (!productType) {
       quality.productTypeMissing += 1
-      issues.push('제품 유형 누락')
-      warning = true
+      issues.push(
+        isNaValue(productTypeRaw) ? '제품 유형 #N/A' : '제품 유형 누락',
+      )
+      // 제품유형 #N/A / 누락은 오류 처리
+      blocking = true
     }
     if (!equipment) {
       quality.equipmentMissing += 1
@@ -542,10 +550,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     }
 
     let rowClass: InspectionRecord['rowClass'] = 'ok'
-    if (hasNa) {
-      rowClass = 'excluded'
-      quality.missing += 1
-    } else if (blocking) {
+    if (blocking) {
       rowClass = 'error'
       quality.error += 1
     } else if (warning) {
@@ -592,7 +597,8 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     { label: '검수량 0', count: quality.zeroQty },
     { label: '작업구분 오류', count: quality.invalidWorkType },
     { label: '합격+부적합 ≠ 검수량', count: quality.qtyMismatch },
-    { label: '제품 유형 누락', count: quality.productTypeMissing },
+    { label: '#N/A 값', count: quality.naValue },
+    { label: '제품 유형 누락/#N/A', count: quality.productTypeMissing },
     { label: '설비 누락', count: quality.equipmentMissing },
     { label: '금형번호 누락', count: quality.moldMissing },
     { label: 'LOT 누락', count: quality.lotMissing },
