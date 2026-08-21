@@ -3,6 +3,7 @@ import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
 import { DefectBarChart } from '../components/charts/DefectCharts'
 import { useData } from '../context/DataContext'
+import { formatPpm } from '../lib/format'
 
 export function QualityAnalysis() {
   const { analytics, records } = useData()
@@ -30,7 +31,7 @@ export function QualityAnalysis() {
         <Panel title={`${selected} 상세`}>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {[
-              ['관련 품번', products.filter((p) => p.mainDefect === selected).slice(0, 4).map((p) => `${p.name} ${p.failRate.toFixed(2)}%`)],
+              ['관련 품번', products.filter((p) => p.mainDefect === selected).slice(0, 4).map((p) => `${p.name} ${formatPpm(p.failRate)}`)],
               ['관련 금형', molds.filter((m) => m.mainDefect === selected).slice(0, 4).map((m) => m.moldNo)],
               ['관련 설비', equipment.filter((e) => e.mainDefect === selected).slice(0, 4).map((e) => e.name)],
               ['관련 검사자', relatedInspectors],

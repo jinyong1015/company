@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
 import { useData } from '../context/DataContext'
+import { formatPpm } from '../lib/format'
 
 export function WorkerAnalysis() {
   const { analytics } = useData()
@@ -115,7 +116,7 @@ export function WorkerAnalysis() {
                   <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
                   <td className="num px-2 py-3">{row.minutes.toLocaleString()}</td>
                   <td className="num px-2 py-3 font-semibold text-accent">{row.uph}</td>
-                  <td className="num px-2 py-3">{row.failRate.toFixed(2)}%</td>
+                  <td className="num px-2 py-3">{formatPpm(row.failRate)}</td>
                   <td className="px-2 py-3">
                     <div className="flex max-w-[260px] flex-wrap gap-1">
                       {row.defects.map((d) => (

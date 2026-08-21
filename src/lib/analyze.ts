@@ -1,6 +1,7 @@
 import type { FilterState } from '../context/FilterContext'
 import { ANALYSIS_GROUPS, isAnalyzable, matchesAnalysisGroup } from './groups'
 import { toEntityId } from './entityId'
+import { failRatePpm, formatPpm, formatPpmDelta, statusByPpm } from './format'
 import type {
   Analytics,
   AnomalyItem,
@@ -9,6 +10,7 @@ import type {
   DefectType,
   EquipmentRow,
   GroupSummary,
+  GroupTrendSeries,
   InsightItem,
   InspectionRecord,
   InspectorRow,
@@ -16,23 +18,12 @@ import type {
   MoldRow,
   ProductBreakdown,
   ProductRow,
-  Status,
   WorkerProductUph,
   WorkerRow,
 } from '../types'
 
 function uniqueSorted(values: string[]) {
   return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'))
-}
-
-function statusByRate(rate: number): Status {
-  if (rate >= 2) return '위험'
-  if (rate >= 1.3) return '주의'
-  return '정상'
-}
-
-function pct(n: number, digits = 2) {
-  return `${n.toFixed(digits)}%`
 }
 
 function formatCost(n: number) {
@@ -46,9 +37,7 @@ function sum(records: InspectionRecord[], key: keyof InspectionRecord) {
 }
 
 function failRateOf(records: InspectionRecord[]) {
-  const qty = sum(records, 'qty')
-  const fail = sum(records, 'fail')
-  return qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0
+  return failRatePpm(sum(records, 'fail'), sum(records, 'qty'))
 }
 
 function uphOf(records: InspectionRecord[]) {
@@ -114,13 +103,9 @@ function formatDateInput(d: Date) {
   return `${y}-${m}-${day}`
 }
 
-function resolvePeriodRange(filters: FilterState, records: InspectionRecord[]) {
-  const dates = records
-    .map((r) => parseDate(r.date))
-    .filter((d): d is Date => !!d)
-    .sort((a, b) => a.getTime() - b.getTime())
-
-  const today = dates.at(-1) ?? new Date()
+function resolvePeriodRange(filters: FilterState) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
   let start = new Date(today)
   let end = new Date(today)
 
@@ -193,15 +178,15 @@ function deltaTone(
   return up ? 'up-good' : 'down-bad'
 }
 
-function deltaText(current: number, previous: number, asPoint = false) {
+function deltaText(current: number, previous: number, asPpm = false) {
   if (previous === 0) {
-    if (current === 0) return '0%'
-    return asPoint ? `▲ ${current.toFixed(2)}%p` : '+100%'
+    if (current === 0) return asPpm ? '0 ppm' : '0%'
+    return asPpm ? `▲ ${formatPpm(current)}` : '+100%'
   }
-  if (asPoint) {
-    const diff = Math.round((current - previous) * 100) / 100
+  if (asPpm) {
+    const diff = Math.round(current - previous)
     const sign = diff > 0 ? '▲' : diff < 0 ? '▼' : ''
-    return `${sign} ${Math.abs(diff).toFixed(2)}%p`.trim()
+    return `${sign} ${formatPpm(Math.abs(diff))}`.trim()
   }
   const diff = ((current - previous) / Math.abs(previous)) * 100
   const sign = diff > 0 ? '+' : ''
@@ -234,7 +219,7 @@ function buildKpis(current: InspectionRecord[], previous: InspectionRecord[]): K
     {
       id: 'failRate',
       label: '부적합률',
-      value: pct(cur.failRate),
+      value: formatPpm(cur.failRate),
       delta: deltaText(cur.failRate, prev.failRate, true),
       deltaLabel: '이전 기간 대비',
       tone: deltaTone(cur.failRate, prev.failRate, true),
@@ -274,7 +259,7 @@ function productBreakdown(records: InspectionRecord[]): ProductBreakdown[] {
         product,
         qty,
         fail,
-        failRate: qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0,
+        failRate: failRatePpm(fail, qty),
         scrapCost: sum(list, 'scrapCost'),
         hours: Math.round(hours * 10) / 10,
         minutes: minutesOf(list),
@@ -285,32 +270,121 @@ function productBreakdown(records: InspectionRecord[]): ProductBreakdown[] {
     .sort((a, b) => b.qty - a.qty)
 }
 
-function buildDailyTrends(records: InspectionRecord[]): DailyTrend[] {
-  const map = new Map<string, InspectionRecord[]>()
+function emptyTrendPoint(label: string): DailyTrend {
+  return {
+    date: label,
+    inspectionCount: 0,
+    qty: 0,
+    pass: 0,
+    fail: 0,
+    failRate: 0,
+    hours: 0,
+    uph: 0,
+    scrapCost: 0,
+  }
+}
+
+function toTrendPoint(label: string, list: InspectionRecord[]): DailyTrend {
+  if (!list.length) return emptyTrendPoint(label)
+  const qty = sum(list, 'qty')
+  const fail = sum(list, 'fail')
+  const hours = sum(list, 'hours')
+  return {
+    date: label,
+    inspectionCount: list.length,
+    qty,
+    pass: sum(list, 'pass'),
+    fail,
+    failRate: failRatePpm(fail, qty),
+    hours: Math.round(hours * 10) / 10,
+    uph: hours > 0 ? Math.round(qty / hours) : 0,
+    scrapCost: sum(list, 'scrapCost'),
+  }
+}
+
+function eachMonth(start: Date, end: Date) {
+  const out: { key: string; label: string }[] = []
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1)
+  const last = new Date(end.getFullYear(), end.getMonth(), 1)
+  while (cursor.getTime() <= last.getTime()) {
+    const m = cursor.getMonth() + 1
+    out.push({
+      key: `${cursor.getFullYear()}-${String(m).padStart(2, '0')}`,
+      label: `${m}월`,
+    })
+    cursor.setMonth(cursor.getMonth() + 1)
+  }
+  return out
+}
+
+function buildMonthlyTrends(
+  records: InspectionRecord[],
+  start: Date,
+  end: Date,
+  fillFullYear: boolean,
+): DailyTrend[] {
+  const byMonth = new Map<string, InspectionRecord[]>()
   for (const r of records) {
-    const list = map.get(r.date) ?? []
+    const key = r.date.slice(0, 7)
+    const list = byMonth.get(key) ?? []
     list.push(r)
-    map.set(r.date, list)
+    byMonth.set(key, list)
+  }
+  const months = fillFullYear
+    ? eachMonth(new Date(start.getFullYear(), 0, 1), new Date(start.getFullYear(), 11, 1))
+    : eachMonth(start, end)
+
+  return months.map(({ key, label }) => toTrendPoint(label, byMonth.get(key) ?? []))
+}
+
+function buildDailyTrendSeries(records: InspectionRecord[], start: Date, end: Date): DailyTrend[] {
+  const byDay = new Map<string, InspectionRecord[]>()
+  for (const r of records) {
+    const list = byDay.get(r.date) ?? []
+    list.push(r)
+    byDay.set(r.date, list)
   }
 
-  return [...map.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, list]) => {
-      const qty = sum(list, 'qty')
-      const fail = sum(list, 'fail')
-      const hours = sum(list, 'hours')
-      return {
-        date: date.slice(5),
-        inspectionCount: list.length,
-        qty,
-        pass: sum(list, 'pass'),
-        fail,
-        failRate: qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0,
-        hours: Math.round(hours * 10) / 10,
-        uph: hours > 0 ? Math.round(qty / hours) : 0,
-        scrapCost: sum(list, 'scrapCost'),
-      }
-    })
+  const days: string[] = []
+  const cursor = new Date(start)
+  cursor.setHours(0, 0, 0, 0)
+  const last = new Date(end)
+  last.setHours(0, 0, 0, 0)
+  while (cursor.getTime() <= last.getTime()) {
+    days.push(formatDateInput(cursor))
+    cursor.setDate(cursor.getDate() + 1)
+  }
+
+  return days.map((date) => toTrendPoint(date.slice(5), byDay.get(date) ?? []))
+}
+
+/** 올해는 월별(1~12월), 긴 기간도 월별. 그 외는 일별. 빈 구간은 0으로 채움. */
+function buildDailyTrends(
+  records: InspectionRecord[],
+  period: FilterState['period'],
+  range: { start: Date; end: Date },
+): { trends: DailyTrend[]; grain: 'day' | 'month' } {
+  const daySpan =
+    Math.round((range.end.getTime() - range.start.getTime()) / (24 * 60 * 60 * 1000)) + 1
+
+  if (period === 'year') {
+    return {
+      trends: buildMonthlyTrends(records, range.start, range.end, true),
+      grain: 'month',
+    }
+  }
+
+  if (daySpan > 62) {
+    return {
+      trends: buildMonthlyTrends(records, range.start, range.end, false),
+      grain: 'month',
+    }
+  }
+
+  return {
+    trends: buildDailyTrendSeries(records, range.start, range.end),
+    grain: 'day',
+  }
 }
 
 function buildDefectTypes(records: InspectionRecord[], previous: InspectionRecord[]): DefectType[] {
@@ -348,7 +422,7 @@ function buildInspectors(records: InspectionRecord[]): InspectorRow[] {
         qty,
         pass: sum(list, 'pass'),
         fail,
-        failRate: qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0,
+        failRate: failRatePpm(fail, qty),
         hours: Math.round(hours * 10) / 10,
         minutes: minutesOf(list),
         uph: hours > 0 ? Math.round(qty / hours) : 0,
@@ -379,7 +453,7 @@ function buildProducts(records: InspectionRecord[], previous: InspectionRecord[]
       const pass = sum(list, 'pass')
       const fail = sum(list, 'fail')
       const hours = sum(list, 'hours')
-      const failRate = qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0
+      const failRate = failRatePpm(fail, qty)
       const defects = aggregateDefects(list)
       const failTotal = defects.reduce((s, d) => s + d.count, 0)
       const prevRate = failRateOf(prevMap.get(name) ?? [])
@@ -399,8 +473,8 @@ function buildProducts(records: InspectionRecord[], previous: InspectionRecord[]
         defects,
         defectSummary: defectSummaryOf(defects),
         scrapCost: sum(list, 'scrapCost'),
-        status: statusByRate(failRate),
-        changeRate: Math.round((failRate - prevRate) * 100) / 100,
+        status: statusByPpm(failRate),
+        changeRate: Math.round(failRate - prevRate),
       }
     })
     .sort((a, b) => b.fail - a.fail)
@@ -431,7 +505,7 @@ function buildWorkerProductUph(records: InspectionRecord[]): WorkerProductUph[] 
         qty,
         pass: sum(list, 'pass'),
         fail,
-        failRate: qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0,
+        failRate: failRatePpm(fail, qty),
         minutes: minutesOf(list),
         hours: Math.round(hours * 10) / 10,
         uph: hours > 0 ? Math.round(qty / hours) : 0,
@@ -465,7 +539,7 @@ function buildWorkers(records: InspectionRecord[], workerProductUph: WorkerProdu
         qty,
         pass: sum(list, 'pass'),
         fail,
-        failRate: qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0,
+        failRate: failRatePpm(fail, qty),
         minutes: minutesOf(list),
         hours: Math.round(hours * 10) / 10,
         uph: hours > 0 ? Math.round(qty / hours) : 0,
@@ -495,9 +569,9 @@ function buildMolds(records: InspectionRecord[], previous: InspectionRecord[]): 
     .map(([moldNo, list]) => {
       const qty = sum(list, 'qty')
       const fail = sum(list, 'fail')
-      const failRate = qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0
+      const failRate = failRatePpm(fail, qty)
       const prevRate = failRateOf(prevMap.get(moldNo) ?? [])
-      const diff = Math.round((failRate - prevRate) * 100) / 100
+      const diff = Math.round(failRate - prevRate)
       return {
         id: toEntityId('mld', moldNo),
         moldNo,
@@ -509,9 +583,9 @@ function buildMolds(records: InspectionRecord[], previous: InspectionRecord[]): 
         hours: Math.round(sum(list, 'hours') * 10) / 10,
         minutes: minutesOf(list),
         scrapCost: sum(list, 'scrapCost'),
-        recentChange: `${diff > 0 ? '+' : ''}${diff.toFixed(2)}%p`,
+        recentChange: formatPpmDelta(diff),
         changeRate: diff,
-        status: statusByRate(failRate),
+        status: statusByPpm(failRate),
       }
     })
     .sort((a, b) => b.failRate - a.failRate)
@@ -536,9 +610,9 @@ function buildEquipment(records: InspectionRecord[], previous: InspectionRecord[
       const qty = sum(list, 'qty')
       const fail = sum(list, 'fail')
       const hours = sum(list, 'hours')
-      const failRate = qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0
+      const failRate = failRatePpm(fail, qty)
       const prevRate = failRateOf(prevMap.get(name) ?? [])
-      const diff = Math.round((failRate - prevRate) * 100) / 100
+      const diff = Math.round(failRate - prevRate)
       return {
         id: toEntityId('eq', name),
         name,
@@ -550,7 +624,7 @@ function buildEquipment(records: InspectionRecord[], previous: InspectionRecord[
         failRate,
         mainDefect: mainDefectOf(list),
         scrapCost: sum(list, 'scrapCost'),
-        status: statusByRate(failRate),
+        status: statusByPpm(failRate),
         changeRate: diff,
         products: productBreakdown(list),
       }
@@ -585,20 +659,20 @@ function buildAnomalies(
   const items: AnomalyItem[] = []
   const curRate = failRateOf(current)
   const prevRate = failRateOf(previous)
-  const rateDiff = Math.round((curRate - prevRate) * 100) / 100
+  const rateDiff = Math.round(curRate - prevRate)
   const now = current.map((r) => r.date).sort().at(-1) ?? formatDateInput(new Date())
 
-  if (rateDiff >= 0.3) {
+  if (rateDiff >= 3_000) {
     items.push({
       id: 'an-quality',
       category: '품질 이상',
       title: '부적합률 급증',
-      severity: rateDiff >= 0.6 ? 'high' : 'medium',
+      severity: rateDiff >= 6_000 ? 'high' : 'medium',
       occurredAt: `${now} 분석`,
       scope: '선택 기간 전체',
-      current: pct(curRate),
-      average: pct(prevRate),
-      change: `+${rateDiff.toFixed(2)}%p`,
+      current: formatPpm(curRate),
+      average: formatPpm(prevRate),
+      change: formatPpmDelta(rateDiff),
       products: products.slice(0, 2).map((p) => p.name).join(', ') || '-',
       molds: molds.slice(0, 2).map((m) => m.moldNo).join(', ') || '-',
       equipment: equipment.slice(0, 2).map((e) => e.name).join(', ') || '-',
@@ -615,9 +689,9 @@ function buildAnomalies(
       severity: 'high',
       occurredAt: `${now} 분석`,
       scope: `제품 ${riskyProduct.name}`,
-      current: pct(riskyProduct.failRate),
-      average: pct(curRate),
-      change: `+${(riskyProduct.failRate - curRate).toFixed(2)}%p`,
+      current: formatPpm(riskyProduct.failRate),
+      average: formatPpm(curRate),
+      change: formatPpmDelta(riskyProduct.failRate - curRate),
       products: riskyProduct.name,
       molds: molds.filter((m) => m.product === riskyProduct.name).map((m) => m.moldNo).join(', ') || '-',
       equipment: '-',
@@ -625,7 +699,7 @@ function buildAnomalies(
     })
   }
 
-  const riskyMold = molds.find((m) => m.status === '위험' || m.recentChange.startsWith('+'))
+  const riskyMold = molds.find((m) => m.status === '위험' || m.changeRate > 0)
   if (riskyMold) {
     items.push({
       id: 'an-mold',
@@ -634,8 +708,8 @@ function buildAnomalies(
       severity: riskyMold.status === '위험' ? 'high' : 'medium',
       occurredAt: `${now} 분석`,
       scope: `금형 ${riskyMold.moldNo}`,
-      current: pct(riskyMold.failRate),
-      average: pct(curRate),
+      current: formatPpm(riskyMold.failRate),
+      average: formatPpm(curRate),
       change: riskyMold.recentChange,
       products: riskyMold.product,
       molds: riskyMold.moldNo,
@@ -653,9 +727,9 @@ function buildAnomalies(
       severity: riskyEq.status === '위험' ? 'high' : 'medium',
       occurredAt: `${now} 분석`,
       scope: riskyEq.name,
-      current: pct(riskyEq.failRate),
-      average: pct(curRate),
-      change: `+${(riskyEq.failRate - curRate).toFixed(2)}%p`,
+      current: formatPpm(riskyEq.failRate),
+      average: formatPpm(curRate),
+      change: formatPpmDelta(riskyEq.failRate - curRate),
       products: products.slice(0, 2).map((p) => p.name).join(', '),
       molds: molds.slice(0, 2).map((m) => m.moldNo).join(', '),
       equipment: riskyEq.name,
@@ -718,17 +792,17 @@ function buildInsights(
   const insights: InsightItem[] = []
   const curRate = failRateOf(current)
   const prevRate = failRateOf(previous)
-  const rateDiff = Math.round((curRate - prevRate) * 100) / 100
+  const rateDiff = Math.round(curRate - prevRate)
   const curUph = uphOf(current)
   const prevUph = uphOf(previous)
 
-  if (rateDiff > 0.1) {
+  if (rateDiff > 1_000) {
     insights.push({
       id: 'i1',
       tone: 'warn',
       title: '부적합률 상승',
       body: [
-        `선택 기간의 부적합률이 이전 기간보다 ${rateDiff.toFixed(2)}%p 증가했습니다.`,
+        `선택 기간의 부적합률이 이전 기간보다 ${formatPpm(rateDiff)} 증가했습니다.`,
         `주요 원인은 ${defects
           .slice(0, 2)
           .map((d) => d.name)
@@ -740,13 +814,13 @@ function buildInsights(
       action: '상세 분석',
       to: '/quality',
     })
-  } else if (rateDiff < -0.1) {
+  } else if (rateDiff < -1_000) {
     insights.push({
       id: 'i1',
       tone: 'good',
       title: '부적합률 개선',
       body: [
-        `선택 기간의 부적합률이 이전 기간보다 ${Math.abs(rateDiff).toFixed(2)}%p 감소했습니다.`,
+        `선택 기간의 부적합률이 이전 기간보다 ${formatPpm(Math.abs(rateDiff))} 감소했습니다.`,
         '품질 안정화 추세가 확인됩니다.',
       ],
     })
@@ -785,7 +859,7 @@ function buildInsights(
       title: '안정적 품질 상태',
       body: [
         '선택 기간 기준 급격한 이상징후는 감지되지 않았습니다.',
-        `현재 부적합률 ${pct(curRate)}, UPH ${curUph} 수준입니다.`,
+        `현재 부적합률 ${formatPpm(curRate)}, UPH ${curUph} 수준입니다.`,
       ],
     })
   }
@@ -800,7 +874,7 @@ export function filterRecords(
 ) {
   const base = analyzableOnly ? records.filter(isAnalyzable) : records
   const grouped = base.filter((r) => matchesAnalysisGroup(r, filters.analysisGroup))
-  const { start, end } = resolvePeriodRange(filters, grouped.length ? grouped : base)
+  const { start, end } = resolvePeriodRange(filters)
   return applyMultiFilters(grouped, filters).filter((r) => inRange(r.date, start, end))
 }
 
@@ -813,12 +887,12 @@ export function analyzeRecords(
     matchesAnalysisGroup(r, filters.analysisGroup ?? 'all'),
   )
   const multiFiltered = applyMultiFilters(grouped, filters)
-  const { start, end } = resolvePeriodRange(filters, multiFiltered.length ? multiFiltered : grouped)
+  const { start, end } = resolvePeriodRange(filters)
   const current = multiFiltered.filter((r) => inRange(r.date, start, end))
   const prev = previousRange(start, end)
   const previous = multiFiltered.filter((r) => inRange(r.date, prev.start, prev.end))
 
-  const source = current.length ? current : multiFiltered
+  const source = current
   const compare = previous
 
   const periodAllGroups = applyMultiFilters(analyzable, filters).filter((r) =>
@@ -833,12 +907,24 @@ export function analyzeRecords(
       label: g.label,
       qty,
       fail,
-      failRate: qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0,
+      failRate: failRatePpm(fail, qty),
       scrapCost: sum(list, 'scrapCost'),
     }
   })
 
-  const dailyTrends = buildDailyTrends(source)
+  const { trends: dailyTrends, grain: trendGrain } = buildDailyTrends(
+    source,
+    filters.period,
+    { start, end },
+  )
+
+  const subgroupIds = ANALYSIS_GROUPS.filter((g) => g.id !== 'all')
+  const groupTrends: GroupTrendSeries[] = subgroupIds.map((g) => {
+    const list = periodAllGroups.filter((r) => matchesAnalysisGroup(r, g.id))
+    const { trends } = buildDailyTrends(list, filters.period, { start, end })
+    return { id: g.id, label: g.label, trends }
+  })
+
   const defectTypes = buildDefectTypes(source, compare)
   const inspectors = buildInspectors(source)
   const products = buildProducts(source, compare)
@@ -852,6 +938,8 @@ export function analyzeRecords(
   return {
     kpis: buildKpis(source, compare),
     dailyTrends,
+    trendGrain,
+    groupTrends,
     defectTypes,
     inspectors,
     products,

@@ -8,6 +8,7 @@ import { StatusBadge } from '../components/common/StatusBadge'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
 import type { ProductRow } from '../types'
+import { formatPpm } from '../lib/format'
 
 const sortKeys = [
   { id: 'type', label: '제품유형' },
@@ -122,7 +123,7 @@ export function ProductAnalysis() {
                       </td>
                       <td className="num px-2 py-3">{row.qty.toLocaleString()}</td>
                       <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
-                      <td className="num px-2 py-3">{row.failRate.toFixed(2)}%</td>
+                      <td className="num px-2 py-3">{formatPpm(row.failRate)}</td>
                       <td className="px-2 py-3">{row.mainDefect}</td>
                       <td className="num px-2 py-3">₩{row.scrapCost.toLocaleString()}</td>
                       <td className="px-2 py-3">

@@ -5,6 +5,7 @@ import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
+import { formatPpm } from '../lib/format'
 
 type Dim = 'product' | 'defect' | 'mold' | 'equipment' | 'inspector' | 'group'
 
@@ -143,7 +144,7 @@ export function CostAnalysis() {
                 <th className="px-2 py-2 font-medium">대상</th>
                 <th className="px-2 py-2 font-medium">폐기비용</th>
                 <th className="px-2 py-2 font-medium">부적합수량</th>
-                <th className="px-2 py-2 font-medium">부적합률</th>
+                <th className="px-2 py-2 font-medium">{dim === 'defect' ? '점유율' : '부적합률'}</th>
               </tr>
             </thead>
             <tbody>
@@ -152,7 +153,9 @@ export function CostAnalysis() {
                   <td className="px-2 py-3 font-medium">{row.name}</td>
                   <td className="num px-2 py-3">₩{row.scrapCost.toLocaleString()}</td>
                   <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
-                  <td className="num px-2 py-3">{row.failRate.toFixed(2)}%</td>
+                  <td className="num px-2 py-3">
+                    {dim === 'defect' ? `${row.failRate}%` : formatPpm(row.failRate)}
+                  </td>
                 </tr>
               ))}
             </tbody>

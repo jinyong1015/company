@@ -3,6 +3,7 @@ import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
 import { useData } from '../context/DataContext'
 import { ANALYSIS_GROUPS, type AnalysisGroupId } from '../lib/groups'
+import { formatPpm } from '../lib/format'
 
 export function SmartCompare() {
   const { analytics } = useData()
@@ -52,7 +53,7 @@ export function SmartCompare() {
           <tbody>
             {[
               ['검수량', gA?.qty.toLocaleString(), gB?.qty.toLocaleString()],
-              ['부적합률', `${gA?.failRate.toFixed(2)}%`, `${gB?.failRate.toFixed(2)}%`],
+              ['부적합률', `${formatPpm(gA?.failRate)}`, `${formatPpm(gB?.failRate)}`],
               ['부적합수량', gA?.fail.toLocaleString(), gB?.fail.toLocaleString()],
               ['폐기비용', `₩${gA?.scrapCost.toLocaleString()}`, `₩${gB?.scrapCost.toLocaleString()}`],
             ].map(([k, a, b]) => (
@@ -106,12 +107,12 @@ export function SmartCompare() {
         <div className="grid gap-4 md:grid-cols-2">
           {[eA, eB].map((eq) => (
             <div key={eq?.id ?? 'y'} className="rounded-lg border border-line p-3">
-              <p className="mb-2 font-medium">{eq?.name} · 부적합률 {eq?.failRate.toFixed(2)}%</p>
+              <p className="mb-2 font-medium">{eq?.name} · 부적합률 {formatPpm(eq?.failRate)}</p>
               <ul className="space-y-1 text-sm">
                 {eq?.products.slice(0, 6).map((p) => (
                   <li key={p.product} className="flex justify-between">
                     <span>{p.product}</span>
-                    <span className="num">{p.qty.toLocaleString()} / {p.failRate.toFixed(2)}%</span>
+                    <span className="num">{p.qty.toLocaleString()} / {formatPpm(p.failRate)}</span>
                   </li>
                 ))}
               </ul>
@@ -140,7 +141,7 @@ export function SmartCompare() {
                   {items.map((p) => (
                     <li key={p.id} className="flex justify-between">
                       <span>{p.name}</span>
-                      <span className="num">{p.qty.toLocaleString()} / {p.failRate.toFixed(2)}%</span>
+                      <span className="num">{p.qty.toLocaleString()} / {formatPpm(p.failRate)}</span>
                     </li>
                   ))}
                 </ul>

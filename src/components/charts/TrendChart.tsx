@@ -9,6 +9,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { DailyTrend } from '../../types'
+import { formatPpm } from '../../lib/format'
 
 function formatCost(v: number) {
   return `₩${(v / 10000).toFixed(0)}만`
@@ -47,8 +48,8 @@ export function TrendChart({ data }: { data: DailyTrend[] }) {
             tick={{ fill: '#5b6577', fontSize: 12 }}
             axisLine={false}
             tickLine={false}
-            width={40}
-            tickFormatter={(v) => `${v}%`}
+            width={56}
+            tickFormatter={(v) => `${Math.round(Number(v) / 1000)}k`}
           />
           <Tooltip
             contentStyle={{
@@ -59,7 +60,7 @@ export function TrendChart({ data }: { data: DailyTrend[] }) {
             }}
             formatter={(value, name) => {
               const n = Number(value ?? 0)
-              if (name === '부적합률') return [`${n.toFixed(2)}%`, name]
+              if (name === '부적합률') return [formatPpm(n), name]
               if (name === '폐기비용') return [formatCost(n), name]
               return [n.toLocaleString(), String(name)]
             }}

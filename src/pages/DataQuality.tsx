@@ -1,6 +1,7 @@
 import { PageHeader } from "../components/common/PageHeader";
 import { Panel } from "../components/common/Panel";
 import { useData } from "../context/DataContext";
+import { formatPpm } from '../lib/format'
 
 export function DataQuality() {
   const { records, meta, analytics } = useData();
@@ -62,7 +63,7 @@ export function DataQuality() {
         <p className="text-sm text-muted">
           분석 건수 {analytics.summary.recordCount.toLocaleString()}건 · 검수량{" "}
           {analytics.summary.totalQty.toLocaleString()} · 부적합률{" "}
-          {analytics.summary.failRate.toFixed(2)}% · 제외{" "}
+          {formatPpm(analytics.summary.failRate)} · 제외{" "}
           {analytics.summary.excludedCount.toLocaleString()}건
         </p>
       </Panel>

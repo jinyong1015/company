@@ -17,6 +17,7 @@ import { useFilters } from '../context/FilterContext'
 import { filterRecords } from '../lib/analyze'
 import { fromEntityId, toEntityId } from '../lib/entityId'
 import { useMemo } from 'react'
+import { failRatePpm, formatPpm } from '../lib/format'
 
 export function InspectorDetail() {
   const { id } = useParams()
@@ -78,7 +79,7 @@ export function InspectorDetail() {
   const qty = row.qty
   const fail = row.fail
   const hours = row.hours
-  const failRate = qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0
+  const failRate = failRatePpm(fail, qty)
   const uph = hours > 0 ? Math.round(qty / hours) : 0
 
   const byDate = Object.values(
@@ -97,7 +98,7 @@ export function InspectorDetail() {
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((d) => ({
       ...d,
-      failRate: d.qty > 0 ? Math.round((d.fail / d.qty) * 10000) / 100 : 0,
+      failRate: failRatePpm(d.fail, d.qty),
       uph: d.hours > 0 ? Math.round(d.qty / d.hours) : 0,
     }))
 
@@ -129,7 +130,7 @@ export function InspectorDetail() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {[
           ['검수량', qty.toLocaleString()],
-          ['부적합률', `${failRate.toFixed(2)}%`],
+          ['부적합률', `${formatPpm(failRate)}`],
           ['UPH', String(uph)],
           ['폐기비용', `₩${row.scrapCost.toLocaleString()}`],
         ].map(([label, value]) => (

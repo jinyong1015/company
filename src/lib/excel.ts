@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx'
 import type { InspectionRecord, QualityCheckItem, UploadResult } from '../types'
+import { failRatePpm } from './format'
 
 export const KNOWN_DEFECT_TYPES = [
   'BURR',
@@ -553,7 +554,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     }
 
     const hours = parseDurationHours(durationRaw, start, end)
-    const failRate = safeQty > 0 ? Math.round((safeFail / safeQty) * 10000) / 100 : 0
+    const failRate = failRatePpm(safeFail, safeQty)
 
     records.push({
       id: `row-${index + 1}`,

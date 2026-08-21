@@ -8,6 +8,7 @@ import { filterRecords } from '../lib/analyze'
 import { downloadExcel } from '../lib/download'
 import type { InspectionRecord } from '../types'
 import { Search, X } from 'lucide-react'
+import { formatPpm } from '../lib/format'
 
 type SortKey = keyof InspectionRecord
 
@@ -187,7 +188,7 @@ export function InspectionData() {
                   <td className="px-2 py-3">{r.equipment}</td>
                   <td className="num px-2 py-3">{r.qty.toLocaleString()}</td>
                   <td className="num px-2 py-3">{r.fail.toLocaleString()}</td>
-                  <td className="num px-2 py-3">{r.failRate.toFixed(2)}%</td>
+                  <td className="num px-2 py-3">{formatPpm(r.failRate)}</td>
                   <td className="px-2 py-3">{r.mainDefect}</td>
                   <td className="num px-2 py-3">₩{r.scrapCost.toLocaleString()}</td>
                   <td className="px-2 py-3">
@@ -237,7 +238,7 @@ export function InspectionData() {
                   ['검수량', selected.qty.toLocaleString()],
                   ['합격 수량', selected.pass.toLocaleString()],
                   ['부적합 수량', selected.fail.toLocaleString()],
-                  ['부적합률', `${selected.failRate.toFixed(2)}%`],
+                  ['부적합률', `${formatPpm(selected.failRate)}`],
                   ['주요 불량', selected.mainDefect],
                   ['폐기비용', `₩${selected.scrapCost.toLocaleString()}`],
                   ['상태', classLabel[selected.rowClass]],

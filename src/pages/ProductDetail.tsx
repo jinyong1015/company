@@ -18,6 +18,7 @@ import { useData } from '../context/DataContext'
 import { useFilters } from '../context/FilterContext'
 import { filterRecords } from '../lib/analyze'
 import { fromEntityId, toEntityId } from '../lib/entityId'
+import { failRatePpm, formatPpm, statusByPpm } from '../lib/format'
 
 export function ProductDetail() {
   const { id } = useParams()
@@ -68,10 +69,10 @@ export function ProductDetail() {
   const minutes = product?.minutes ?? Math.round(scoped.reduce((s, r) => s + r.hours, 0) * 60)
   const hours = product?.hours ?? scoped.reduce((s, r) => s + r.hours, 0)
   const uph = product?.uph ?? (hours > 0 ? Math.round(qty / hours) : 0)
-  const failRate = product?.failRate ?? (qty > 0 ? Math.round((fail / qty) * 10000) / 100 : 0)
+  const failRate = product?.failRate ?? failRatePpm(fail, qty)
   const failTotal = product?.failTotal ?? fail
   const defects = product?.defects ?? []
-  const status = product?.status ?? (failRate >= 2 ? '위험' : failRate >= 1.3 ? '주의' : '정상')
+  const status = product?.status ?? statusByPpm(failRate)
   const type = product?.type ?? scoped[0]?.productType ?? '미지정'
 
   const byDate = Object.values(
@@ -85,7 +86,7 @@ export function ProductDetail() {
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((d) => ({
       ...d,
-      failRate: d.qty > 0 ? Math.round((d.fail / d.qty) * 10000) / 100 : 0,
+      failRate: failRatePpm(d.fail, d.qty),
     }))
 
   const workerUph = analytics.workerProductUph.filter((w) => w.product === name)
@@ -114,7 +115,7 @@ export function ProductDetail() {
           ['폐기비용', `₩${scrapCost.toLocaleString()}`],
           ['소요시간(분)', minutes.toLocaleString()],
           ['UPH', String(uph)],
-          ['부적합률', `${failRate.toFixed(2)}%`],
+          ['부적합률', `${formatPpm(failRate)}`],
         ].map(([label, value]) => (
           <div key={label} className="card px-4 py-3">
             <p className="text-xs text-muted">{label}</p>

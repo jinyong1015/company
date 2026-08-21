@@ -1,4 +1,5 @@
 import type { Analytics, ProductRow } from '../types'
+import { formatPpm, formatPpmDelta } from './format'
 
 function compact(text: string) {
   return text.toLowerCase().replace(/\s+/g, '')
@@ -49,15 +50,15 @@ function scopeLabel(hint: string | null, team: string | null) {
 
 function formatProduct(p: ProductRow, i: number, metric: 'failRate' | 'qty' | 'scrapCost' | 'changeRate') {
   if (metric === 'scrapCost') {
-    return `${i + 1}. ${p.name}(${p.type}) · ₩${p.scrapCost.toLocaleString()} · 부적합률 ${p.failRate.toFixed(2)}% · ${p.mainDefect}`
+    return `${i + 1}. ${p.name}(${p.type}) · ₩${p.scrapCost.toLocaleString()} · 부적합률 ${formatPpm(p.failRate)} · ${p.mainDefect}`
   }
   if (metric === 'qty') {
-    return `${i + 1}. ${p.name}(${p.type}) · 검수량 ${p.qty.toLocaleString()} · 부적합률 ${p.failRate.toFixed(2)}%`
+    return `${i + 1}. ${p.name}(${p.type}) · 검수량 ${p.qty.toLocaleString()} · 부적합률 ${formatPpm(p.failRate)}`
   }
   if (metric === 'changeRate') {
-    return `${i + 1}. ${p.name}(${p.type}) · ${p.changeRate > 0 ? '+' : ''}${p.changeRate.toFixed(2)}%p · 부적합률 ${p.failRate.toFixed(2)}%`
+    return `${i + 1}. ${p.name}(${p.type}) · ${formatPpmDelta(p.changeRate)} · 부적합률 ${formatPpm(p.failRate)}`
   }
-  return `${i + 1}. ${p.name}(${p.type}) · ${p.failRate.toFixed(2)}% · 부적합 ${p.fail.toLocaleString()} · ${p.mainDefect}`
+  return `${i + 1}. ${p.name}(${p.type}) · ${formatPpm(p.failRate)} · 부적합 ${p.fail.toLocaleString()} · ${p.mainDefect}`
 }
 
 export function answerQuestion(q: string, analytics: Analytics) {
@@ -94,7 +95,7 @@ export function answerQuestion(q: string, analytics: Analytics) {
       '분석 그룹별 비교입니다. (#N/A 제외)',
       ...rows.map(
         (g) =>
-          `${g.label}: 검수량 ${g.qty.toLocaleString()} · 부적합률 ${g.failRate.toFixed(2)}% · 부적합 ${g.fail.toLocaleString()} · 폐기비용 ₩${g.scrapCost.toLocaleString()}`,
+          `${g.label}: 검수량 ${g.qty.toLocaleString()} · 부적합률 ${formatPpm(g.failRate)} · 부적합 ${g.fail.toLocaleString()} · 폐기비용 ₩${g.scrapCost.toLocaleString()}`,
       ),
     ]
   }
@@ -105,7 +106,7 @@ export function answerQuestion(q: string, analytics: Analytics) {
       `${inspectorHit.name}(${inspectorHit.team})이 검사한 품번 TOP ${rows.length}입니다.`,
       ...rows.map(
         (p, i) =>
-          `${i + 1}. ${p.product} · ${p.qty.toLocaleString()} EA · 부적합률 ${p.failRate.toFixed(2)}%`,
+          `${i + 1}. ${p.product} · ${p.qty.toLocaleString()} EA · 부적합률 ${formatPpm(p.failRate)}`,
       ),
     ]
   }
@@ -115,10 +116,10 @@ export function answerQuestion(q: string, analytics: Analytics) {
       n.includes('부적합') ? b.failRate - a.failRate : b.qty - a.qty,
     ).slice(0, limit)
     return [
-      `${equipmentHit.name}에서 검사한 품번입니다. 부적합률 ${equipmentHit.failRate.toFixed(2)}%`,
+      `${equipmentHit.name}에서 검사한 품번입니다. 부적합률 ${formatPpm(equipmentHit.failRate)}`,
       ...rows.map(
         (p, i) =>
-          `${i + 1}. ${p.product} · 검수량 ${p.qty.toLocaleString()} · 부적합률 ${p.failRate.toFixed(2)}%`,
+          `${i + 1}. ${p.product} · 검수량 ${p.qty.toLocaleString()} · 부적합률 ${formatPpm(p.failRate)}`,
       ),
     ]
   }
@@ -126,7 +127,7 @@ export function answerQuestion(q: string, analytics: Analytics) {
   if (productHit && (n.includes('왜') || n.includes('원인') || n.includes('분석'))) {
     return [
       `${productHit.name}(${productHit.type}) 품질 요약입니다.`,
-      `검수량 ${productHit.qty.toLocaleString()} · 부적합 ${productHit.fail.toLocaleString()} · 부적합률 ${productHit.failRate.toFixed(2)}%`,
+      `검수량 ${productHit.qty.toLocaleString()} · 부적합 ${productHit.fail.toLocaleString()} · 부적합률 ${formatPpm(productHit.failRate)}`,
       `폐기비용 ₩${productHit.scrapCost.toLocaleString()} · UPH ${productHit.uph} · 주요 불량 ${productHit.mainDefect}`,
       productHit.defectSummary ? `불량 내역: ${productHit.defectSummary}` : '불량 상세가 없습니다.',
     ]
@@ -177,7 +178,7 @@ export function answerQuestion(q: string, analytics: Analytics) {
         .slice(0, limit)
         .map(
           (i, idx) =>
-            `${idx + 1}. ${i.name}(${i.team}) · ${i.qty.toLocaleString()} EA · 부적합률 ${i.failRate.toFixed(2)}% · UPH ${i.uph}`,
+            `${idx + 1}. ${i.name}(${i.team}) · ${i.qty.toLocaleString()} EA · 부적합률 ${formatPpm(i.failRate)} · UPH ${i.uph}`,
         ),
     ]
   }
@@ -201,7 +202,7 @@ export function answerQuestion(q: string, analytics: Analytics) {
         .slice(0, limit)
         .map(
           (e, i) =>
-            `${i + 1}. ${e.name} · 검수량 ${e.qty.toLocaleString()} · 부적합률 ${e.failRate.toFixed(2)}% · ${e.mainDefect}`,
+            `${i + 1}. ${e.name} · 검수량 ${e.qty.toLocaleString()} · 부적합률 ${formatPpm(e.failRate)} · ${e.mainDefect}`,
         ),
     ]
   }
@@ -216,7 +217,7 @@ export function answerQuestion(q: string, analytics: Analytics) {
         .slice(0, limit)
         .map(
           (m, i) =>
-            `${i + 1}. ${m.moldNo} · ${m.product} · 부적합률 ${m.failRate.toFixed(2)}% · 폐기비용 ₩${m.scrapCost.toLocaleString()}`,
+            `${i + 1}. ${m.moldNo} · ${m.product} · 부적합률 ${formatPpm(m.failRate)} · 폐기비용 ₩${m.scrapCost.toLocaleString()}`,
         ),
     ]
   }

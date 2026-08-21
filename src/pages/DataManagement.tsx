@@ -5,6 +5,7 @@ import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
 import { useData } from '../context/DataContext'
 import { createSampleWorkbook } from '../lib/excel'
+import { formatPpm } from '../lib/format'
 
 export function DataManagement() {
   const inputRef = useRef<HTMLInputElement>(null)
@@ -233,7 +234,7 @@ export function DataManagement() {
                 </div>
                 <div className="rounded-lg border border-line px-3 py-2">
                   <p className="text-xs text-muted">부적합률</p>
-                  <p className="num mt-1 font-semibold">{analytics.summary.failRate.toFixed(2)}%</p>
+                  <p className="num mt-1 font-semibold">{formatPpm(analytics.summary.failRate)}</p>
                 </div>
                 <div className="rounded-lg border border-line px-3 py-2">
                   <p className="text-xs text-muted">분석 제외</p>

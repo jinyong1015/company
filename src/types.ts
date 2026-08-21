@@ -21,6 +21,12 @@ export interface DailyTrend {
   scrapCost: number
 }
 
+export interface GroupTrendSeries {
+  id: string
+  label: string
+  trends: DailyTrend[]
+}
+
 export interface DefectType {
   name: string
   count: number
@@ -253,6 +259,10 @@ export interface FilterOptions {
 export interface Analytics {
   kpis: KpiItem[]
   dailyTrends: DailyTrend[]
+  /** 품질 추이 집계 단위 */
+  trendGrain: 'day' | 'month'
+  /** 전체 선택 시 하위 3개 그룹별 추이 */
+  groupTrends: GroupTrendSeries[]
   defectTypes: DefectType[]
   inspectors: InspectorRow[]
   products: ProductRow[]

@@ -6,6 +6,7 @@ import { Pager } from '../components/common/Pager'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
 import type { EquipmentRow } from '../types'
+import { formatPpm } from '../lib/format'
 
 const sortKeys = [
   { id: 'name', label: '설비' },
@@ -98,7 +99,7 @@ export function EquipmentAnalysis() {
                     <td className="px-2 py-3 font-medium text-accent">{row.name}</td>
                     <td className="num px-2 py-3">{row.qty.toLocaleString()}</td>
                     <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
-                    <td className="num px-2 py-3">{row.failRate.toFixed(2)}%</td>
+                    <td className="num px-2 py-3">{formatPpm(row.failRate)}</td>
                     <td className="num px-2 py-3">{row.uph}</td>
                   </tr>
                   {openId === row.id && (
@@ -122,7 +123,7 @@ export function EquipmentAnalysis() {
                                 <td className="py-1">{p.product}</td>
                                 <td className="num py-1">{p.qty.toLocaleString()}</td>
                                 <td className="num py-1">{p.fail.toLocaleString()}</td>
-                                <td className="num py-1">{p.failRate.toFixed(2)}%</td>
+                                <td className="num py-1">{formatPpm(p.failRate)}</td>
                               </tr>
                             ))}
                           </tbody>
