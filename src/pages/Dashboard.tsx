@@ -116,7 +116,7 @@ function formatTrendValue(metric: TrendMetricId, value: number) {
   return value.toLocaleString()
 }
 
-function formatLineLabel(metric: TrendMetricId, value: unknown) {
+function formatLineLabel(value: unknown) {
   const n = Number(value ?? 0)
   if (!Number.isFinite(n)) return ''
   return Math.round(n).toLocaleString()
@@ -240,7 +240,7 @@ function QualityTrendChart({
               fill={LABEL_COLOR}
               fontSize={denseLabels ? 9 : 11}
               fontWeight={600}
-              formatter={(v: unknown) => formatLineLabel(metric, v)}
+              formatter={(v: unknown) => formatLineLabel(v)}
             />
           </Line>
         </ComposedChart>
