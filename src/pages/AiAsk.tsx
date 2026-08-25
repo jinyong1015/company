@@ -4,7 +4,11 @@ import { Panel } from "../components/common/Panel";
 import { AiAnswerBlocks } from "../components/ai/AiAnswerCharts";
 import { useData } from "../context/DataContext";
 import { analyzeRecords } from "../lib/analyze";
-import { answerQuestion, type AiAnswer } from "../lib/aiAsk";
+import {
+  answerQuestion,
+  type AiAnswer,
+  type AiConversationContext,
+} from "../lib/aiAsk";
 
 const samples = [
   "부적합률이 높은 품번 TOP 5를 알려줘.",
@@ -37,14 +41,14 @@ export function AiAsk() {
   );
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<{ q: string; a: AiAnswer }[]>([]);
+  const [context, setContext] = useState<AiConversationContext | null>(null);
 
   const ask = (q: string) => {
     const text = q.trim();
     if (!text) return;
-    setMessages((prev) => [
-      ...prev,
-      { q: text, a: answerQuestion(text, analytics, records) },
-    ]);
+    const a = answerQuestion(text, analytics, records, context);
+    setMessages((prev) => [...prev, { q: text, a }]);
+    if (a.context) setContext(a.context);
     setInput("");
   };
 
@@ -67,6 +71,14 @@ export function AiAsk() {
             </button>
           ))}
         </div>
+        {context?.productNames.length ? (
+          <p className="mb-3 rounded-lg bg-canvas px-3 py-2 text-xs text-muted">
+            이어 질문 가능 · 직전 품번 {context.productNames.length}개
+            {context.scopes.length > 1
+              ? ` (${context.scopes.map((s) => s.label).join(", ")})`
+              : ""}
+          </p>
+        ) : null}
         <div className="space-y-3">
           {messages.map((m, i) => (
             <div

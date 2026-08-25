@@ -106,6 +106,27 @@ export interface WorkerProductUph {
   defectSummary: string
 }
 
+/** 검사자 × 품번 UPH */
+export interface InspectorProductUph {
+  id: string
+  inspector: string
+  team: string
+  product: string
+  productType: string
+  count: number
+  qty: number
+  pass: number
+  fail: number
+  failRate: number
+  minutes: number
+  hours: number
+  uph: number
+  scrapCost: number
+  mainDefect: string
+  defects: DefectType[]
+  defectSummary: string
+}
+
 export interface WorkerRow {
   id: string
   name: string
@@ -268,6 +289,7 @@ export interface Analytics {
   products: ProductRow[]
   workers: WorkerRow[]
   workerProductUph: WorkerProductUph[]
+  inspectorProductUph: InspectorProductUph[]
   molds: MoldRow[]
   equipment: EquipmentRow[]
   costByPeriod: CostPoint[]

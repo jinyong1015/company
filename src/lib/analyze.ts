@@ -13,6 +13,7 @@ import type {
   GroupTrendSeries,
   InsightItem,
   InspectionRecord,
+  InspectorProductUph,
   InspectorRow,
   KpiItem,
   MoldRow,
@@ -546,6 +547,50 @@ function buildWorkerProductUph(
     .sort((a, b) => a.worker.localeCompare(b.worker, "ko") || b.uph - a.uph);
 }
 
+function buildInspectorProductUph(
+  records: InspectionRecord[],
+): InspectorProductUph[] {
+  const map = new Map<string, InspectionRecord[]>();
+  for (const r of records) {
+    const key = `${r.inspector}||${r.product}`;
+    const list = map.get(key) ?? [];
+    list.push(r);
+    map.set(key, list);
+  }
+
+  return [...map.entries()]
+    .map(([key, list]) => {
+      const [inspector, product] = key.split("||");
+      const qty = sum(list, "qty");
+      const fail = sum(list, "fail");
+      const hours = sum(list, "hours");
+      const defects = aggregateDefects(list);
+      return {
+        id: toEntityId("ins", key),
+        inspector: inspector || "-",
+        team: list[0]?.team || "미지정",
+        product,
+        productType: list[0]?.productType || "미지정",
+        count: list.length,
+        qty,
+        pass: sum(list, "pass"),
+        fail,
+        failRate: failRatePpm(fail, qty),
+        minutes: minutesOf(list),
+        hours: Math.round(hours * 10) / 10,
+        uph: hours > 0 ? Math.round(qty / hours) : 0,
+        scrapCost: sum(list, "scrapCost"),
+        mainDefect: defects[0]?.name ?? mainDefectOf(list),
+        defects,
+        defectSummary: defectSummaryOf(defects),
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.inspector.localeCompare(b.inspector, "ko") || b.uph - a.uph,
+    );
+}
+
 function buildWorkers(
   records: InspectionRecord[],
   workerProductUph: WorkerProductUph[],
@@ -1019,6 +1064,7 @@ export function analyzeRecords(
   const products = buildProducts(source, compare);
   const workerProductUph = buildWorkerProductUph(source);
   const workers = buildWorkers(source, workerProductUph);
+  const inspectorProductUph = buildInspectorProductUph(source);
   const molds = buildMolds(source, compare);
   const equipment = buildEquipment(source, compare);
   const anomalies = buildAnomalies(
@@ -1047,6 +1093,7 @@ export function analyzeRecords(
     products,
     workers,
     workerProductUph,
+    inspectorProductUph,
     molds,
     equipment,
     costByPeriod: dailyTrends.map((d) => ({

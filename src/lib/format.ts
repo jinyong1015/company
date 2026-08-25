@@ -7,6 +7,17 @@ export function formatPpm(n: number | undefined | null) {
   return `${Math.round(Number(n) || 0).toLocaleString()} ppm`
 }
 
+/** 비중·비율 등 % 표기 (불필요한 끝자리 0 제거) */
+export function formatPercent(n: number | undefined | null) {
+  const v = Number(n) || 0
+  return `${parseFloat(v.toFixed(2))}%`
+}
+
+/** ppm → % (10,000 ppm = 1%) — 막대 상단 라벨 등 */
+export function formatPpmAsPercent(n: number | undefined | null) {
+  return formatPercent((Number(n) || 0) / 10_000)
+}
+
 export function formatPpmDelta(diff: number) {
   const sign = diff > 0 ? '+' : diff < 0 ? '' : ''
   return `${sign}${Math.round(diff).toLocaleString()} ppm`

@@ -18,6 +18,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   BAR_COLOR,
+  formatAiBarTopLabel,
   formatAiValue,
   type AiBlock,
   type AiValueFormat,
@@ -76,12 +77,12 @@ function AiBarBlock({
               axisLine={false}
               tickLine={false}
               width={56}
-              tickFormatter={(v) => formatAiValue(Number(v), format)}
+              tickFormatter={(v) => formatAiBarTopLabel(Number(v), format)}
             />
             <Tooltip
               contentStyle={tipStyle()}
               formatter={(value) => [
-                formatAiValue(Number(value ?? 0), format),
+                formatAiBarTopLabel(Number(value ?? 0), format),
                 valueLabel ?? '값',
               ]}
             />
@@ -93,7 +94,9 @@ function AiBarBlock({
                 fill="#0f172a"
                 fontSize={11}
                 fontWeight={600}
-                formatter={(v: unknown) => formatAiValue(Number(v ?? 0), format)}
+                formatter={(v: unknown) =>
+                  formatAiBarTopLabel(Number(v ?? 0), format)
+                }
               />
             </Bar>
           </BarChart>
@@ -388,6 +391,7 @@ function AiPieBlock({ title, data }: Extract<AiBlock, { type: 'pie' }>) {
 
 function shortCountLabel(v: number, format: AiValueFormat) {
   if (format === 'count') return Math.round(v).toLocaleString()
+  if (format === 'ppm') return formatAiBarTopLabel(v, format)
   return formatAiValue(v, format)
 }
 
@@ -403,7 +407,7 @@ function yAxisPlotWidth(
       if (n > max) max = n
     }
   }
-  const sample = formatAiValue(max || 0, format)
+  const sample = formatAiBarTopLabel(max || 0, format)
   return Math.max(64, Math.min(96, sample.length * 8 + 18))
 }
 
@@ -540,12 +544,14 @@ function AiLineBlock({
               tickLine={false}
               width={axisWidth}
               padding={{ top: 8, bottom: 28 }}
-              tickFormatter={(v) => formatAiValue(Number(v), format as AiValueFormat)}
+              tickFormatter={(v) =>
+                formatAiBarTopLabel(Number(v), format as AiValueFormat)
+              }
             />
             <Tooltip
               contentStyle={tipStyle()}
               formatter={(value, name) => [
-                formatAiValue(Number(value ?? 0), format as AiValueFormat),
+                formatAiBarTopLabel(Number(value ?? 0), format as AiValueFormat),
                 String(name),
               ]}
             />
@@ -560,7 +566,7 @@ function AiLineBlock({
                 strokeWidth={2.2}
                 dot={{ r: 3.5, fill: '#fff', stroke: s.color, strokeWidth: 2 }}
               >
-                {series.length === 1 ? (
+                {series.length <= 3 ? (
                   <LabelList
                     dataKey={s.key}
                     content={(p) => {
@@ -576,7 +582,7 @@ function AiLineBlock({
                           fill={s.color}
                           seriesIndex={seriesIndex}
                           format={format as AiValueFormat}
-                          dense={dense}
+                          dense={dense || series.length > 1}
                           valueRatio={maxVal > 0 ? raw / maxVal : 0}
                           peers={peers}
                         />
@@ -639,12 +645,14 @@ function AiMultiBarBlock({
               tickLine={false}
               width={axisWidth}
               padding={{ top: 8, bottom: 4 }}
-              tickFormatter={(v) => formatAiValue(Number(v), format as AiValueFormat)}
+              tickFormatter={(v) =>
+                formatAiBarTopLabel(Number(v), format as AiValueFormat)
+              }
             />
             <Tooltip
               contentStyle={tipStyle()}
               formatter={(value, name) => [
-                formatAiValue(Number(value ?? 0), format as AiValueFormat),
+                formatAiBarTopLabel(Number(value ?? 0), format as AiValueFormat),
                 String(name),
               ]}
             />
@@ -669,9 +677,7 @@ function AiMultiBarBlock({
                     formatter={(v: unknown) => {
                       const n = Number(v ?? 0)
                       if (!Number.isFinite(n)) return ''
-                      return format === 'count'
-                        ? `${Math.round(n).toLocaleString()}건`
-                        : formatAiValue(n, format as AiValueFormat)
+                      return formatAiBarTopLabel(n, format as AiValueFormat)
                     }}
                   />
                 ) : null}
@@ -717,12 +723,12 @@ function AiComposedBlock({
               axisLine={false}
               tickLine={false}
               width={56}
-              tickFormatter={(v) => formatAiValue(Number(v), format)}
+              tickFormatter={(v) => formatAiBarTopLabel(Number(v), format)}
             />
             <Tooltip
               contentStyle={tipStyle()}
               formatter={(value, name) => [
-                formatAiValue(Number(value ?? 0), format),
+                formatAiBarTopLabel(Number(value ?? 0), format),
                 String(name),
               ]}
             />
@@ -744,7 +750,9 @@ function AiComposedBlock({
                     fill={b.color}
                     fontSize={dense ? 8 : 10}
                     fontWeight={600}
-                    formatter={(v: unknown) => formatAiValue(Number(v ?? 0), format)}
+                    formatter={(v: unknown) =>
+                      formatAiBarTopLabel(Number(v ?? 0), format)
+                    }
                   />
                 ) : null}
               </Bar>
@@ -765,7 +773,9 @@ function AiComposedBlock({
                   fill="#ef4444"
                   fontSize={10}
                   fontWeight={600}
-                  formatter={(v: unknown) => formatAiValue(Number(v ?? 0), format)}
+                  formatter={(v: unknown) =>
+                    formatAiBarTopLabel(Number(v ?? 0), format)
+                  }
                 />
               </Line>
             ) : null}

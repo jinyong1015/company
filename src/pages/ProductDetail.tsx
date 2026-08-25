@@ -106,6 +106,9 @@ export function ProductDetail() {
   const workerUph = analytics.workerProductUph.filter(
     (w) => w.product === name,
   );
+  const inspectorUph = analytics.inspectorProductUph.filter(
+    (row) => row.product === name,
+  );
 
   return (
     <div className="space-y-5">
@@ -316,6 +319,57 @@ export function ProductDetail() {
                 <tr>
                   <td colSpan={7} className="px-2 py-4 text-sm text-muted">
                     이 기간에 작업자별 DATA가 없습니다.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel
+        title="검사자별 품번 UPH"
+        description={`${name}를 검사한 검사자 효율`}
+      >
+        <div className="overflow-x-auto">
+          <table className="min-w-[960px] w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-line text-xs text-muted">
+                <th className="px-2 py-2 font-medium">검사자</th>
+                <th className="px-2 py-2 font-medium">소속</th>
+                <th className="px-2 py-2 font-medium">검사량</th>
+                <th className="px-2 py-2 font-medium">합격</th>
+                <th className="px-2 py-2 font-medium">부적합</th>
+                <th className="px-2 py-2 font-medium">소요시간(분)</th>
+                <th className="px-2 py-2 font-medium">UPH</th>
+                <th className="px-2 py-2 font-medium">불량 내역</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inspectorUph.map((row) => (
+                <tr key={row.id} className="border-b border-line/70">
+                  <td className="px-2 py-2.5 font-medium">{row.inspector}</td>
+                  <td className="px-2 py-2.5">{row.team}</td>
+                  <td className="num px-2 py-2.5">
+                    {row.qty.toLocaleString()}
+                  </td>
+                  <td className="num px-2 py-2.5">
+                    {row.pass.toLocaleString()}
+                  </td>
+                  <td className="num px-2 py-2.5">
+                    {row.fail.toLocaleString()}
+                  </td>
+                  <td className="num px-2 py-2.5">
+                    {row.minutes.toLocaleString()}
+                  </td>
+                  <td className="num px-2 py-2.5 font-semibold">{row.uph}</td>
+                  <td className="px-2 py-2.5 text-xs">{row.defectSummary}</td>
+                </tr>
+              ))}
+              {!inspectorUph.length && (
+                <tr>
+                  <td colSpan={8} className="px-2 py-4 text-sm text-muted">
+                    이 기간에 검사자별 DATA가 없습니다.
                   </td>
                 </tr>
               )}

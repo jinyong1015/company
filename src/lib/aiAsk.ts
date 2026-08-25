@@ -8,7 +8,15 @@ import {
   groupLabel as officialGroupLabel,
 } from './groups'
 import { analyzeRecords } from './analyze'
-import { formatPpm, formatPpmDelta, formatWon, roundWon } from './format'
+import { KNOWN_DEFECT_TYPES } from './excel'
+import {
+  formatPercent,
+  formatPpm,
+  formatPpmAsPercent,
+  formatPpmDelta,
+  formatWon,
+  roundWon,
+} from './format'
 import type {
   Analytics,
   DailyTrend,
@@ -17,7 +25,14 @@ import type {
   ProductRow,
 } from '../types'
 
-export type AiValueFormat = 'ppm' | 'qty' | 'won' | 'million' | 'count' | 'raw'
+export type AiValueFormat =
+  | 'ppm'
+  | 'percent'
+  | 'qty'
+  | 'won'
+  | 'million'
+  | 'count'
+  | 'raw'
 
 export type AiChartSeries = {
   key: string
@@ -72,12 +87,27 @@ export type AiBlock =
       rows: string[][]
     }
 
-export type AiAnswer = { blocks: AiBlock[] }
+/** 직전 답변의 품번 리스트 등 — 후속 질문("방금 알려준 리스트에서…")용 */
+export type AiConversationContext = {
+  lastQuestion: string
+  productNames: string[]
+  scopes: { label: string; productNames: string[] }[]
+  /** 직전 답변에서 쓴 지표 (후속 막대그래프 등에 재사용) */
+  lastMetric?: 'failRate' | 'qty' | 'scrapCost'
+  /** 직전 답변에서 쓴 기간 */
+  lastPeriod?: { startDate: string; endDate: string; label: string }
+}
+
+export type AiAnswer = {
+  blocks: AiBlock[]
+  context?: AiConversationContext
+}
 
 /**
  * 사용자 표현 → 분석 그룹
  * - 1공장 SEAL = 본사(SEAL)
  * - 1공장 GROMMET = 본사(유압+그로멧)
+ * - 1공장 / 본사 (라인 미지정) = 본사(SEAL) + 본사(유압+그로멧)
  * - 2공장 = 2공장
  */
 const GROUP_ALIASES: {
@@ -401,6 +431,38 @@ function includesAny(text: string, words: string[]) {
   return words.some((w) => text.includes(w))
 }
 
+function hasExcludeIntent(n: string) {
+  return includesAny(n, [
+    '제외',
+    '제외한',
+    '제외하고',
+    '제외하면',
+    '빼고',
+    '빼면',
+    '빼고는',
+    '말고',
+    '말구',
+  ])
+}
+
+/**
+ * "SEAL 제품을 제외한" / "그로멧 빼고" → 제외할 제품유형
+ * (포함 필터 typeHint 와 구분)
+ */
+function excludedTypeHint(n: string): 'seal' | 'grommet' | 'hydraulic' | null {
+  if (!hasExcludeIntent(n)) return null
+  if (includesAny(n, ['seal', '실링', '씰'])) return 'seal'
+  if (includesAny(n, ['grommet', '그로멧', '그로메트'])) return 'grommet'
+  if (n.includes('유압')) return 'hydraulic'
+  return null
+}
+
+function excludeTypeLabel(hint: 'seal' | 'grommet' | 'hydraulic') {
+  if (hint === 'seal') return 'SEAL'
+  if (hint === 'grommet') return 'GROMMET/그로멧'
+  return '유압'
+}
+
 function textBlock(...lines: string[]): AiBlock {
   return { type: 'text', lines: lines.filter(Boolean) }
 }
@@ -427,31 +489,69 @@ function detectGroups(n: string): {
     '본사(유압',
     '본사(그로멧',
   ])
-  const hasSealWord = includesAny(n, ['seal', '실링', '씰'])
-  const hasGrommetWord = includesAny(n, ['grommet', '그로멧', '그로메트', '유압'])
+  const excludeHint = excludedTypeHint(n)
+  // "SEAL 제외"는 그룹 포함이 아님
+  const hasSealWord =
+    includesAny(n, ['seal', '실링', '씰']) && excludeHint !== 'seal'
+  const hasGrommetWord =
+    includesAny(n, ['grommet', '그로멧', '그로메트', '유압']) &&
+    excludeHint !== 'grommet' &&
+    excludeHint !== 'hydraulic'
   const hasBare1Plant = n.includes('1공장') || n.includes('일공장')
-  const hasHq = hasBare1Plant || has1PlantSeal || has1PlantGrommet || n.includes('본사')
+  const hasBareHqWord = n.includes('본사')
+  const hasHq =
+    hasBare1Plant ||
+    (has1PlantSeal && excludeHint !== 'seal') ||
+    (has1PlantGrommet && excludeHint !== 'grommet' && excludeHint !== 'hydraulic') ||
+    hasBareHqWord
   const hasPlant2 = includesAny(n, ['2공장', '이공장', 'plant2'])
+  /** SEAL/GROMMET 라인을 특정하지 않은 본사·1공장 */
+  const hqUnspecified =
+    !hasSealWord &&
+    !hasGrommetWord &&
+    !(has1PlantSeal && excludeHint !== 'seal') &&
+    !(has1PlantGrommet && excludeHint !== 'grommet')
 
   // 2공장(+GROMMET/SEAL)만 물으면 2공장만
   if (hasPlant2 && !hasHq) {
     hitIds.add('plant2')
   } else {
     // 1공장 SEAL / SEAL / 본사(SEAL)
-    if (has1PlantSeal || (hasSealWord && !hasPlant2)) hitIds.add('seal')
+    if (
+      excludeHint !== 'seal' &&
+      (has1PlantSeal || (hasSealWord && !hasPlant2))
+    ) {
+      hitIds.add('seal')
+    }
     if (hasSealWord && hasHq) hitIds.add('seal')
 
     // 1공장 GROMMET / 본사(유압+그로멧)
-    if (has1PlantGrommet || (hasGrommetWord && hasHq)) hitIds.add('hydraulic')
-
-    // "1공장, SEAL, 2공장" → 1공장=GROMMET
-    if (hasBare1Plant && hasSealWord && !has1PlantSeal && !has1PlantGrommet && !hasGrommetWord) {
+    if (
+      excludeHint !== 'grommet' &&
+      excludeHint !== 'hydraulic' &&
+      (has1PlantGrommet || (hasGrommetWord && hasHq))
+    ) {
       hitIds.add('hydraulic')
     }
 
-    // 단독 "1공장" → GROMMET 라인
-    if (hasBare1Plant && !hasSealWord && !hasGrommetWord && !has1PlantSeal && !has1PlantGrommet) {
+    // "1공장, SEAL, 2공장" → 나열된 1공장은 GROMMET 라인
+    if (
+      hasBare1Plant &&
+      hasSealWord &&
+      !has1PlantSeal &&
+      !has1PlantGrommet &&
+      !hasGrommetWord
+    ) {
       hitIds.add('hydraulic')
+    }
+
+    // "1공장" / "본사"만 (라인 미지정) → 본사 전체(SEAL + 유압+그로멧)
+    // "1공장, 2공장" / "본사, 2공장"에서 SEAL·본사 누락 방지
+    if (hqUnspecified && (hasBare1Plant || hasBareHqWord)) {
+      if (excludeHint !== 'seal') hitIds.add('seal')
+      if (excludeHint !== 'grommet' && excludeHint !== 'hydraulic') {
+        hitIds.add('hydraulic')
+      }
     }
 
     if (hasPlant2) hitIds.add('plant2')
@@ -536,12 +636,20 @@ function analyzeGroup(
 
 function formatValue(v: number, format: AiValueFormat) {
   if (format === 'ppm') return formatPpm(v)
+  if (format === 'percent') return formatPercent(v)
   if (format === 'qty') return `${Math.round(v).toLocaleString()} EA`
   if (format === 'won') return formatWon(v)
   if (format === 'million')
     return `${Math.round(v).toLocaleString()}백만원`
   if (format === 'count') return `${Math.round(v).toLocaleString()}건`
   return String(v)
+}
+
+/** 막대 상단 라벨: 비중(%) · 불량률(ppm→%) */
+export function formatAiBarTopLabel(v: number, format: AiValueFormat = 'raw') {
+  if (format === 'ppm') return formatPpmAsPercent(v)
+  if (format === 'percent') return formatPercent(v)
+  return formatValue(v, format)
 }
 
 function toMillion(won: number) {
@@ -597,29 +705,218 @@ function median(nums: number[]) {
 }
 
 function findProductName(n: string, products: string[]): string | null {
+  const hits = findProductNames(n, products)
+  return hits[0] ?? null
+}
+
+/** 질문에 언급된 품번을 모두 찾습니다. (긴 품번 우선, 중복·부분일치 제거) */
+function findProductNames(n: string, products: string[]): string[] {
   // top10 안의 p10 등 오탐 방지
-  const search = n.replace(/top\s*\d+/gi, ' ')
+  let search = n.replace(/top\s*\d+/gi, ' ')
   const sorted = [...products]
     .filter(Boolean)
     .sort((a, b) => compact(b).length - compact(a).length)
-  const embedded = sorted.find((p) => {
-    const c = compact(p)
-    return c.length >= 3 && search.includes(c)
-  })
-  if (embedded) return embedded
+  const hits: string[] = []
+  const seen = new Set<string>()
 
-  // NEOR GI000 → neor + gi000 토큰이 모두 품번에 포함
-  const codeTokens = (
-    search.match(/[a-z]+[0-9][a-z0-9]*|[0-9]+[a-z]+[a-z0-9]*/gi) ?? []
-  ).map((t) => t.toLowerCase())
-  if (codeTokens.length >= 1) {
-    const hit = sorted.find((p) => {
-      const c = compact(p)
-      return codeTokens.every((t) => c.includes(t))
-    })
-    if (hit) return hit
+  for (const p of sorted) {
+    const c = compact(p)
+    if (c.length < 3 || !search.includes(c) || seen.has(c)) continue
+    hits.push(p)
+    seen.add(c)
+    // 겹치는 짧은 코드 오탐 방지
+    search = search.split(c).join(' ')
   }
-  return null
+
+  // NEOR GI000처럼 공백 분리 코드 (아직 매칭 안 된 경우)
+  if (!hits.length) {
+    const codeTokens = (
+      n.match(/[a-z]+[0-9][a-z0-9]*|[0-9]+[a-z]+[a-z0-9]*/gi) ?? []
+    ).map((t) => t.toLowerCase())
+    if (codeTokens.length >= 1) {
+      const hit = sorted.find((p) => {
+        const c = compact(p)
+        return codeTokens.every((t) => c.includes(t))
+      })
+      if (hit) hits.push(hit)
+    }
+  }
+
+  return hits
+}
+
+/** 질문에 적힌 품번 코드 토큰 (R602514 등) — 데이터 미존재 안내용 */
+function extractMentionedProductCodes(text: string): string[] {
+  const matches = text.match(/\b[A-Za-z]*\d{4,}[A-Za-z0-9]*\b/g) ?? []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const m of matches) {
+    const c = compact(m)
+    if (c.length < 4 || seen.has(c)) continue
+    // top5 / 10000ppm 등 숫자 오탐 제외
+    if (/^\d+$/.test(c) && Number(c) < 100_000) continue
+    seen.add(c)
+    out.push(m)
+  }
+  return out
+}
+
+/**
+ * 여러 품번을 나열하고 그중 비교·순위(부적합률 등)를 물을 때
+ * 예: "R602514, R600031 … 중 7월 부적합률이 높은 품번순으로"
+ */
+function tryAnswerNamedProductCompare(
+  text: string,
+  n: string,
+  analytics: Analytics,
+  periodNote: string,
+): AiBlock[] | null {
+  const catalog = [
+    ...new Set([
+      ...analytics.filterOptions.products,
+      ...analytics.products.map((p) => p.name),
+    ]),
+  ]
+  const named = findProductNames(n, catalog)
+  const bareCodes = extractMentionedProductCodes(text)
+
+  // 데이터에 없는 코드도 질문에 2개 이상이면 비교 의도로 본다
+  const mentionedCount = Math.max(named.length, bareCodes.length)
+  if (mentionedCount < 2) return null
+
+  const wantsCompare =
+    includesAny(n, [
+      '중',
+      '비교',
+      '대비',
+      '순위',
+      '순으로',
+      '높은순',
+      '낮은순',
+      '순서',
+      'vs',
+      '각각',
+      '알려',
+      '보여',
+      '리스트',
+    ]) ||
+    includesAny(n, ['부적합', '불량', '검수', '폐기', '높은', '낮은', '많은'])
+
+  if (!wantsCompare) return null
+
+  // "SEAL 제품 중 …"처럼 품번 코드 없이 유형만 말한 경우는 제외
+  // (named가 2개 미만이고 bareCodes도 2개 미만이면 위에서 이미 return)
+  // SEAL/그로멧만으로 findProductNames가 우연히 잡히지 않도록:
+  // bareCodes가 2개 이상이거나, named가 2개 이상이어야 함 — 이미 충족
+
+  const metric: 'failRate' | 'qty' | 'scrapCost' = includesAny(n, [
+    '폐기',
+    '비용',
+  ])
+    ? 'scrapCost'
+    : includesAny(n, ['검수량', '검사량']) && !includesAny(n, ['부적합', '불량'])
+      ? 'qty'
+      : 'failRate'
+
+  const metricLabel =
+    metric === 'qty'
+      ? '검수량'
+      : metric === 'scrapCost'
+        ? '폐기비용'
+        : '부적합률'
+
+  const namedSet = new Set(named.map((p) => compact(p)))
+  const byCompact = new Map(
+    analytics.products.map((p) => [compact(p.name), p] as const),
+  )
+
+  // 질문 순서 유지용 키 목록
+  const orderKeys: string[] = []
+  const orderSeen = new Set<string>()
+  for (const p of named) {
+    const c = compact(p)
+    if (orderSeen.has(c)) continue
+    orderSeen.add(c)
+    orderKeys.push(c)
+  }
+  for (const code of bareCodes) {
+    const c = compact(code)
+    if (orderSeen.has(c)) continue
+    // 데이터에 매칭되는 품번이 있으면 그쪽 이름 사용
+    const hit = [...byCompact.keys()].find((k) => k.includes(c) || c.includes(k))
+    if (hit) {
+      orderSeen.add(hit)
+      orderKeys.push(hit)
+      namedSet.add(hit)
+    } else {
+      orderSeen.add(c)
+      orderKeys.push(c)
+    }
+  }
+
+  const rows: ProductRow[] = []
+  const missing: string[] = []
+  for (const key of orderKeys) {
+    const hit =
+      byCompact.get(key) ??
+      [...byCompact.entries()].find(
+        ([k]) => k.includes(key) || key.includes(k),
+      )?.[1]
+    if (hit) {
+      rows.push(hit)
+    } else {
+      missing.push(named.find((p) => compact(p) === key) ?? key.toUpperCase())
+    }
+  }
+
+  if (!rows.length) {
+    return [
+      textBlock(
+        `지정한 품번(${bareCodes.join(', ') || named.join(', ')})의 데이터가 없습니다. (${periodNote})`,
+        missing.length ? `미확인: ${missing.join(', ')}` : '',
+      ),
+    ]
+  }
+
+  const ascending =
+    includesAny(n, ['낮은순', '낮은', '적은']) &&
+    !includesAny(n, ['높은순', '높은', '많은'])
+  const ranked = [...rows].sort((a, b) =>
+    ascending ? a[metric] - b[metric] : b[metric] - a[metric],
+  )
+
+  const wantBar =
+    includesAny(n, ['막대', '그래프', 'bar']) || ranked.length <= 8
+
+  const blocks: AiBlock[] = [
+    textBlock(
+      `지정한 품번 ${orderKeys.length}개 중 ${metricLabel}${
+        ascending ? '이 낮은' : '이 높은'
+      } 순입니다. (${periodNote})`,
+      missing.length
+        ? `해당 기간 데이터 없음: ${missing.join(', ')}`
+        : '',
+    ),
+    {
+      type: 'table',
+      title: `지정 품번 · ${metricLabel} ${ascending ? '낮은' : '높은'} 순`,
+      headers: PRODUCT_HEADERS,
+      rows: productTableRows(ranked),
+    },
+  ]
+
+  if (wantBar) {
+    blocks.push(
+      barFromProducts(
+        `지정 품번 · ${metricLabel} 비교`,
+        ranked,
+        metric,
+        ranked.length,
+      ),
+    )
+  }
+
+  return blocks
 }
 
 function defectKeyMatch(defects: Record<string, number>, needle: string) {
@@ -774,6 +1071,1055 @@ function buildDefectDailyTrend(
   return { data, series, listRows, grain }
 }
 
+/** 여러 품번의 불량유형 건수를 합산해 비중 TOP N */
+function topDefectNamesForProducts(
+  records: InspectionRecord[],
+  products: string[],
+  period: PeriodHint | null,
+  topN: number,
+): { name: string; count: number; share: number }[] {
+  const set = new Set(products.map((p) => compact(p)))
+  const counts = new Map<string, number>()
+  let total = 0
+  for (const r of records) {
+    if (!isAnalyzable(r) || !set.has(compact(r.product))) continue
+    if (period && (r.date < period.startDate || r.date > period.endDate)) continue
+    for (const [k, v] of Object.entries(r.defects ?? {})) {
+      const n = Number(v) || 0
+      if (n <= 0) continue
+      counts.set(k, (counts.get(k) ?? 0) + n)
+      total += n
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))
+    .slice(0, Math.max(1, topN))
+    .map(([name, count]) => ({
+      name,
+      count,
+      share: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+    }))
+}
+
+/** 여러 품번 × 지정 불량유형 월별/일별 추이 */
+function buildMultiProductDefectTrend(
+  records: InspectionRecord[],
+  products: string[],
+  defectNames: string[],
+  period?: PeriodHint | null,
+  forceMonth = false,
+): {
+  data: Record<string, string | number>[]
+  series: AiChartSeries[]
+  listRows: string[][]
+  grain: 'day' | 'month'
+} {
+  const set = new Set(products.map((p) => compact(p)))
+  const scoped = records.filter((r) => {
+    if (!isAnalyzable(r) || !set.has(compact(r.product))) return false
+    if (!period) return true
+    return r.date >= period.startDate && r.date <= period.endDate
+  })
+
+  const labels = defectNames.length ? defectNames : ['부적합수량']
+  const useTotalFail = defectNames.length === 0
+  const series: AiChartSeries[] = labels.map((name, i) => ({
+    key: `d${i}`,
+    label: name,
+    color: LINE_COLORS[i % LINE_COLORS.length]!,
+  }))
+
+  const countFor = (list: InspectionRecord[], name: string) => {
+    if (useTotalFail) return list.reduce((s, r) => s + r.fail, 0)
+    let sum = 0
+    for (const r of list) {
+      const key = defectKeyMatch(r.defects, name)
+      if (key) sum += r.defects[key] ?? 0
+    }
+    return sum
+  }
+
+  const sortedDates = [...scoped.map((r) => r.date)].sort()
+  const spanStart = period?.startDate ?? sortedDates[0]
+  const spanEnd = period?.endDate ?? sortedDates[sortedDates.length - 1]
+  const grain: 'day' | 'month' =
+    forceMonth ||
+    (spanStart && spanEnd && inclusiveMonthCount(spanStart, spanEnd) >= 2)
+      ? 'month'
+      : 'day'
+
+  if (grain === 'month') {
+    const byMonth = new Map<string, InspectionRecord[]>()
+    for (const r of scoped) {
+      const key = r.date.slice(0, 7)
+      const list = byMonth.get(key) ?? []
+      list.push(r)
+      byMonth.set(key, list)
+    }
+    const months =
+      spanStart && spanEnd
+        ? eachYearMonth(spanStart, spanEnd)
+        : [...byMonth.keys()].sort()
+
+    const data = months.map((ym) => {
+      const list = byMonth.get(ym) ?? []
+      const row: Record<string, string | number> = { date: monthLabel(ym) }
+      labels.forEach((name, i) => {
+        row[`d${i}`] = countFor(list, name)
+      })
+      return row
+    })
+
+    const listRows: string[][] = []
+    for (const ym of months) {
+      const list = byMonth.get(ym) ?? []
+      const counts = labels.map((name) => countFor(list, name))
+      if (counts.every((c) => c === 0) && list.length === 0) continue
+      listRows.push([
+        monthLabel(ym),
+        ...counts.map((c) => c.toLocaleString()),
+        list.reduce((s, r) => s + r.qty, 0).toLocaleString(),
+      ])
+    }
+    return { data, series, listRows, grain }
+  }
+
+  const byDate = new Map<string, InspectionRecord[]>()
+  for (const r of scoped) {
+    const list = byDate.get(r.date) ?? []
+    list.push(r)
+    byDate.set(r.date, list)
+  }
+  const dates = [...byDate.keys()].sort()
+  const data = dates.map((date) => {
+    const list = byDate.get(date) ?? []
+    const row: Record<string, string | number> = { date }
+    labels.forEach((name, i) => {
+      row[`d${i}`] = countFor(list, name)
+    })
+    return row
+  })
+  const listRows: string[][] = []
+  for (const date of dates) {
+    const list = byDate.get(date) ?? []
+    const counts = labels.map((name) => countFor(list, name))
+    if (counts.every((c) => c === 0)) continue
+    listRows.push([
+      date,
+      ...counts.map((c) => c.toLocaleString()),
+      list.reduce((s, r) => s + r.qty, 0).toLocaleString(),
+    ])
+  }
+  return { data, series, listRows, grain }
+}
+
+function isFollowUpAsk(n: string) {
+  if (
+    includesAny(n, [
+      '방금',
+      '방금전',
+      '알려준',
+      '이어서',
+      '추가질문',
+      '그리스트',
+      '위리스트',
+      '해당리스트',
+      '그품번',
+      '위품번',
+      '해당품번',
+      '리스트에서',
+      '품번에서',
+      '앞질문',
+      '직전질문',
+      '이어서질문',
+      '이전리스트',
+      '이전답변',
+      '직전리스트',
+      '그질문',
+      '위질문',
+      '같은품번',
+      '동일품번',
+      '그걸로',
+      '그거로',
+      '그것도',
+      '도알려',
+      '도보여',
+    ])
+  ) {
+    return true
+  }
+  // "막대그래프로도" / "원그래프로도"  alone when continuing
+  if (
+    includesAny(n, ['그래프로도', '막대로도', '표로도', '리스트로도']) ||
+    (includesAny(n, ['막대', '원형', '원그래프', '파이']) &&
+      includesAny(n, ['도', '다시', '추가로']))
+  ) {
+    return true
+  }
+  return (
+    includesAny(n, ['이전', '앞서', '직전']) &&
+    includesAny(n, ['리스트', '품번', '답변', '결과', '알려', '질문'])
+  )
+}
+
+/**
+ * 직전 품번 컨텍스트가 있을 때, "방금" 없이도 후속으로 볼 짧은 질문
+ * 예: "그럼 6월은?", "TOP 3만", "1위 원인", "R600027 자세히"
+ */
+function isSoftFollowUp(
+  text: string,
+  n: string,
+  prior: AiConversationContext,
+  period: PeriodHint | null,
+): boolean {
+  // 1) 기간만 변경
+  if (period) {
+    if (
+      includesAny(n, [
+        '그럼',
+        '다시',
+        '어때',
+        '같은품번',
+        '동일품번',
+        '월로',
+        '월은',
+        '로다시',
+        '기준으로',
+      ])
+    ) {
+      return true
+    }
+    // "6월은?" / "5~7월로" 처럼 짧은 기간 질의
+    if (text.trim().length <= 24) return true
+  }
+
+  // 2) 리스트 좁히기
+  if (/(?:top|상위)\s*\d+\s*만|\d+\s*(?:개|위)\s*만/i.test(text)) return true
+  if (includesAny(n, ['개만', '위만', '만보여', '만알려', '추려', '좁혀'])) {
+    return true
+  }
+  if (parseQtyMinEa(text, n) != null || parsePpmMin(text, n) != null) return true
+  if (
+    hasExcludeIntent(n) &&
+    findProductNames(n, prior.productNames).length > 0
+  ) {
+    return true
+  }
+
+  // 3) 드릴다운
+  if (parseRankPick(text, n) != null) return true
+  if (includesAny(n, ['원인', '자세히', '상세', '왜'])) return true
+  if (
+    findProductNames(n, prior.productNames).length === 1 &&
+    includesAny(n, ['원인', '자세히', '상세', '왜', '분석', '알려', '보여'])
+  ) {
+    return true
+  }
+
+  return false
+}
+
+/** "1위", "2등", "3번째" → 1-based rank */
+function parseRankPick(text: string, n: string): number | null {
+  if (
+    includesAny(n, [
+      '1위',
+      '1등',
+      '첫번째',
+      '1번째',
+      '맨위',
+      '최고',
+      '제일높은',
+      '가장높은',
+    ])
+  ) {
+    return 1
+  }
+  const m = text.match(/(\d+)\s*(?:위|등|번째)/)
+  if (m) {
+    const v = Number(m[1])
+    if (Number.isFinite(v) && v >= 1) return Math.min(v, 50)
+  }
+  return null
+}
+
+/** "TOP 3만", "상위5만", "3개만" */
+function parseTopOnlyLimit(text: string, n: string): number | null {
+  const m =
+    text.match(/(?:top|TOP|상위)\s*(\d+)\s*만/i) ??
+    text.match(/(\d+)\s*(?:개|위)\s*만/) ??
+    n.match(/top(\d+)만/) ??
+    n.match(/상위(\d+)만/)
+  if (m?.[1]) {
+    const v = Number(m[1])
+    if (Number.isFinite(v) && v > 0) return Math.min(v, 50)
+  }
+  if (includesAny(n, ['개만', '위만', '만보여', '만알려', '추려', '좁혀'])) {
+    const t = topN(text, 0)
+    return t > 0 ? t : null
+  }
+  return null
+}
+
+function buildProductDrillDown(
+  product: ProductRow,
+  periodNote: string,
+  priorQuestion: string,
+  rankLabel?: string,
+): AiBlock[] {
+  const blocks: AiBlock[] = [
+    textBlock(
+      rankLabel
+        ? `${rankLabel} ${product.name}(${product.type}) 품질 상세입니다. (${periodNote})`
+        : `${product.name}(${product.type}) 품질 상세입니다. (${periodNote})`,
+      `직전 질문: ${priorQuestion}`,
+      `검수량 ${product.qty.toLocaleString()} EA · 부적합 ${product.fail.toLocaleString()} · 부적합률 ${formatPpm(product.failRate)}`,
+      `폐기비용 ${formatWon(product.scrapCost)} · 주요 불량 ${product.mainDefect || '-'}`,
+      product.defectSummary && product.defectSummary !== '-'
+        ? `불량 내역: ${product.defectSummary}`
+        : '',
+    ),
+    {
+      type: 'table',
+      title: `${product.name} 요약`,
+      headers: PRODUCT_HEADERS,
+      rows: productTableRows([product]),
+    },
+  ]
+  if (product.defects?.length) {
+    blocks.push({
+      type: 'pie',
+      title: `${product.name} 불량유형 (원인)`,
+      data: product.defects.map((d) => ({
+        name: d.name,
+        value: d.count,
+        share: d.share,
+      })),
+    })
+  }
+  return blocks
+}
+
+function inferMetricFromText(n: string): 'failRate' | 'qty' | 'scrapCost' | null {
+  if (includesAny(n, ['폐기', '비용'])) return 'scrapCost'
+  // "검수량 10000ea 이상만"은 필터이지 검수량 순 정렬이 아님
+  if (
+    includesAny(n, ['검수량', '검사량']) &&
+    !includesAny(n, ['부적합', '불량']) &&
+    !includesAny(n, ['이상'])
+  ) {
+    return 'qty'
+  }
+  if (
+    includesAny(n, [
+      '부적합',
+      '불량률',
+      '불량율',
+      '부적합률',
+      '부적합율',
+      '불량',
+    ])
+  ) {
+    return 'failRate'
+  }
+  return null
+}
+
+function metricLabelOf(metric: 'failRate' | 'qty' | 'scrapCost') {
+  return metric === 'qty'
+    ? '검수량'
+    : metric === 'scrapCost'
+      ? '폐기비용'
+      : '부적합률'
+}
+
+/** 지정 품번을 기간 집계 후 ProductRow로 반환 (질문 순서 유지) */
+function productRowsForNames(
+  records: InspectionRecord[],
+  productNames: string[],
+  period: PeriodHint | null,
+): ProductRow[] {
+  const ga = analyzeRecords(records, baseFilters('all', period))
+  const map = new Map(ga.products.map((p) => [compact(p.name), p] as const))
+  const rows: ProductRow[] = []
+  for (const name of productNames) {
+    const hit = map.get(compact(name))
+    if (hit) {
+      rows.push(hit)
+      continue
+    }
+    rows.push({
+      id: name,
+      name,
+      type: '-',
+      qty: 0,
+      pass: 0,
+      fail: 0,
+      failTotal: 0,
+      failRate: 0,
+      hours: 0,
+      minutes: 0,
+      uph: 0,
+      mainDefect: '-',
+      defects: [],
+      defectSummary: '-',
+      scrapCost: 0,
+      status: '정상',
+      changeRate: 0,
+    })
+  }
+  return rows
+}
+
+/** 답변 블록(품번 표)에서 후속 질문용 컨텍스트 추출 */
+function buildContextFromBlocks(
+  question: string,
+  blocks: AiBlock[],
+): AiConversationContext | null {
+  const scopes: { label: string; productNames: string[] }[] = []
+  const all = new Set<string>()
+
+  for (const b of blocks) {
+    if (b.type !== 'table') continue
+    const idx = b.headers.findIndex((h) => h === '품번' || h.includes('품번'))
+    if (idx < 0) continue
+    if (includesAny(compact(b.title), ['폐기비용높은순', '폐기비용순'])) continue
+
+    const names = b.rows
+      .map((r) => String(r[idx] ?? '').trim())
+      .filter((name) => name && name !== '-')
+    if (!names.length) continue
+    for (const name of names) all.add(name)
+
+    const label = b.title.split('·')[0]?.trim() || '전체'
+    const existing = scopes.find((s) => s.label === label)
+    if (existing) {
+      const merged = new Set([...existing.productNames, ...names])
+      existing.productNames = [...merged]
+    } else {
+      scopes.push({ label, productNames: [...names] })
+    }
+  }
+
+  // 표가 없어도 막대 차트에서 품번 복원
+  if (!all.size) {
+    for (const b of blocks) {
+      if (b.type !== 'bar') continue
+      for (const d of b.data) {
+        const name = String(d.name ?? '').trim()
+        if (name && name !== '-') all.add(name)
+      }
+    }
+    if (all.size) {
+      scopes.push({ label: '이전 리스트', productNames: [...all] })
+    }
+  }
+
+  if (!all.size) return null
+
+  const qn = compact(question)
+  const lastMetric = inferMetricFromText(qn) ?? 'failRate'
+  // period는 answerQuestion에서 주입할 수 있도록 question만 보관
+  return {
+    lastQuestion: question,
+    productNames: [...all],
+    scopes,
+    lastMetric,
+  }
+}
+
+function yearSpanPeriod(records: InspectionRecord[]): PeriodHint {
+  const year = inferDataYear(records)
+  return {
+    startDate: ymd(year, 1, 1),
+    endDate: ymd(year, 12, lastDayOfMonth(year, 12)),
+    label: `${year}년 1~12월`,
+  }
+}
+
+/** 질문 문장에서 특정 불량유형명(BURR, 이물 등) 추출 */
+function findNamedDefectType(
+  n: string,
+  records: InspectionRecord[],
+  products: string[],
+): string | null {
+  const names = new Set<string>(KNOWN_DEFECT_TYPES.map(String))
+  const productSet = new Set(products.map((p) => compact(p)))
+  for (const r of records) {
+    if (productSet.size && !productSet.has(compact(r.product))) continue
+    for (const k of Object.keys(r.defects ?? {})) {
+      if (k.trim()) names.add(k)
+    }
+  }
+  const sorted = [...names].sort(
+    (a, b) => compact(b).length - compact(a).length || a.localeCompare(b, 'ko'),
+  )
+  for (const name of sorted) {
+    const c = compact(name)
+    if (c.length < 2) continue
+    if (n.includes(c)) return name
+  }
+  return null
+}
+
+type ProductDefectShareRow = {
+  name: string
+  type: string
+  qty: number
+  fail: number
+  failRate: number
+  defectCount: number
+  /** 해당 유형이 품번 불량 중 차지하는 비중(%) */
+  share: number
+  scrapCost: number
+}
+
+/** 이전 리스트 품번별 특정 불량유형 비중 */
+function rankProductsByDefectShare(
+  records: InspectionRecord[],
+  products: string[],
+  defectName: string,
+  period: PeriodHint | null,
+): ProductDefectShareRow[] {
+  const order = new Map(products.map((p, i) => [compact(p), i]))
+  const productSet = new Set(order.keys())
+  const agg = new Map<
+    string,
+    {
+      name: string
+      type: string
+      qty: number
+      fail: number
+      defectCount: number
+      defectTotal: number
+      scrapCost: number
+    }
+  >()
+
+  for (const r of records) {
+    const key = compact(r.product)
+    if (!productSet.has(key) || !isAnalyzable(r)) continue
+    if (period && (r.date < period.startDate || r.date > period.endDate)) continue
+
+    const prev = agg.get(key) ?? {
+      name: r.product,
+      type: r.productType || '-',
+      qty: 0,
+      fail: 0,
+      defectCount: 0,
+      defectTotal: 0,
+      scrapCost: 0,
+    }
+    prev.qty += r.qty
+    prev.fail += r.fail
+    prev.scrapCost += r.scrapCost
+    if (r.productType) prev.type = r.productType
+
+    const matched = defectKeyMatch(r.defects ?? {}, defectName)
+    if (matched) prev.defectCount += r.defects[matched] ?? 0
+    for (const v of Object.values(r.defects ?? {})) {
+      prev.defectTotal += Number(v) || 0
+    }
+    agg.set(key, prev)
+  }
+
+  const rows: ProductDefectShareRow[] = []
+  for (const p of products) {
+    const hit = agg.get(compact(p))
+    if (!hit) {
+      rows.push({
+        name: p,
+        type: '-',
+        qty: 0,
+        fail: 0,
+        failRate: 0,
+        defectCount: 0,
+        share: 0,
+        scrapCost: 0,
+      })
+      continue
+    }
+    const denom = hit.defectTotal > 0 ? hit.defectTotal : hit.fail
+    rows.push({
+      name: hit.name,
+      type: hit.type,
+      qty: hit.qty,
+      fail: hit.fail,
+      failRate: hit.qty > 0 ? Math.round((hit.fail / hit.qty) * 1_000_000) : 0,
+      defectCount: hit.defectCount,
+      share: denom > 0 ? Math.round((hit.defectCount / denom) * 1000) / 10 : 0,
+      scrapCost: hit.scrapCost,
+    })
+  }
+
+  return rows.sort(
+    (a, b) =>
+      b.share - a.share ||
+      b.defectCount - a.defectCount ||
+      (order.get(compact(a.name)) ?? 0) - (order.get(compact(b.name)) ?? 0),
+  )
+}
+
+/** 직전 품번 리스트 기준 후속 질문 */
+function tryAnswerFollowUp(
+  text: string,
+  n: string,
+  records: InspectionRecord[],
+  prior: AiConversationContext,
+  period: PeriodHint | null,
+  periodNote: string,
+  limit: number,
+): AiBlock[] | null {
+  if (!prior.productNames.length) return null
+
+  // 후속 질문에 기간이 없으면 직전 질문 기간을 이어받음
+  const effectivePeriod =
+    period ??
+    prior.lastPeriod ??
+    parsePeriodFromQuestion(prior.lastQuestion, records)
+  const effectiveNote = effectivePeriod
+    ? `기간: ${effectivePeriod.label}`
+    : periodNote
+  const periodChanged = Boolean(period)
+
+  const metricFromFollow = inferMetricFromText(n)
+  const metric: 'failRate' | 'qty' | 'scrapCost' =
+    metricFromFollow ??
+    prior.lastMetric ??
+    inferMetricFromText(compact(prior.lastQuestion)) ??
+    'failRate'
+  const metricLabel = metricLabelOf(metric)
+  const ascending =
+    includesAny(n, ['낮은순', '낮은', '적은']) &&
+    !includesAny(n, ['높은순', '높은', '많은'])
+
+  const namedDefect = findNamedDefectType(n, records, prior.productNames)
+  const wantsChart =
+    includesAny(n, ['선', '그래프', '추이', '변동', '월별', '막대']) &&
+    !includesAny(n, ['리스트업', '리스트해', '목록'])
+  const wantsNamedDefectList =
+    Boolean(namedDefect) &&
+    (includesAny(n, [
+      '리스트',
+      '리스트업',
+      '목록',
+      '순서대로',
+      '순서',
+      '순위',
+      '높은순',
+    ]) ||
+      (includesAny(n, ['비중', '높은']) && !wantsChart))
+
+  const scopes =
+    prior.scopes.length > 0
+      ? prior.scopes
+      : [{ label: '이전 리스트', productNames: prior.productNames }]
+
+  // ── 3) 드릴다운: 1위 / N위 / 특정 품번 원인·자세히 ──
+  const rankPick = parseRankPick(text, n)
+  const namedInPrior = findProductNames(n, prior.productNames)
+  const wantsDetailWords = includesAny(n, [
+    '원인',
+    '자세히',
+    '상세',
+    '왜',
+    '분석',
+  ])
+  // 불량유형 비중 리스트와 겹치지 않게
+  if (
+    !wantsNamedDefectList &&
+    (rankPick != null ||
+      (wantsDetailWords && namedInPrior.length <= 1) ||
+      (namedInPrior.length === 1 && wantsDetailWords))
+  ) {
+    const baseNames =
+      scopes.length === 1
+        ? scopes[0]!.productNames
+        : prior.productNames
+    const rows = productRowsForNames(records, baseNames, effectivePeriod)
+    const ranked = [...rows].sort((a, b) =>
+      ascending ? a[metric] - b[metric] : b[metric] - a[metric],
+    )
+    let target: ProductRow | null = null
+    let rankLabel: string | undefined
+    if (namedInPrior.length === 1) {
+      const key = compact(namedInPrior[0]!)
+      target = ranked.find((r) => compact(r.name) === key) ?? null
+    } else if (rankPick != null) {
+      target = ranked[rankPick - 1] ?? null
+      rankLabel = `${rankPick}위`
+    } else if (wantsDetailWords) {
+      target = ranked[0] ?? null
+      rankLabel = '1위'
+    }
+    if (!target) {
+      return [
+        textBlock(
+          `이전 리스트에서 해당 품번을 찾지 못했습니다. (${effectiveNote})`,
+          `대상: ${prior.productNames.slice(0, 12).join(', ')}${
+            prior.productNames.length > 12 ? ' …' : ''
+          }`,
+        ),
+      ]
+    }
+    return buildProductDrillDown(
+      target,
+      effectiveNote,
+      prior.lastQuestion,
+      rankLabel,
+    )
+  }
+
+  // ── 특정 불량유형(BURR 등) 비중 순 리스트 ──
+  if (namedDefect && wantsNamedDefectList) {
+    const wantBar =
+      includesAny(n, ['막대', '그래프', 'bar']) &&
+      !includesAny(n, ['선그래프', '선으로'])
+    const blocks: AiBlock[] = [
+      textBlock(
+        `이전 리스트 품번 중 ${namedDefect} 비중이 높은 순입니다. (${effectiveNote})`,
+        `직전 질문: ${prior.lastQuestion}`,
+      ),
+    ]
+
+    for (const scope of scopes) {
+      const ranked = rankProductsByDefectShare(
+        records,
+        scope.productNames,
+        namedDefect,
+        effectivePeriod,
+      )
+      if (!ranked.length) {
+        blocks.push(textBlock(`${scope.label}: 대상 품번이 없습니다.`))
+        continue
+      }
+      const withDefect = ranked.filter((r) => r.defectCount > 0)
+      blocks.push({
+        type: 'table',
+        title: `${scope.label} · ${namedDefect} 비중 높은 순 (${ranked.length}개)`,
+        headers: [
+          '순위',
+          '품번',
+          '유형',
+          `${namedDefect} 건수`,
+          `${namedDefect} 비중`,
+          '부적합률',
+          '검수량',
+        ],
+        rows: ranked.map((r, i) => [
+          String(i + 1),
+          r.name,
+          r.type,
+          r.defectCount.toLocaleString(),
+          formatPercent(r.share),
+          formatPpm(r.failRate),
+          `${r.qty.toLocaleString()} EA`,
+        ]),
+      })
+      if (wantBar) {
+        const top = (withDefect.length ? withDefect : ranked).slice(
+          0,
+          Math.min(limit, Math.max(ranked.length, 5)),
+        )
+        blocks.push({
+          type: 'bar',
+          title: `${scope.label} · ${namedDefect} 비중 TOP ${top.length}`,
+          format: 'percent',
+          valueLabel: `${namedDefect} 비중`,
+          data: top.map((r) => ({ name: r.name, value: r.share })),
+        })
+      }
+    }
+    return blocks
+  }
+
+  const wantsDefectTrend =
+    includesAny(n, ['불량유형', '불량종류', '불량']) &&
+    (includesAny(n, ['비중', '높은', 'top', '상위', '많은']) ||
+      includesAny(n, ['유형'])) &&
+    includesAny(n, ['선', '그래프', '추이', '변동', '월별', '막대'])
+
+  if (wantsDefectTrend) {
+    const defectTop = topNNear(
+      text,
+      ['유형', '불량유형', '불량종류', '불량'],
+      Math.min(Math.max(limit, 2), 5),
+    )
+    const forceMonth =
+      (/1\s*월/.test(text) && /12\s*월/.test(text)) ||
+      includesAny(n, ['월별', '월간', '1월', '12월'])
+    const span =
+      effectivePeriod ??
+      (forceMonth || includesAny(n, ['올해', '연간'])
+        ? yearSpanPeriod(records)
+        : null)
+    const note = span ? `기간: ${span.label}` : effectiveNote
+    const useBar =
+      includesAny(n, ['막대그래프', '막대']) &&
+      !includesAny(n, ['선그래프', '선으로', '선그'])
+
+    const blocks: AiBlock[] = [
+      textBlock(
+        `이전 답변 리스트 기준으로 불량유형 비중 TOP ${defectTop}의 ${
+          forceMonth || span ? '월별' : ''
+        } 추이입니다. (${note})`,
+        `직전 질문: ${prior.lastQuestion}`,
+      ),
+    ]
+
+    for (const scope of scopes) {
+      const tops = topDefectNamesForProducts(
+        records,
+        scope.productNames,
+        span,
+        defectTop,
+      )
+      if (!tops.length) {
+        blocks.push(
+          textBlock(
+            `${scope.label}: 대상 품번 ${scope.productNames.length}개에서 불량유형 데이터가 없습니다.`,
+          ),
+        )
+        continue
+      }
+      const names = tops.map((t) => t.name)
+      const { data, series, listRows, grain } = buildMultiProductDefectTrend(
+        records,
+        scope.productNames,
+        names,
+        span,
+        forceMonth || Boolean(span),
+      )
+      if (!data.length) {
+        blocks.push(textBlock(`${scope.label}: 추이 데이터가 없습니다.`))
+        continue
+      }
+      const grainLabel = grain === 'month' ? '월별' : '날짜별'
+      blocks.push(
+        textBlock(
+          `${scope.label} · 품번 ${scope.productNames.length}개 · TOP 유형: ${tops
+            .map((t) => `${t.name} ${t.share}%`)
+            .join(', ')}`,
+        ),
+      )
+      if (useBar) {
+        blocks.push({
+          type: 'multiBar',
+          title: `${scope.label} · 불량유형 TOP ${names.length} ${grainLabel} 추이`,
+          data,
+          xKey: 'date',
+          series,
+          format: 'count',
+        })
+      } else {
+        blocks.push({
+          type: 'line',
+          title: `${scope.label} · 불량유형 TOP ${names.length} ${grainLabel} 추이 (한 그래프)`,
+          data,
+          xKey: 'date',
+          series,
+          format: 'count',
+        })
+      }
+      if (includesAny(n, ['리스트', '표', '상세'])) {
+        blocks.push({
+          type: 'table',
+          title: `${scope.label} · ${names.join('/')} ${grainLabel} 발생`,
+          headers: [
+            grain === 'month' ? '월' : '날짜',
+            ...names.map((d) => `${d}(건)`),
+            '검수량',
+          ],
+          rows: listRows,
+        })
+      }
+    }
+
+    return blocks
+  }
+
+  // ── 1·2) 기간 변경 / 리스트 좁히기 / 막대·지표 재표시 ──
+  const wantBar =
+    includesAny(n, ['막대', 'bar']) ||
+    (includesAny(n, ['그래프로도', '그래프로']) &&
+      !includesAny(n, ['선그래프', '선으로', '원그래프', '원형', '파이']))
+  const wantPie = includesAny(n, ['원형', '원그래프', '파이', '도넛'])
+  const topOnly = parseTopOnlyLimit(text, n)
+  const qtyMin = parseQtyMinEa(text, n)
+  const ppmMin = parsePpmMin(text, n)
+  const excludedNames =
+    hasExcludeIntent(n) && excludedTypeHint(n) == null
+      ? findProductNames(n, prior.productNames)
+      : []
+  const wantsNarrow =
+    topOnly != null ||
+    qtyMin != null ||
+    ppmMin != null ||
+    excludedNames.length > 0
+
+  const wantsRerankOrChart =
+    wantBar ||
+    wantPie ||
+    metricFromFollow != null ||
+    periodChanged ||
+    wantsNarrow ||
+    includesAny(n, [
+      '순으로',
+      '높은순',
+      '낮은순',
+      '순위',
+      '다시',
+      '재정렬',
+      '알려',
+      '보여',
+      '그래프로도',
+      '막대로도',
+      '표로도',
+      '도알려',
+      '도보여',
+      '그럼',
+      '어때',
+    ])
+
+  if (wantsRerankOrChart) {
+    const filterNotes: string[] = []
+    if (excludedNames.length) {
+      filterNotes.push(`${excludedNames.join(', ')} 제외`)
+    }
+    if (qtyMin != null) {
+      filterNotes.push(`검수량 ≥ ${qtyMin.toLocaleString()}EA`)
+    }
+    if (ppmMin != null) {
+      filterNotes.push(`부적합률 ≥ ${ppmMin.toLocaleString()}ppm`)
+    }
+    if (topOnly != null) {
+      filterNotes.push(`TOP ${topOnly}만`)
+    }
+
+    const head = periodChanged
+      ? `이전 리스트를 ${effectivePeriod?.label ?? '해당 기간'} 기준으로 다시 집계했습니다.`
+      : `이전 리스트 품번 ${prior.productNames.length}개의 ${metricLabel}${
+          ascending ? '이 낮은' : '이 높은'
+        } 순입니다.`
+
+    const blocks: AiBlock[] = [
+      textBlock(
+        `${head}${wantBar ? ' 막대그래프로 표시합니다.' : ''}${
+          wantPie ? ' 불량유형 원그래프도 포함합니다.' : ''
+        }${filterNotes.length ? ` (${filterNotes.join(' · ')})` : ''} (${effectiveNote})`,
+        `직전 질문: ${prior.lastQuestion}`,
+      ),
+    ]
+
+    for (const scope of scopes) {
+      let names = scope.productNames
+      if (excludedNames.length) {
+        const ex = new Set(excludedNames.map((p) => compact(p)))
+        names = names.filter((p) => !ex.has(compact(p)))
+      }
+      const rows = productRowsForNames(records, names, effectivePeriod)
+      let ranked = [...rows].sort((a, b) =>
+        ascending ? a[metric] - b[metric] : b[metric] - a[metric],
+      )
+      if (qtyMin != null) ranked = ranked.filter((p) => p.qty >= qtyMin)
+      if (ppmMin != null) ranked = ranked.filter((p) => p.failRate >= ppmMin)
+      const withData = ranked.filter((r) => r.qty > 0 || r.fail > 0)
+      let show = withData.length ? withData : ranked
+      if (topOnly != null) show = show.slice(0, topOnly)
+
+      if (!show.length) {
+        blocks.push(
+          textBlock(
+            `${scope.label}: 조건에 맞는 품번이 없습니다.${
+              filterNotes.length ? ` (${filterNotes.join(' · ')})` : ''
+            }`,
+          ),
+        )
+        continue
+      }
+
+      blocks.push({
+        type: 'table',
+        title: `${scope.label} · ${metricLabel} ${ascending ? '낮은' : '높은'} 순${
+          topOnly != null ? ` TOP ${show.length}` : ''
+        }`,
+        headers: PRODUCT_HEADERS,
+        rows: productTableRows(show),
+      })
+      if (wantBar || periodChanged || wantsNarrow) {
+        blocks.push(
+          barFromProducts(
+            `${scope.label} · ${metricLabel} 비교 (막대)`,
+            show,
+            metric,
+            show.length,
+          ),
+        )
+      }
+      if (wantPie) {
+        const defectCounts = new Map<string, number>()
+        let total = 0
+        for (const p of show) {
+          for (const d of p.defects ?? []) {
+            defectCounts.set(d.name, (defectCounts.get(d.name) ?? 0) + d.count)
+            total += d.count
+          }
+        }
+        const pieData = [...defectCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([name, count]) => ({
+            name,
+            value: count,
+            share: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+          }))
+        if (pieData.length) {
+          blocks.push({
+            type: 'pie',
+            title: `${scope.label} · 불량유형 구성(%)`,
+            data: pieData,
+          })
+        }
+      }
+    }
+    return blocks
+  }
+
+  // 인식은 됐지만 구체 요청이 애매할 때 — 직전 지표 표+막대
+  {
+    const blocks: AiBlock[] = [
+      textBlock(
+        `이전 리스트 품번 ${prior.productNames.length}개를 ${metricLabel} 기준으로 다시 정리했습니다. (${effectiveNote})`,
+        `직전 질문: ${prior.lastQuestion}`,
+        '이어서 "그럼 6월은?", "TOP 3만", "1위 원인", "막대그래프로", "폐기비용 순으로"처럼 요청할 수 있습니다.',
+      ),
+    ]
+    for (const scope of scopes) {
+      const rows = productRowsForNames(
+        records,
+        scope.productNames,
+        effectivePeriod,
+      )
+      const ranked = [...rows].sort((a, b) => b[metric] - a[metric])
+      blocks.push({
+        type: 'table',
+        title: `${scope.label} · ${metricLabel} 높은 순`,
+        headers: PRODUCT_HEADERS,
+        rows: productTableRows(ranked),
+      })
+      blocks.push(
+        barFromProducts(
+          `${scope.label} · ${metricLabel} 비교`,
+          ranked,
+          metric,
+          ranked.length,
+        ),
+      )
+    }
+    return blocks
+  }
+}
+
 function buildGroupedMonthly(
   analytics: Analytics,
   metric: 'failRate' | 'qty' | 'scrapCost',
@@ -813,6 +2159,7 @@ function answerOne(
   q: string,
   analytics: Analytics,
   records: InspectionRecord[],
+  priorContext?: AiConversationContext | null,
 ): AiBlock[] {
   const text = q.trim()
   const n = compact(text)
@@ -825,6 +2172,42 @@ function answerOne(
   const scopedAnalytics = period
     ? analyzeRecords(records, baseFilters('all', period))
     : analytics
+
+  // ── 후속 질문 (직전 품번 리스트 이어받기) ──
+  if (
+    priorContext?.productNames.length &&
+    (isFollowUpAsk(n) || isSoftFollowUp(text, n, priorContext, period))
+  ) {
+    const follow = tryAnswerFollowUp(
+      text,
+      n,
+      records,
+      priorContext,
+      period,
+      periodNote,
+      limit,
+    )
+    if (follow) return follow
+  }
+  if (isFollowUpAsk(n) && !priorContext?.productNames.length) {
+    return [
+      textBlock(
+        '이어 질문할 이전 품번 리스트가 없습니다. 먼저 품번 TOP 리스트를 질문한 뒤, "방금 알려준 리스트에서…"로 이어서 질문해 주세요.',
+      ),
+    ]
+  }
+
+  // ── 지정 품번 여러 개 비교·순위 (전체 TOP보다 우선) ──
+  // 예: "R602514, R600031 … 중 7월 부적합률이 높은 품번순으로"
+  {
+    const namedCompare = tryAnswerNamedProductCompare(
+      text,
+      n,
+      scopedAnalytics,
+      periodNote,
+    )
+    if (namedCompare) return namedCompare
+  }
 
   // ── 월별 그룹 추이 (막대 3 + TOTAL 선) ──
   const monthlyTrendAsk =
@@ -1028,6 +2411,7 @@ function answerOne(
   }
 
   // ── 검수량 N EA 이상 + 부적합률 TOP (+ 막대 / 폐기비용 재정렬 리스트) ──
+  // "SEAL 검수량 100000EA 이상, 부적합률 TOP10 리스트 · TOP5 막대"
   // "7월 검수량 10000ea 이상, 부적합률 높은 TOP5 막대 + TOP5를 폐기비용 순 리스트"
   const qtyMinEa = parseQtyMinEa(text, n)
   if (
@@ -1041,18 +2425,28 @@ function answerOne(
       '불량',
     ])
   ) {
-    const listLimit = limit
+    const listN = topNNear(
+      text,
+      ['리스트', '리스트업', '목록'],
+      topN(text),
+    )
     const wantBar = includesAny(n, ['막대', '그래프', 'bar'])
-    const wantScrapList =
-      includesAny(n, ['폐기']) ||
-      includesAny(n, ['리스트', '리스트업', '목록'])
+    const barN = wantBar
+      ? topNNear(text, ['막대', '막대그래프'], Math.min(listN, 5))
+      : 0
+    // 폐기비용 재정렬은 "폐기"를 명시한 경우만 (리스트업 ≠ 폐기순)
+    const wantScrapList = includesAny(n, ['폐기'])
 
     const targets = resolveAnswerScopes(groups)
 
     const blocks: AiBlock[] = [
       textBlock(
-        `검수량 ${qtyMinEa.toLocaleString()}EA 이상인 품번 중 부적합률 TOP ${listLimit}입니다.${
-          wantScrapList ? ' 동일 TOP 품번을 폐기비용 높은 순으로도 정리했습니다.' : ''
+        `검수량 ${qtyMinEa.toLocaleString()}EA 이상인 품번 중 부적합률 TOP ${listN}입니다.${
+          wantBar ? ` TOP ${barN}은 막대그래프로 표시합니다.` : ''
+        }${
+          wantScrapList
+            ? ' 동일 TOP 품번을 폐기비용 높은 순으로도 정리했습니다.'
+            : ''
         } (${periodNote})`,
       ),
     ]
@@ -1065,7 +2459,7 @@ function answerOne(
       const filtered = ga.products
         .filter((p) => p.qty >= qtyMinEa)
         .sort((a, b) => b.failRate - a.failRate)
-      const topByFail = filtered.slice(0, listLimit)
+      const topByFail = filtered.slice(0, listN)
 
       if (!topByFail.length) {
         blocks.push(
@@ -1082,13 +2476,13 @@ function answerOne(
         headers: PRODUCT_HEADERS,
         rows: productTableRows(topByFail),
       })
-      if (wantBar) {
+      if (wantBar && barN > 0) {
         blocks.push(
           barFromProducts(
-            `${g.label} · 부적합률 TOP ${topByFail.length} (검수량 ≥ ${qtyMinEa.toLocaleString()}EA)`,
+            `${g.label} · 부적합률 TOP ${Math.min(barN, topByFail.length)} (검수량 ≥ ${qtyMinEa.toLocaleString()}EA)`,
             topByFail,
             'failRate',
-            topByFail.length,
+            barN,
           ),
         )
       }
@@ -1118,12 +2512,18 @@ function answerOne(
       /5[,.]?000\s*p?pm/i.test(text)
     const capped =
       /top\s*\d+|상위\s*\d+|\d+\s*개|\d+\s*까지/i.test(text)
-    const listLimit = capped ? topN(text) : relativeOr ? 50 : limit
+    const listN = capped
+      ? topNNear(text, ['리스트', '리스트업', '목록'], topN(text))
+      : relativeOr
+        ? 50
+        : limit
     const wantBar =
       includesAny(n, ['막대', '그래프']) || includesAny(n, ['top5', '상위5'])
-    const wantScrapList =
-      includesAny(n, ['폐기']) ||
-      includesAny(n, ['리스트', '리스트업', '목록'])
+    const barN = wantBar
+      ? topNNear(text, ['막대', '막대그래프'], Math.min(listN, 5))
+      : 0
+    // 폐기비용 재정렬은 "폐기"를 명시한 경우만
+    const wantScrapList = includesAny(n, ['폐기'])
     // "검수량이 높은" → 검수량 순, 그 외 부적합률 순
     const rankByQty =
       includesAny(n, ['검수량높은', '검사량높은', '검수량이높은', '검사량이높은']) ||
@@ -1139,14 +2539,16 @@ function answerOne(
         : `부적합률 ${ppmMin.toLocaleString()}ppm 이상이거나, 검수량이 상대적(중앙값 이상)으로 높은 품번`
       blocks.push(
         textBlock(
-          `${ruleText}입니다. ${capped ? `최대 ${listLimit}개.` : ''} (${periodNote})`,
+          `${ruleText}입니다. ${capped ? `최대 ${listN}개.` : ''} (${periodNote})`,
         ),
       )
     } else {
       const rankLabel = rankByQty ? '검수량' : '부적합률'
       blocks.push(
         textBlock(
-          `부적합률 ${ppmMin.toLocaleString()}ppm 이상인 품번 중 ${rankLabel} TOP ${listLimit}입니다.${
+          `부적합률 ${ppmMin.toLocaleString()}ppm 이상인 품번 중 ${rankLabel} TOP ${listN}입니다.${
+            wantBar ? ` TOP ${barN}은 막대그래프로 표시합니다.` : ''
+          }${
             wantScrapList
               ? ' 동일 TOP 품번을 폐기비용 높은 순으로도 정리했습니다.'
               : ''
@@ -1179,7 +2581,7 @@ function answerOne(
           )
       }
 
-      const rows = hit.slice(0, listLimit)
+      const rows = hit.slice(0, listN)
       if (!rows.length) {
         blocks.push(
           textBlock(
@@ -1200,13 +2602,13 @@ function answerOne(
         headers: PRODUCT_HEADERS,
         rows: productTableRows(rows),
       })
-      if (wantBar) {
+      if (wantBar && barN > 0) {
         blocks.push(
           barFromProducts(
-            `${g.label} · ${titleMetric} TOP ${rows.length}`,
+            `${g.label} · ${titleMetric} TOP ${Math.min(barN, rows.length)}`,
             rows,
             rankByQty ? 'qty' : 'failRate',
-            rows.length,
+            barN,
           ),
         )
       }
@@ -1425,23 +2827,38 @@ function answerOne(
 
       // 품번 지표(폐기/부적합/검수) 요청이 있을 때만 처리. 불량유형만이면 legacy로.
       if (metrics.length) {
+        const excludeHint = excludedTypeHint(n)
         const listN = topNNear(
           text,
           ['리스트', '리스트업', '목록'],
-          Math.max(limit, 10),
+          topN(text),
         )
         const barN = wantBar
           ? topNNear(text, ['막대', '막대그래프'], Math.min(listN, 5))
           : 0
-        const grommetFilter = includesAny(n, ['grommet', '그로멧', '그로메트'])
+        const grommetFilter =
+          includesAny(n, ['grommet', '그로멧', '그로메트']) &&
+          excludeHint !== 'grommet'
         const targets = resolveAnswerScopes(groups)
-        const scopeText = grommetOverall
+        const isPlant1Ask =
+          (n.includes('1공장') || n.includes('일공장')) &&
+          !includesAny(n, ['2공장', '이공장', 'plant2'])
+        const plant1Scoped =
+          isPlant1Ask &&
+          groups.length > 0 &&
+          groups.every((g) => g.id === 'seal' || g.id === 'hydraulic')
+        const baseScope = grommetOverall
           ? 'GROMMET 종합(본사·2공장 각각 + 합계)'
-          : groups.length > 1
-            ? `${groups.map((g) => g.label).join(', ')} 각각`
-            : groups.length === 1
-              ? groups[0]!.label
-              : '전체'
+          : plant1Scoped
+            ? '1공장'
+            : groups.length > 1
+              ? `${groups.map((g) => g.label).join(', ')} 각각`
+              : groups.length === 1
+                ? groups[0]!.label
+                : '전체'
+        const scopeText = excludeHint
+          ? `${baseScope} · ${excludeTypeLabel(excludeHint)} 제외`
+          : baseScope
         const metricText = metrics
           .map((m) =>
             m === 'scrapCost' ? '폐기비용' : m === 'qty' ? '검수량' : '부적합율',
@@ -1465,6 +2882,9 @@ function answerOne(
               ? scopedAnalytics
               : analyzeGroup(records, g.id, period)
           let products = [...ga.products]
+          if (excludeHint) {
+            products = products.filter((p) => !matchesType(p, excludeHint))
+          }
           if (grommetFilter && g.id === 'plant2') {
             const only = products.filter(isGrommetLikeProduct)
             if (only.length) products = only
@@ -1482,16 +2902,21 @@ function answerOne(
                 : metric === 'qty'
                   ? '검수량'
                   : '부적합율'
+            const titleScope = excludeHint
+              ? `${plant1Scoped ? '1공장' : g.label} · ${excludeTypeLabel(excludeHint)} 제외`
+              : plant1Scoped
+                ? `1공장 · ${g.label}`
+                : g.label
             blocks.push({
               type: 'table',
-              title: `${g.label} · ${label} TOP ${rows.length}`,
+              title: `${titleScope} · ${label} TOP ${rows.length}`,
               headers: PRODUCT_HEADERS,
               rows: productTableRows(rows),
             })
             if (wantBar && barN > 0) {
               blocks.push(
                 barFromProducts(
-                  `${g.label} · ${label} TOP ${Math.min(barN, rows.length)}`,
+                  `${titleScope} · ${label} TOP ${Math.min(barN, rows.length)}`,
                   rows,
                   metric,
                   barN,
@@ -1555,6 +2980,8 @@ function answerOne(
 
 function typeHint(text: string, types: string[]) {
   const n = compact(text)
+  // "SEAL 제외"는 포함 힌트가 아님
+  if (excludedTypeHint(n)) return null
   if (includesAny(n, ['seal', '실링', '씰'])) return 'seal'
   if (includesAny(n, ['그로멧', 'grommet'])) return 'grommet'
   if (n.includes('유압')) return 'hydraulic'
@@ -1620,17 +3047,28 @@ function legacyAnswer(
   periodNote = '기간: 올해(연간)',
 ): AiBlock[] {
   const hint = typeHint(text, analytics.filterOptions.productTypes)
-  const team = n.includes('2공장') ? '2공장' : n.includes('본사') ? '본사' : null
+  const excludeHint = excludedTypeHint(n)
+  const teamLabel = n.includes('2공장')
+    ? '2공장'
+    : n.includes('1공장') || n.includes('일공장')
+      ? '1공장'
+      : n.includes('본사')
+        ? '본사'
+        : null
   const inspectorHit = analytics.inspectors.find((i) => n.includes(compact(i.name)))
   const equipmentHit = analytics.equipment.find((e) => e.name && n.includes(compact(e.name)))
   const productHit = analytics.products.find((p) => n.includes(compact(p.name)))
-  const scope = scopeLabel(hint, team)
+  const scope = excludeHint
+    ? `${teamLabel ?? '전체'} · ${excludeTypeLabel(excludeHint)} 제외`
+    : scopeLabel(hint, teamLabel === '1공장' ? '본사' : teamLabel)
 
   let products = [...analytics.products]
   if (hint) products = products.filter((p) => matchesType(p, hint))
-  if (team) {
+  if (excludeHint) products = products.filter((p) => !matchesType(p, excludeHint))
+  if (teamLabel) {
+    const teamKey = teamLabel === '1공장' ? '본사' : teamLabel
     const inspectorNames = new Set(
-      analytics.inspectors.filter((i) => i.team.includes(team)).map((i) => i.name),
+      analytics.inspectors.filter((i) => i.team.includes(teamKey)).map((i) => i.name),
     )
     if (inspectorNames.size) {
       products = products.filter((p) =>
@@ -1641,7 +3079,12 @@ function legacyAnswer(
     }
   }
 
-  if (n.includes('비교')) {
+  // 품번을 여러 개 나열한 비교는 answerOne의 tryAnswerNamedProductCompare에서 처리
+  if (
+    n.includes('비교') &&
+    findProductNames(n, analytics.filterOptions.products).length < 2 &&
+    extractMentionedProductCodes(text).length < 2
+  ) {
     const rows = analytics.groupSummaries
     return [
       textBlock(`분석 그룹별 비교입니다. (#N/A 제외) (${periodNote})`),
@@ -1735,10 +3178,10 @@ function legacyAnswer(
       },
       {
         type: 'bar',
-        title: '불량유형 TOP',
-        format: 'count',
-        valueLabel: '발생량',
-        data: rows.map((d) => ({ name: d.name, value: d.count })),
+        title: '불량유형 TOP (비중 %)',
+        format: 'percent',
+        valueLabel: '비중',
+        data: rows.map((d) => ({ name: d.name, value: d.share })),
       },
     ]
   }
@@ -1896,28 +3339,52 @@ function legacyAnswer(
   ]
 }
 
-/** 여러 ※ 문항을 나눠 각각 답하고, 블록을 합칩니다. */
+/** 여러 ※ 문항을 나눠 각각 답하고, 블록을 합칩니다. 직전 context로 후속 질문 가능. */
 export function answerQuestion(
   q: string,
   analytics: Analytics,
   records: InspectionRecord[] = [],
+  priorContext?: AiConversationContext | null,
 ): AiAnswer {
   const text = q.trim()
   if (!text) return emptyAnswer('질문을 입력하세요.')
 
   const parts = splitQueryParts(text)
-  if (parts.length === 1) {
-    return { blocks: answerOne(parts[0]!, analytics, records) }
+  let ctx: AiConversationContext | null | undefined = priorContext ?? null
+  const blocks: AiBlock[] = []
+
+  if (parts.length > 1) {
+    blocks.push(textBlock(`질문 ${parts.length}건을 나눠 분석했습니다.`))
   }
 
-  const blocks: AiBlock[] = [
-    textBlock(`질문 ${parts.length}건을 나눠 분석했습니다.`),
-  ]
   parts.forEach((part, i) => {
-    blocks.push(textBlock(`── Q${i + 1}. ${part} ──`))
-    blocks.push(...answerOne(part, analytics, records))
+    if (parts.length > 1) {
+      blocks.push(textBlock(`── Q${i + 1}. ${part} ──`))
+    }
+    const partBlocks = answerOne(part, analytics, records, ctx)
+    blocks.push(...partBlocks)
+    const next = buildContextFromBlocks(part, partBlocks)
+    if (next) {
+      const period =
+        parsePeriodFromQuestion(part, records) ??
+        ctx?.lastPeriod ??
+        null
+      ctx = {
+        ...next,
+        lastPeriod: period ?? next.lastPeriod,
+        lastMetric:
+          next.lastMetric ??
+          ctx?.lastMetric ??
+          inferMetricFromText(compact(part)) ??
+          'failRate',
+      }
+    }
   })
-  return { blocks }
+
+  return {
+    blocks,
+    context: ctx ?? undefined,
+  }
 }
 
 export function formatAiValue(v: number, format: AiValueFormat = 'raw') {
