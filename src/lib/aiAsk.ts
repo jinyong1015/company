@@ -297,6 +297,56 @@ function topN(text: string, fallback = 5, max = 50) {
   return Number.isFinite(n) && n > 0 ? Math.min(n, max) : fallback
 }
 
+/**
+ * 검수량 N EA 이상 — "검수량 10000ea 이상", "검사량 10,000 이상"
+ * (부적합률 10,000ppm 와 구분)
+ */
+function parseQtyMinEa(text: string, n: string): number | null {
+  const compactHit =
+    n.match(/검(?:수|사)량[^\d]{0,8}([\d,]+)(?:ea|개)?이상/) ??
+    (n.includes('검수량') || n.includes('검사량')
+      ? n.match(/([\d,]+)(?:ea|개)이상/)
+      : null)
+  if (compactHit?.[1]) {
+    const v = Number(String(compactHit[1]).replace(/,/g, ''))
+    if (Number.isFinite(v) && v > 0) return v
+  }
+  const fromText = text.match(
+    /검\s*[수사]\s*량[^\d]{0,24}([\d,]+)\s*(?:ea|EA|개)?\s*이상/i,
+  )
+  if (fromText?.[1]) {
+    const v = Number(fromText[1].replace(/,/g, ''))
+    if (Number.isFinite(v) && v > 0) return v
+  }
+  return null
+}
+
+/** 부적합률 10,000ppm / 5,000ppm + 상대 고검수량 규칙인지 (검수량 10000ea 와 구분) */
+function isPpmThresholdAsk(n: string, text: string): boolean {
+  // 검수량 N EA 이상이면 ppm 임계 규칙이 아님
+  if (parseQtyMinEa(text, n) != null) return false
+  if (includesAny(n, ['상대적으로'])) return true
+  if (/10[,.]?000\s*ppm|5[,.]?000\s*ppm/i.test(text)) return true
+  if (/(?:10000|10,000|5000|5,000)ppm/.test(n)) return true
+  // 부적합률·불량률 바로 뒤의 수치
+  if (
+    /(?:부적합률|부적합율|불량률|불량율|ppm)(?:이|가)?(?:10[,.]?000|5[,.]?000)/.test(
+      text.replace(/\s+/g, ''),
+    )
+  ) {
+    return true
+  }
+  // "10000ppm" 없이 숫자만 있어도 ppm 단어 또는 부적합률+임계 패턴
+  if (
+    includesAny(n, ['10000', '10,000', '5000', '5,000']) &&
+    (n.includes('ppm') ||
+      includesAny(n, ['부적합률', '부적합율', '불량률', '불량율']))
+  ) {
+    return true
+  }
+  return false
+}
+
 function includesAny(text: string, words: string[]) {
   return words.some((w) => text.includes(w))
 }
@@ -922,13 +972,93 @@ function answerOne(
     return blocks
   }
 
-  // ── PPM 임계값 (10000 / 5000 + 상대 고검수량) — 검수량 EA 임계보다 우선 ──
+  // ── 검수량 N EA 이상 + 부적합률 TOP (+ 막대 / 폐기비용 재정렬 리스트) ──
+  // "7월 검수량 10000ea 이상, 부적합률 높은 TOP5 막대 + TOP5를 폐기비용 순 리스트"
+  const qtyMinEa = parseQtyMinEa(text, n)
   if (
-    includesAny(n, ['10000', '10,000', '5000', '5,000']) &&
-    includesAny(n, ['ppm', '부적합', '불량'])
+    qtyMinEa != null &&
+    includesAny(n, [
+      '부적합',
+      '불량률',
+      '불량율',
+      '부적합률',
+      '부적합율',
+      '불량',
+    ])
   ) {
+    const listLimit = limit
+    const wantBar = includesAny(n, ['막대', '그래프', 'bar'])
+    const wantScrapList =
+      includesAny(n, ['폐기']) ||
+      includesAny(n, ['리스트', '리스트업', '목록'])
+
+    const targets = groups.length
+      ? groups
+      : [{ id: 'all' as AnalysisGroupId, label: '전체' }]
+
+    const blocks: AiBlock[] = [
+      textBlock(
+        `검수량 ${qtyMinEa.toLocaleString()}EA 이상인 품번 중 부적합률 TOP ${listLimit}입니다.${
+          wantScrapList ? ' 동일 TOP 품번을 폐기비용 높은 순으로도 정리했습니다.' : ''
+        } (${periodNote})`,
+      ),
+    ]
+
+    for (const g of targets) {
+      const ga =
+        g.id === 'all'
+          ? scopedAnalytics
+          : analyzeGroup(records, g.id, period)
+      const filtered = ga.products
+        .filter((p) => p.qty >= qtyMinEa)
+        .sort((a, b) => b.failRate - a.failRate)
+      const topByFail = filtered.slice(0, listLimit)
+
+      if (!topByFail.length) {
+        blocks.push(
+          textBlock(
+            `${g.label}: 검수량 ${qtyMinEa.toLocaleString()}EA 이상 품번이 없습니다.`,
+          ),
+        )
+        continue
+      }
+
+      blocks.push({
+        type: 'table',
+        title: `${g.label} · 부적합률 TOP ${topByFail.length} (검수량 ≥ ${qtyMinEa.toLocaleString()}EA)`,
+        headers: PRODUCT_HEADERS,
+        rows: productTableRows(topByFail),
+      })
+      if (wantBar) {
+        blocks.push(
+          barFromProducts(
+            `${g.label} · 부적합률 TOP ${topByFail.length} (검수량 ≥ ${qtyMinEa.toLocaleString()}EA)`,
+            topByFail,
+            'failRate',
+            topByFail.length,
+          ),
+        )
+      }
+      if (wantScrapList) {
+        const byScrap = [...topByFail].sort((a, b) => b.scrapCost - a.scrapCost)
+        blocks.push({
+          type: 'table',
+          title: `${g.label} · 위 TOP ${byScrap.length} 품번 · 폐기비용 높은 순`,
+          headers: PRODUCT_HEADERS,
+          rows: productTableRows(byScrap),
+        })
+      }
+    }
+    return blocks
+  }
+
+  // ── PPM 임계값 (10000ppm / 5000ppm + 상대 고검수량) ──
+  // 검수량 10000ea 이상은 위 규칙. 여기선 명시적 ppm·상대 조건만.
+  if (isPpmThresholdAsk(n, text)) {
     const resolved = groups.length ? groups : GROUP_ALIASES
-    const has5k = includesAny(n, ['5000', '5,000'])
+    const has5k =
+      includesAny(n, ['5000', '5,000', '5000ppm', '5,000ppm']) ||
+      /5[,.]?000\s*ppm/i.test(text)
     const capped =
       /top\s*\d+|상위\s*\d+|\d+\s*개|\d+\s*까지/i.test(text)
     const listLimit = capped ? topN(text) : 50
@@ -967,7 +1097,10 @@ function answerOne(
 
   // ── 검수량 EA 임계값(3,000 / 30,000) + 불량률 TOP ──
   // "PPM 이상" 문구의 '이상'과 혼동되지 않도록 명시적 EA 수치만 매칭
-  if (includesAny(n, ['3000', '30,000', '30000', '3,000'])) {
+  if (
+    includesAny(n, ['3000', '30,000', '30000', '3,000']) &&
+    parseQtyMinEa(text, n) == null
+  ) {
     const sealMin = 30_000
     const otherMin = 3_000
     const listLimit = Math.max(limit, 10)
