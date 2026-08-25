@@ -544,7 +544,8 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     if (seen.has(dupKey)) {
       quality.duplicate += 1
       issues.push('중복')
-      warning = true
+      // 동일 키의 첫 행만 반영, 이후 행은 오류(업로드 차단 / 오류 행 제외 대상)
+      blocking = true
     } else {
       seen.add(dupKey)
     }

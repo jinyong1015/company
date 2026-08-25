@@ -321,30 +321,52 @@ function parseQtyMinEa(text: string, n: string): number | null {
   return null
 }
 
+/**
+ * 부적합률 N ppm 이상 — "10000ppm", "10000pm"(오타), "부적합률이 10000 이상"
+ */
+function parsePpmMin(text: string, n: string): number | null {
+  const compactHit =
+    n.match(
+      /(?:부적합률|부적합율|불량률|불량율)(?:이|가)?([\d,]+)(?:ppm|pm)?이상/,
+    ) ?? n.match(/([\d,]+)(?:ppm|pm)이상/)
+  if (compactHit?.[1]) {
+    const v = Number(String(compactHit[1]).replace(/,/g, ''))
+    if (Number.isFinite(v) && v > 0) return v
+  }
+  const fromText = text.match(
+    /(?:부적합률|부적합율|불량률|불량율|ppm|pm)[^\d]{0,12}([\d,]+)\s*(?:ppm|pm)?\s*이상/i,
+  )
+  if (fromText?.[1]) {
+    const v = Number(fromText[1].replace(/,/g, ''))
+    if (Number.isFinite(v) && v > 0) return v
+  }
+  return null
+}
+
 /** 부적합률 10,000ppm / 5,000ppm + 상대 고검수량 규칙인지 (검수량 10000ea 와 구분) */
 function isPpmThresholdAsk(n: string, text: string): boolean {
   // 검수량 N EA 이상이면 ppm 임계 규칙이 아님
   if (parseQtyMinEa(text, n) != null) return false
+  if (parsePpmMin(text, n) != null) return true
   if (includesAny(n, ['상대적으로'])) return true
-  if (/10[,.]?000\s*ppm|5[,.]?000\s*ppm/i.test(text)) return true
-  if (/(?:10000|10,000|5000|5,000)ppm/.test(n)) return true
-  // 부적합률·불량률 바로 뒤의 수치
-  if (
-    /(?:부적합률|부적합율|불량률|불량율|ppm)(?:이|가)?(?:10[,.]?000|5[,.]?000)/.test(
-      text.replace(/\s+/g, ''),
-    )
-  ) {
-    return true
-  }
-  // "10000ppm" 없이 숫자만 있어도 ppm 단어 또는 부적합률+임계 패턴
+  if (/10[,.]?000\s*p?pm|5[,.]?000\s*p?pm/i.test(text)) return true
+  if (/(?:10000|10,000|5000|5,000)p?pm/.test(n)) return true
   if (
     includesAny(n, ['10000', '10,000', '5000', '5,000']) &&
-    (n.includes('ppm') ||
+    (includesAny(n, ['ppm', 'pm']) ||
       includesAny(n, ['부적합률', '부적합율', '불량률', '불량율']))
   ) {
     return true
   }
   return false
+}
+
+/** 질문에서 그룹을 안 말하면 전체 1건. 말하면 해당 그룹만. */
+function resolveAnswerScopes(
+  groups: typeof GROUP_ALIASES,
+): { id: AnalysisGroupId; label: string }[] {
+  if (groups.length) return groups.map((g) => ({ id: g.id, label: g.label }))
+  return [{ id: 'all', label: '전체' }]
 }
 
 function includesAny(text: string, words: string[]) {
@@ -992,9 +1014,7 @@ function answerOne(
       includesAny(n, ['폐기']) ||
       includesAny(n, ['리스트', '리스트업', '목록'])
 
-    const targets = groups.length
-      ? groups
-      : [{ id: 'all' as AnalysisGroupId, label: '전체' }]
+    const targets = resolveAnswerScopes(groups)
 
     const blocks: AiBlock[] = [
       textBlock(
@@ -1052,44 +1072,119 @@ function answerOne(
     return blocks
   }
 
-  // ── PPM 임계값 (10000ppm / 5000ppm + 상대 고검수량) ──
-  // 검수량 10000ea 이상은 위 규칙. 여기선 명시적 ppm·상대 조건만.
+  // ── PPM 임계값 (10000ppm 이상 등) + TOP / 막대 / 폐기비용 리스트 ──
+  // 그룹 미지정 → 전체 (검수량 EA 필터와 동일). 상대·OR 규칙은 별도.
   if (isPpmThresholdAsk(n, text)) {
-    const resolved = groups.length ? groups : GROUP_ALIASES
+    const targets = resolveAnswerScopes(groups)
+    const ppmMin = parsePpmMin(text, n) ?? 10_000
+    const relativeOr =
+      includesAny(n, ['상대적으로', '이거나', '또는']) &&
+      includesAny(n, ['검수', '중앙'])
     const has5k =
-      includesAny(n, ['5000', '5,000', '5000ppm', '5,000ppm']) ||
-      /5[,.]?000\s*ppm/i.test(text)
+      includesAny(n, ['5000', '5,000', '5000ppm', '5,000ppm', '5000pm']) ||
+      /5[,.]?000\s*p?pm/i.test(text)
     const capped =
       /top\s*\d+|상위\s*\d+|\d+\s*개|\d+\s*까지/i.test(text)
-    const listLimit = capped ? topN(text) : 50
+    const listLimit = capped ? topN(text) : relativeOr ? 50 : limit
     const wantBar =
       includesAny(n, ['막대', '그래프']) || includesAny(n, ['top5', '상위5'])
-    const ruleText = has5k
-      ? '부적합률 10,000ppm 이상이거나, 검수량이 상대적(중앙값 이상)으로 높으면서 5,000ppm 이상인 품번'
-      : '부적합률 10,000ppm 이상이거나, 검수량이 상대적(중앙값 이상)으로 높은 품번'
-    const blocks: AiBlock[] = [
-      textBlock(
-        `${ruleText}입니다. ${capped ? `그룹별 최대 ${listLimit}개.` : ''} (${periodNote})`,
-      ),
-    ]
-    for (const g of resolved) {
-      const ga = analyzeGroup(records, g.id, period)
-      const med = median(ga.products.map((p) => p.qty))
-      const hit = ga.products
-        .filter((p) =>
-          p.failRate >= 10_000 ||
-          (p.qty >= med && (has5k ? p.failRate >= 5_000 : true)),
-        )
-        .sort((a, b) => b.failRate - a.failRate)
+    const wantScrapList =
+      includesAny(n, ['폐기']) ||
+      includesAny(n, ['리스트', '리스트업', '목록'])
+    // "검수량이 높은" → 검수량 순, 그 외 부적합률 순
+    const rankByQty =
+      includesAny(n, ['검수량높은', '검사량높은', '검수량이높은', '검사량이높은']) ||
+      (includesAny(n, ['검수량', '검사량']) &&
+        includesAny(n, ['높은', '많은']) &&
+        !includesAny(n, ['상대적으로']))
+
+    const blocks: AiBlock[] = []
+
+    if (relativeOr) {
+      const ruleText = has5k
+        ? `부적합률 ${ppmMin.toLocaleString()}ppm 이상이거나, 검수량이 상대적(중앙값 이상)으로 높으면서 5,000ppm 이상인 품번`
+        : `부적합률 ${ppmMin.toLocaleString()}ppm 이상이거나, 검수량이 상대적(중앙값 이상)으로 높은 품번`
+      blocks.push(
+        textBlock(
+          `${ruleText}입니다. ${capped ? `최대 ${listLimit}개.` : ''} (${periodNote})`,
+        ),
+      )
+    } else {
+      const rankLabel = rankByQty ? '검수량' : '부적합률'
+      blocks.push(
+        textBlock(
+          `부적합률 ${ppmMin.toLocaleString()}ppm 이상인 품번 중 ${rankLabel} TOP ${listLimit}입니다.${
+            wantScrapList
+              ? ' 동일 TOP 품번을 폐기비용 높은 순으로도 정리했습니다.'
+              : ''
+          } (${periodNote})`,
+        ),
+      )
+    }
+
+    for (const g of targets) {
+      const ga =
+        g.id === 'all'
+          ? scopedAnalytics
+          : analyzeGroup(records, g.id, period)
+
+      let hit: ProductRow[]
+      if (relativeOr) {
+        const med = median(ga.products.map((p) => p.qty))
+        hit = ga.products
+          .filter(
+            (p) =>
+              p.failRate >= ppmMin ||
+              (p.qty >= med && (has5k ? p.failRate >= 5_000 : true)),
+          )
+          .sort((a, b) => b.failRate - a.failRate)
+      } else {
+        hit = ga.products
+          .filter((p) => p.failRate >= ppmMin)
+          .sort((a, b) =>
+            rankByQty ? b.qty - a.qty : b.failRate - a.failRate,
+          )
+      }
+
       const rows = hit.slice(0, listLimit)
+      if (!rows.length) {
+        blocks.push(
+          textBlock(
+            `${g.label}: 부적합률 ${ppmMin.toLocaleString()}ppm 이상 품번이 없습니다.`,
+          ),
+        )
+        continue
+      }
+
+      const medNote =
+        relativeOr && ga.products.length
+          ? `, 검수량 중앙값 ${median(ga.products.map((p) => p.qty)).toLocaleString()}EA`
+          : ''
+      const titleMetric = rankByQty ? '검수량' : '부적합률'
       blocks.push({
         type: 'table',
-        title: `${g.label} · ${rows.length}건 (조건 충족 ${hit.length}건 중, 검수량 중앙값 ${med.toLocaleString()}EA)`,
+        title: `${g.label} · ${titleMetric} TOP ${rows.length} (부적합률 ≥ ${ppmMin.toLocaleString()}ppm${medNote})`,
         headers: PRODUCT_HEADERS,
         rows: productTableRows(rows),
       })
-      if (wantBar && rows.length) {
-        blocks.push(barFromProducts(`${g.label} · 부적합률 TOP 5`, rows, 'failRate'))
+      if (wantBar) {
+        blocks.push(
+          barFromProducts(
+            `${g.label} · ${titleMetric} TOP ${rows.length}`,
+            rows,
+            rankByQty ? 'qty' : 'failRate',
+            rows.length,
+          ),
+        )
+      }
+      if (wantScrapList) {
+        const byScrap = [...rows].sort((a, b) => b.scrapCost - a.scrapCost)
+        blocks.push({
+          type: 'table',
+          title: `${g.label} · 위 TOP ${byScrap.length} 품번 · 폐기비용 높은 순`,
+          headers: PRODUCT_HEADERS,
+          rows: productTableRows(byScrap),
+        })
       }
     }
     return blocks
