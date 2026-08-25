@@ -8,7 +8,7 @@ import { filterRecords } from '../lib/analyze'
 import { downloadExcel } from '../lib/download'
 import type { InspectionRecord } from '../types'
 import { Search, X } from 'lucide-react'
-import { formatPpm } from '../lib/format'
+import { formatPpm, formatWon } from '../lib/format'
 
 type SortKey = keyof InspectionRecord
 
@@ -190,7 +190,7 @@ export function InspectionData() {
                   <td className="num px-2 py-3">{r.fail.toLocaleString()}</td>
                   <td className="num px-2 py-3">{formatPpm(r.failRate)}</td>
                   <td className="px-2 py-3">{r.mainDefect}</td>
-                  <td className="num px-2 py-3">₩{r.scrapCost.toLocaleString()}</td>
+                  <td className="num px-2 py-3">{formatWon(r.scrapCost)}</td>
                   <td className="px-2 py-3">
                     <span className={`rounded-md px-2 py-0.5 text-xs ${classStyle[r.rowClass]}`}>
                       {classLabel[r.rowClass]}
@@ -240,7 +240,7 @@ export function InspectionData() {
                   ['부적합 수량', selected.fail.toLocaleString()],
                   ['부적합률', `${formatPpm(selected.failRate)}`],
                   ['주요 불량', selected.mainDefect],
-                  ['폐기비용', `₩${selected.scrapCost.toLocaleString()}`],
+                  ['폐기비용', formatWon(selected.scrapCost)],
                   ['상태', classLabel[selected.rowClass]],
                   ['이슈', selected.issues.join(', ') || '-'],
                 ] as [string, string][]

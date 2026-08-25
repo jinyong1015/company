@@ -8,7 +8,7 @@ import { useData } from '../context/DataContext'
 import { useFilters } from '../context/FilterContext'
 import { filterRecords } from '../lib/analyze'
 import { toEntityId } from '../lib/entityId'
-import { formatPpm, failRatePpm } from '../lib/format'
+import { formatPpm, formatWon, failRatePpm } from '../lib/format'
 import type { InspectionRecord } from '../types'
 
 type TopMode = 'byDefect' | 'byProduct'
@@ -52,7 +52,14 @@ export function QualityAnalysis() {
     if (!activeDefect) return []
     const map = new Map<
       string,
-      { product: string; type: string; qty: number; fail: number; defectCount: number }
+      {
+        product: string
+        type: string
+        qty: number
+        fail: number
+        defectCount: number
+        scrapCost: number
+      }
     >()
     for (const r of scoped) {
       const count = defectCountOf(r, activeDefect)
@@ -63,10 +70,12 @@ export function QualityAnalysis() {
         qty: 0,
         fail: 0,
         defectCount: 0,
+        scrapCost: 0,
       }
       cur.qty += r.qty
       cur.fail += r.fail
       cur.defectCount += count
+      cur.scrapCost += r.scrapCost
       map.set(r.product, cur)
     }
     return [...map.values()]
@@ -208,7 +217,7 @@ export function QualityAnalysis() {
       >
         {topMode === 'byDefect' ? (
           <div className="overflow-x-auto">
-            <table className="min-w-[720px] w-full text-left text-sm">
+            <table className="min-w-[820px] w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-line text-xs text-muted">
                   <th className="px-2 py-2 font-medium">순위</th>
@@ -217,6 +226,7 @@ export function QualityAnalysis() {
                   <th className="px-2 py-2 font-medium">{activeDefect || '불량'} 수량</th>
                   <th className="px-2 py-2 font-medium">검수량</th>
                   <th className="px-2 py-2 font-medium">부적합률</th>
+                  <th className="px-2 py-2 font-medium">폐기비용</th>
                 </tr>
               </thead>
               <tbody>
@@ -232,11 +242,12 @@ export function QualityAnalysis() {
                     <td className="num px-2 py-2.5 font-semibold">{row.defectCount.toLocaleString()}</td>
                     <td className="num px-2 py-2.5">{row.qty.toLocaleString()}</td>
                     <td className="num px-2 py-2.5">{formatPpm(row.failRate)}</td>
+                    <td className="num px-2 py-2.5">{formatWon(row.scrapCost)}</td>
                   </tr>
                 ))}
                 {!defectProductTop.length && (
                   <tr>
-                    <td colSpan={6} className="px-2 py-8 text-center text-muted">
+                    <td colSpan={7} className="px-2 py-8 text-center text-muted">
                       {activeDefect
                         ? `선택한 기간에 ${activeDefect} 발생 품번이 없습니다.`
                         : '표시할 불량 유형이 없습니다.'}

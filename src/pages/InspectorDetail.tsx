@@ -18,7 +18,7 @@ import { useFilters } from '../context/FilterContext'
 import { filterRecords, buildPeriodTrends } from '../lib/analyze'
 import { fromEntityId, toEntityId } from '../lib/entityId'
 import { useMemo, useState } from 'react'
-import { failRatePpm, formatPpm } from '../lib/format'
+import { failRatePpm, formatPpm, formatWon } from '../lib/format'
 import type { ProductBreakdown } from '../types'
 
 function buildProductStats(
@@ -227,7 +227,7 @@ export function InspectorDetail() {
           ['검수량', qty.toLocaleString()],
           ['부적합률', formatPpm(failRate)],
           ['UPH', String(uph)],
-          ['폐기비용', `₩${scrapCost.toLocaleString()}`],
+          ['폐기비용', formatWon(scrapCost)],
         ].map(([label, value]) => (
           <div key={label} className="card px-4 py-3">
             <p className="text-xs text-muted">{label}</p>

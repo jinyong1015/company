@@ -12,6 +12,20 @@ export function formatPpmDelta(diff: number) {
   return `${sign}${Math.round(diff).toLocaleString()} ppm`
 }
 
+/** 폐기비용(원) — 소수점 없이 정수 표기 */
+export function roundWon(n: number | undefined | null) {
+  return Math.round(Number(n) || 0)
+}
+
+export function formatWon(n: number | undefined | null) {
+  return `₩${roundWon(n).toLocaleString('ko-KR')}`
+}
+
+/** KPI 등: ₩ 없이 '원' 접미사 */
+export function formatWonSuffix(n: number | undefined | null) {
+  return `${roundWon(n).toLocaleString('ko-KR')}원`
+}
+
 /** 위험 ≥ 20,000 ppm (2%), 주의 ≥ 13,000 ppm (1.3%) */
 export function statusByPpm(rate: number) {
   if (rate >= 20_000) return '위험' as const

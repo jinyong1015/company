@@ -5,7 +5,7 @@ import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
-import { formatPpm } from '../lib/format'
+import { formatPpm, formatWon } from '../lib/format'
 
 type Dim = 'product' | 'defect' | 'mold' | 'equipment' | 'inspector' | 'group'
 
@@ -156,7 +156,7 @@ export function CostAnalysis() {
               {pageRows.map((row) => (
                 <tr key={row.name} className="border-b border-line/70">
                   <td className="px-2 py-3 font-medium">{row.name}</td>
-                  <td className="num px-2 py-3">₩{row.scrapCost.toLocaleString()}</td>
+                  <td className="num px-2 py-3">{formatWon(row.scrapCost)}</td>
                   <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
                   <td className="num px-2 py-3">
                     {dim === 'defect' ? `${row.failRate}%` : formatPpm(row.failRate)}

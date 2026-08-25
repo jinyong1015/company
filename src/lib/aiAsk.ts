@@ -8,7 +8,7 @@ import {
   groupLabel as officialGroupLabel,
 } from './groups'
 import { analyzeRecords } from './analyze'
-import { formatPpm, formatPpmDelta } from './format'
+import { formatPpm, formatPpmDelta, formatWon, roundWon } from './format'
 import type {
   Analytics,
   DailyTrend,
@@ -297,6 +297,34 @@ function topN(text: string, fallback = 5, max = 50) {
   return Number.isFinite(n) && n > 0 ? Math.min(n, max) : fallback
 }
 
+/** 키워드 근처의 TOP N (예: TOP10 리스트 / TOP5 막대) */
+function topNNear(
+  text: string,
+  keywords: string[],
+  fallback: number,
+  max = 50,
+): number {
+  const lower = text.toLowerCase().replace(/\s+/g, '')
+  for (const kw of keywords) {
+    const k = kw.toLowerCase().replace(/\s+/g, '')
+    const patterns = [
+      new RegExp(`top(\\d+)(?:까지는?|까지만)?(?:은|는)?${k}`),
+      new RegExp(`${k}(?:로|으로|그래프|표현)?(?:해)?(?:주)?(?:고)?[^\\d]{0,8}top(\\d+)`),
+      new RegExp(`상위(\\d+)[^\\d]{0,12}${k}`),
+      new RegExp(`(\\d+)까지(?:는?|만)?(?:은|는)?${k}`),
+      new RegExp(`${k}[^\\d]{0,12}(\\d+)까지`),
+    ]
+    for (const re of patterns) {
+      const m = lower.match(re)
+      if (m?.[1]) {
+        const v = Number(m[1])
+        if (Number.isFinite(v) && v > 0) return Math.min(v, max)
+      }
+    }
+  }
+  return fallback
+}
+
 /**
  * 검수량 N EA 이상 — "검수량 10000ea 이상", "검사량 10,000 이상"
  * (부적합률 10,000ppm 와 구분)
@@ -482,7 +510,7 @@ function mergeProductRows(lists: ProductRow[]): ProductRow[] {
       qty,
       fail,
       pass,
-      scrapCost: prev.scrapCost + p.scrapCost,
+      scrapCost: roundWon(prev.scrapCost + p.scrapCost),
       failRate: qty > 0 ? Math.round((fail / qty) * 1_000_000) : 0,
       failTotal: (prev.failTotal ?? prev.fail) + (p.failTotal ?? p.fail),
       type: prev.type === p.type ? prev.type : `${prev.type}·${p.type}`,
@@ -509,14 +537,15 @@ function analyzeGroup(
 function formatValue(v: number, format: AiValueFormat) {
   if (format === 'ppm') return formatPpm(v)
   if (format === 'qty') return `${Math.round(v).toLocaleString()} EA`
-  if (format === 'won') return `₩${Math.round(v).toLocaleString()}`
-  if (format === 'million') return `${(v).toLocaleString(undefined, { maximumFractionDigits: 2 })}백만원`
+  if (format === 'won') return formatWon(v)
+  if (format === 'million')
+    return `${Math.round(v).toLocaleString()}백만원`
   if (format === 'count') return `${Math.round(v).toLocaleString()}건`
   return String(v)
 }
 
 function toMillion(won: number) {
-  return Math.round((won / 1_000_000) * 100) / 100
+  return Math.round(won / 1_000_000)
 }
 
 function productTableRows(rows: ProductRow[]): string[][] {
@@ -526,7 +555,7 @@ function productTableRows(rows: ProductRow[]): string[][] {
     p.type,
     formatPpm(p.failRate),
     `${p.qty.toLocaleString()} EA`,
-    `₩${p.scrapCost.toLocaleString()}`,
+    formatWon(p.scrapCost),
     p.mainDefect || '-',
   ])
 }
@@ -552,7 +581,7 @@ function barFromProducts(
       name: p.name,
       value:
         metric === 'scrapCost'
-          ? p.scrapCost
+          ? roundWon(p.scrapCost)
           : metric === 'qty'
             ? p.qty
             : p.failRate,
@@ -568,19 +597,21 @@ function median(nums: number[]) {
 }
 
 function findProductName(n: string, products: string[]): string | null {
+  // top10 안의 p10 등 오탐 방지
+  const search = n.replace(/top\s*\d+/gi, ' ')
   const sorted = [...products]
     .filter(Boolean)
     .sort((a, b) => compact(b).length - compact(a).length)
   const embedded = sorted.find((p) => {
     const c = compact(p)
-    return c.length >= 3 && n.includes(c)
+    return c.length >= 3 && search.includes(c)
   })
   if (embedded) return embedded
 
   // NEOR GI000 → neor + gi000 토큰이 모두 품번에 포함
-  const codeTokens = (n.match(/[a-z]+[0-9][a-z0-9]*|[0-9]+[a-z]+[a-z0-9]*/gi) ?? []).map(
-    (t) => t.toLowerCase(),
-  )
+  const codeTokens = (
+    search.match(/[a-z]+[0-9][a-z0-9]*|[0-9]+[a-z]+[a-z0-9]*/gi) ?? []
+  ).map((t) => t.toLowerCase())
   if (codeTokens.length >= 1) {
     const hit = sorted.find((p) => {
       const c = compact(p)
@@ -883,11 +914,13 @@ function answerOne(
   // ── 특정 품번 불량 유형 추이 ──
   const defectTrendHit =
     includesAny(n, ['이물', '변형', '흠집']) &&
-    includesAny(n, ['변동', '추이', '선그래프', '막대그래프', '막대', '날짜별', '리스트'])
+    includesAny(n, ['변동', '추이', '선그래프', '막대그래프', '막대', '날짜별'])
+  // 불량유형+원그래프(그룹 TOP)와 구분 — 추이/변동/날짜별이 있을 때만
   if (
     defectTrendHit ||
     (includesAny(n, ['불량유형', '불량']) &&
-      includesAny(n, ['추이', '변동', '그래프']))
+      includesAny(n, ['추이', '변동', '날짜별', '변동성']) &&
+      includesAny(n, ['그래프', '막대', '선']))
   ) {
     const productName =
       findProductName(n, scopedAnalytics.filterOptions.products) ??
@@ -1235,131 +1268,285 @@ function answerOne(
     ]
   }
 
-  // ── 그룹별 TOP10 + TOP5 막대 + 불량유형 원그래프 ──
+  // ── 검사원/검사자 TOP (검수량·부적합률·UPH) + 막대/원형 ──
+  // "7월 2공장 검사수량 높은 검사원 top5 막대|원형 비율" — 품번 TOP보다 우선
   if (
-    groups.length &&
-    includesAny(n, ['top', '상위', '리스트', '폐기', '부적합', '불량', '검수', '불량유형']) &&
-    (includesAny(n, ['각각', '1공장', 'seal', '2공장', 'grommet', '그로멧', '원그래프', '막대']) ||
-      includesAny(n, ['top10', '상위10', '10까지'])) &&
-    !includesAny(n, ['10000', '10,000', '5000', '5,000', '상대적으로'])
+    includesAny(n, ['검사원', '검사자']) &&
+    !includesAny(n, ['품번']) &&
+    (includesAny(n, [
+      'top',
+      '상위',
+      '높은',
+      '많은',
+      '막대',
+      '그래프',
+      '원형',
+      '파이',
+      '비율',
+      '누구',
+    ]) ||
+      includesAny(n, ['검수', '검사수', '부적합', 'uph']))
   ) {
-    const wantScrap = includesAny(n, ['폐기', '비용']) || includesAny(n, ['각각'])
-    const wantFail =
-      includesAny(n, ['부적합', '불량률', '불량율', '부적합률', '부적합율', '불량']) ||
-      includesAny(n, ['각각'])
-    const qtyIsFilterOnly =
-      includesAny(n, ['이상']) && includesAny(n, ['검수량', '검사량'])
-    const wantQty =
-      !qtyIsFilterOnly &&
-      (includesAny(n, ['각각']) ||
-        (includesAny(n, ['검수량', '검사량']) &&
-          includesAny(n, ['top', '상위', '많은', '높은'])))
-    const wantPie = includesAny(n, ['불량유형', '원그래프', '원형']) || includesAny(n, ['각각'])
-    const wantBar = includesAny(n, ['막대', '그래프'])
-    const metrics: ('scrapCost' | 'failRate' | 'qty')[] = []
-    if (wantScrap) metrics.push('scrapCost')
-    if (wantFail) metrics.push('failRate')
-    if (wantQty) metrics.push('qty')
-    if (!metrics.length) metrics.push('failRate')
-
-    const listN = Math.max(limit, 10)
-    const barN = wantBar ? listN : 0
-    const grommetFilter = includesAny(n, ['grommet', '그로멧', '그로메트'])
-    const scopeText = grommetOverall
-      ? 'GROMMET 종합(본사·2공장 각각 + 합계)'
-      : `${groups.map((g) => g.label).join(', ')} 기준`
-
+    const targets = resolveAnswerScopes(groups)
+    const metric: 'qty' | 'failRate' | 'uph' = n.includes('uph')
+      ? 'uph'
+      : includesAny(n, ['부적합', '불량률', '불량율', '부적합률', '부적합율'])
+        ? 'failRate'
+        : 'qty'
+    const metricLabel =
+      metric === 'uph' ? 'UPH' : metric === 'failRate' ? '부적합률' : '검수량'
+    // "원형그래프"에 '그래프'가 포함되므로 원형 요청을 막대보다 우선
+    const wantPie =
+      includesAny(n, ['원형', '원그래프', '파이그래프', '파이', '도넛']) ||
+      (includesAny(n, ['비율', '%', '퍼센트']) &&
+        includesAny(n, ['그래프', '차트']))
+    const wantBar =
+      !wantPie &&
+      (includesAny(n, ['막대', 'bar']) ||
+        (n.includes('그래프') && !includesAny(n, ['선그래프', '선으로'])))
+    const listLimit = limit
+    const scopeText = targets.map((t) => t.label).join(', ')
+    const chartNote = wantPie
+      ? ' 원형 그래프(비율 %)'
+      : wantBar
+        ? ' 막대 그래프'
+        : ''
     const blocks: AiBlock[] = [
       textBlock(
-        `${scopeText} TOP ${listN} 리스트${wantBar ? ` · TOP ${barN} 막대` : ''}입니다. (${periodNote})`,
+        `${scopeText} 기준 ${metricLabel}이 높은 검사원 TOP ${listLimit}입니다.${chartNote}. (${periodNote})`,
       ),
     ]
 
-    const collectedForTotal: ProductRow[] = []
-
-    for (const g of groups) {
-      const ga = analyzeGroup(records, g.id, period)
-      let products = [...ga.products]
-      if (grommetFilter && g.id === 'plant2') {
-        const only = products.filter(isGrommetLikeProduct)
-        if (only.length) products = only
+    for (const g of targets) {
+      const ga =
+        g.id === 'all'
+          ? scopedAnalytics
+          : analyzeGroup(records, g.id, period)
+      const ranked = [...ga.inspectors].sort((a, b) =>
+        metric === 'uph'
+          ? b.uph - a.uph
+          : metric === 'failRate'
+            ? b.failRate - a.failRate
+            : b.qty - a.qty,
+      )
+      const rows = ranked.slice(0, listLimit)
+      if (!rows.length) {
+        blocks.push(textBlock(`${g.label}: 검사원 데이터가 없습니다.`))
+        continue
       }
-      for (const metric of metrics) {
-        const rows = [...products]
-          .sort((a, b) => b[metric] - a[metric])
-          .slice(0, listN)
-        if (grommetOverall && metric === metrics[0]) {
-          collectedForTotal.push(...products)
-        }
-        const label =
-          metric === 'scrapCost'
-            ? '폐기비용'
-            : metric === 'qty'
-              ? '검수량'
-              : '부적합율'
-        blocks.push({
-          type: 'table',
-          title: `${g.label} · ${label} TOP ${rows.length}`,
-          headers: PRODUCT_HEADERS,
-          rows: productTableRows(rows),
-        })
-        if (wantBar) {
-          blocks.push(
-            barFromProducts(
-              `${g.label} · ${label} TOP ${Math.min(barN, rows.length)}`,
-              rows,
-              metric,
-              barN,
-            ),
-          )
-        }
-      }
+      blocks.push({
+        type: 'table',
+        title: `${g.label} · 검사원 ${metricLabel} TOP ${rows.length}`,
+        headers: ['순위', '검사원', '소속', '검수량', '부적합률', 'UPH'],
+        rows: rows.map((i, idx) => [
+          String(idx + 1),
+          i.name,
+          i.team,
+          `${i.qty.toLocaleString()} EA`,
+          formatPpm(i.failRate),
+          String(i.uph),
+        ]),
+      })
+      const values = rows.map((i) =>
+        metric === 'uph'
+          ? i.uph
+          : metric === 'failRate'
+            ? i.failRate
+            : i.qty,
+      )
       if (wantPie) {
-        const defects = ga.defectTypes.slice(0, 10)
+        const total = values.reduce((s, v) => s + v, 0) || 1
         blocks.push({
           type: 'pie',
-          title: `${g.label} · 불량유형 구성(%)`,
-          data: defects.map((d) => ({
-            name: d.name,
-            value: d.count,
-            share: d.share,
+          title: `${g.label} · 검사원 ${metricLabel} TOP ${rows.length} 비율(%)`,
+          data: rows.map((i, idx) => {
+            const value = values[idx]!
+            return {
+              name: i.name,
+              value,
+              share: Math.round((value / total) * 1000) / 10,
+            }
+          }),
+        })
+      } else if (wantBar) {
+        blocks.push({
+          type: 'bar',
+          title: `${g.label} · 검사원 ${metricLabel} TOP ${rows.length}`,
+          format:
+            metric === 'failRate' ? 'ppm' : metric === 'uph' ? 'raw' : 'qty',
+          valueLabel: metricLabel,
+          data: rows.map((i, idx) => ({
+            name: i.name,
+            value: values[idx]!,
           })),
         })
       }
     }
+    return blocks
+  }
 
-    if (grommetOverall && collectedForTotal.length) {
-      const merged = mergeProductRows(collectedForTotal)
-      for (const metric of metrics) {
-        const rows = [...merged]
-          .sort((a, b) => b[metric] - a[metric])
-          .slice(0, listN)
-        const label =
-          metric === 'scrapCost'
-            ? '폐기비용'
-            : metric === 'qty'
-              ? '검수량'
-              : '부적합율'
-        blocks.push({
-          type: 'table',
-          title: `GROMMET 합계(본사+2공장) · ${label} TOP ${rows.length}`,
-          headers: PRODUCT_HEADERS,
-          rows: productTableRows(rows),
-        })
-        if (wantBar) {
-          blocks.push(
-            barFromProducts(
-              `GROMMET 합계 · ${label} TOP ${Math.min(barN, rows.length)}`,
-              rows,
-              metric,
-              barN,
-            ),
+  // ── 품번 TOP + 막대 + 불량유형 원그래프 (그룹 지정 시 각각, 없으면 전체) ──
+  {
+    const looksLikeProductTop =
+      includesAny(n, ['top', '상위', '리스트', '폐기', '부적합', '불량', '검수', '불량유형']) &&
+      (includesAny(n, ['각각', '1공장', 'seal', '2공장', 'grommet', '그로멧', '원그래프', '막대']) ||
+        includesAny(n, ['top10', '상위10', '10까지'])) &&
+      (includesAny(n, ['폐기', '부적합', '검수', '리스트', '막대']) ||
+        includesAny(n, ['각각', '1공장', 'seal', '2공장'])) &&
+      !includesAny(n, ['10000', '10,000', '5000', '5,000', '상대적으로']) &&
+      !includesAny(n, ['검사원', '검사자'])
+
+    if (looksLikeProductTop) {
+      const wantScrap = includesAny(n, ['폐기', '비용']) || includesAny(n, ['각각'])
+      const wantFail =
+        includesAny(n, ['부적합', '불량률', '불량율', '부적합률', '부적합율']) ||
+        (includesAny(n, ['불량']) && !includesAny(n, ['불량유형'])) ||
+        includesAny(n, ['각각'])
+      const qtyIsFilterOnly =
+        includesAny(n, ['이상']) && includesAny(n, ['검수량', '검사량'])
+      const wantQty =
+        !qtyIsFilterOnly &&
+        (includesAny(n, ['각각']) ||
+          (includesAny(n, ['검수량', '검사량']) &&
+            includesAny(n, ['top', '상위', '많은', '높은', '리스트', '까지'])))
+      const wantPie =
+        includesAny(n, ['불량유형', '원그래프', '원형', '파이', '도넛']) ||
+        includesAny(n, ['각각'])
+      const wantBar =
+        includesAny(n, ['막대', 'bar']) ||
+        (includesAny(n, ['그래프', '차트']) &&
+          !wantPie &&
+          !includesAny(n, ['선그래프', '선으로']))
+
+      const metrics: ('scrapCost' | 'failRate' | 'qty')[] = []
+      if (wantScrap) metrics.push('scrapCost')
+      if (wantFail) metrics.push('failRate')
+      if (wantQty) metrics.push('qty')
+
+      // 품번 지표(폐기/부적합/검수) 요청이 있을 때만 처리. 불량유형만이면 legacy로.
+      if (metrics.length) {
+        const listN = topNNear(
+          text,
+          ['리스트', '리스트업', '목록'],
+          Math.max(limit, 10),
+        )
+        const barN = wantBar
+          ? topNNear(text, ['막대', '막대그래프'], Math.min(listN, 5))
+          : 0
+        const grommetFilter = includesAny(n, ['grommet', '그로멧', '그로메트'])
+        const targets = resolveAnswerScopes(groups)
+        const scopeText = grommetOverall
+          ? 'GROMMET 종합(본사·2공장 각각 + 합계)'
+          : groups.length > 1
+            ? `${groups.map((g) => g.label).join(', ')} 각각`
+            : groups.length === 1
+              ? groups[0]!.label
+              : '전체'
+        const metricText = metrics
+          .map((m) =>
+            m === 'scrapCost' ? '폐기비용' : m === 'qty' ? '검수량' : '부적합율',
           )
+          .join('/')
+
+        const blocks: AiBlock[] = [
+          textBlock(
+            `${scopeText} · ${metricText} TOP ${listN} 리스트` +
+              `${wantBar ? ` · TOP ${barN} 막대` : ''}` +
+              `${wantPie ? ' · 불량유형 원그래프(%)' : ''}` +
+              `입니다. (${periodNote})`,
+          ),
+        ]
+
+        const collectedForTotal: ProductRow[] = []
+
+        for (const g of targets) {
+          const ga =
+            g.id === 'all'
+              ? scopedAnalytics
+              : analyzeGroup(records, g.id, period)
+          let products = [...ga.products]
+          if (grommetFilter && g.id === 'plant2') {
+            const only = products.filter(isGrommetLikeProduct)
+            if (only.length) products = only
+          }
+          for (const metric of metrics) {
+            const rows = [...products]
+              .sort((a, b) => b[metric] - a[metric])
+              .slice(0, listN)
+            if (grommetOverall && metric === metrics[0] && g.id !== 'all') {
+              collectedForTotal.push(...products)
+            }
+            const label =
+              metric === 'scrapCost'
+                ? '폐기비용'
+                : metric === 'qty'
+                  ? '검수량'
+                  : '부적합율'
+            blocks.push({
+              type: 'table',
+              title: `${g.label} · ${label} TOP ${rows.length}`,
+              headers: PRODUCT_HEADERS,
+              rows: productTableRows(rows),
+            })
+            if (wantBar && barN > 0) {
+              blocks.push(
+                barFromProducts(
+                  `${g.label} · ${label} TOP ${Math.min(barN, rows.length)}`,
+                  rows,
+                  metric,
+                  barN,
+                ),
+              )
+            }
+          }
+          if (wantPie) {
+            const defects = ga.defectTypes.slice(0, 10)
+            blocks.push({
+              type: 'pie',
+              title: `${g.label} · 불량유형 구성(%)`,
+              data: defects.map((d) => ({
+                name: d.name,
+                value: d.count,
+                share: d.share,
+              })),
+            })
+          }
         }
+
+        if (grommetOverall && collectedForTotal.length) {
+          const merged = mergeProductRows(collectedForTotal)
+          for (const metric of metrics) {
+            const rows = [...merged]
+              .sort((a, b) => b[metric] - a[metric])
+              .slice(0, listN)
+            const label =
+              metric === 'scrapCost'
+                ? '폐기비용'
+                : metric === 'qty'
+                  ? '검수량'
+                  : '부적합율'
+            blocks.push({
+              type: 'table',
+              title: `GROMMET 합계(본사+2공장) · ${label} TOP ${rows.length}`,
+              headers: PRODUCT_HEADERS,
+              rows: productTableRows(rows),
+            })
+            if (wantBar && barN > 0) {
+              blocks.push(
+                barFromProducts(
+                  `GROMMET 합계 · ${label} TOP ${Math.min(barN, rows.length)}`,
+                  rows,
+                  metric,
+                  barN,
+                ),
+              )
+            }
+          }
+        }
+
+        return blocks
       }
     }
-
-    return blocks
   }
 
   // ── 기존 규칙 기반 (차트 포함) ──
@@ -1413,7 +1600,7 @@ function formatProduct(
   metric: 'failRate' | 'qty' | 'scrapCost' | 'changeRate',
 ) {
   if (metric === 'scrapCost') {
-    return `${i + 1}. ${p.name}(${p.type}) · ₩${p.scrapCost.toLocaleString()} · 부적합률 ${formatPpm(p.failRate)} · ${p.mainDefect}`
+    return `${i + 1}. ${p.name}(${p.type}) · ${formatWon(p.scrapCost)} · 부적합률 ${formatPpm(p.failRate)} · ${p.mainDefect}`
   }
   if (metric === 'qty') {
     return `${i + 1}. ${p.name}(${p.type}) · 검수량 ${p.qty.toLocaleString()} · 부적합률 ${formatPpm(p.failRate)}`
@@ -1467,7 +1654,7 @@ function legacyAnswer(
           g.qty.toLocaleString(),
           formatPpm(g.failRate),
           g.fail.toLocaleString(),
-          `₩${g.scrapCost.toLocaleString()}`,
+          formatWon(g.scrapCost),
         ]),
       },
     ]
@@ -1518,7 +1705,7 @@ function legacyAnswer(
       textBlock(
         `${productHit.name}(${productHit.type}) 품질 요약입니다.`,
         `검수량 ${productHit.qty.toLocaleString()} · 부적합 ${productHit.fail.toLocaleString()} · 부적합률 ${formatPpm(productHit.failRate)}`,
-        `폐기비용 ₩${productHit.scrapCost.toLocaleString()} · UPH ${productHit.uph} · 주요 불량 ${productHit.mainDefect}`,
+        `폐기비용 ${formatWon(productHit.scrapCost)} · UPH ${productHit.uph} · 주요 불량 ${productHit.mainDefect}`,
         productHit.defectSummary ? `불량 내역: ${productHit.defectSummary}` : '불량 상세가 없습니다.',
       ),
       {
@@ -1533,7 +1720,11 @@ function legacyAnswer(
     ]
   }
 
-  if (includesAny(n, ['불량유형', '어떤불량', '불량top', '불량종류']) && !n.includes('품번')) {
+  if (
+    includesAny(n, ['불량유형', '어떤불량', '불량top', '불량종류']) &&
+    !n.includes('품번') &&
+    !includesAny(n, ['폐기', '검수량', '검사량', '부적합율', '부적합률', '리스트업'])
+  ) {
     const rows = analytics.defectTypes.slice(0, limit)
     return [
       textBlock(`${scope} 기준 불량 유형 TOP ${rows.length}입니다.`),
@@ -1664,7 +1855,7 @@ function legacyAnswer(
           m.moldNo,
           m.product,
           formatPpm(m.failRate),
-          `₩${m.scrapCost.toLocaleString()}`,
+          formatWon(m.scrapCost),
         ]),
       },
     ]

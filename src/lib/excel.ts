@@ -433,7 +433,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     const date = excelDateToIso(dateRaw)
     const pass = toNumber(cell(row, headerMap.pass))
     const fail = toNumber(cell(row, headerMap.fail))
-    const scrapCost = toNumber(cell(row, headerMap.scrapCost)) ?? 0
+    const scrapCost = Math.round(toNumber(cell(row, headerMap.scrapCost)) ?? 0)
     const workType = str(cell(row, headerMap.workType))
     const team = str(cell(row, headerMap.team))
     const productTypeRaw = str(cell(row, headerMap.productType))

@@ -3,7 +3,7 @@ import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
 import { useData } from '../context/DataContext'
 import { ANALYSIS_GROUPS, type AnalysisGroupId } from '../lib/groups'
-import { formatPpm } from '../lib/format'
+import { formatPpm, formatWon } from '../lib/format'
 
 export function SmartCompare() {
   const { analytics } = useData()
@@ -55,7 +55,7 @@ export function SmartCompare() {
               ['검수량', gA?.qty.toLocaleString(), gB?.qty.toLocaleString()],
               ['부적합률', `${formatPpm(gA?.failRate)}`, `${formatPpm(gB?.failRate)}`],
               ['부적합수량', gA?.fail.toLocaleString(), gB?.fail.toLocaleString()],
-              ['폐기비용', `₩${gA?.scrapCost.toLocaleString()}`, `₩${gB?.scrapCost.toLocaleString()}`],
+              ['폐기비용', formatWon(gA?.scrapCost), formatWon(gB?.scrapCost)],
             ].map(([k, a, b]) => (
               <tr key={String(k)} className="border-b border-line/70">
                 <td className="px-2 py-2.5">{k}</td>

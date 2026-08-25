@@ -7,7 +7,7 @@ import { StatusBadge } from '../components/common/StatusBadge'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
 import type { MoldRow } from '../types'
-import { formatPpm } from '../lib/format'
+import { formatPpm, formatWon } from '../lib/format'
 
 const sortKeys = [
   { id: 'moldNo', label: '금형번호' },
@@ -105,7 +105,7 @@ export function MoldAnalysis() {
                   <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
                   <td className="num px-2 py-3">{formatPpm(row.failRate)}</td>
                   <td className="px-2 py-3">{row.mainDefect}</td>
-                  <td className="num px-2 py-3">₩{row.scrapCost.toLocaleString()}</td>
+                  <td className="num px-2 py-3">{formatWon(row.scrapCost)}</td>
                   <td className={`num px-2 py-3 ${row.changeRate > 0 ? 'text-danger' : 'text-ok'}`}>
                     {row.recentChange}
                   </td>

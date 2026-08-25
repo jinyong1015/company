@@ -1,7 +1,7 @@
 import type { FilterState } from "../context/FilterContext";
 import { ANALYSIS_GROUPS, isAnalyzable, matchesAnalysisGroup } from "./groups";
 import { toEntityId } from "./entityId";
-import { failRatePpm, formatPpm, formatPpmDelta, statusByPpm } from "./format";
+import { failRatePpm, formatPpm, formatPpmDelta, formatWonSuffix, statusByPpm } from "./format";
 import type {
   Analytics,
   AnomalyItem,
@@ -29,11 +29,12 @@ function uniqueSorted(values: string[]) {
 }
 
 function formatCost(n: number) {
-  return `${Math.round(n).toLocaleString('ko-KR')}원`
+  return formatWonSuffix(n)
 }
 
 function sum(records: InspectionRecord[], key: keyof InspectionRecord) {
-  return records.reduce((acc, r) => acc + Number(r[key] || 0), 0);
+  const total = records.reduce((acc, r) => acc + Number(r[key] || 0), 0)
+  return key === 'scrapCost' ? Math.round(total) : total
 }
 
 function failRateOf(records: InspectionRecord[]) {

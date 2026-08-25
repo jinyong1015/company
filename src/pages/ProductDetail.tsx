@@ -18,7 +18,7 @@ import { useData } from "../context/DataContext";
 import { useFilters } from "../context/FilterContext";
 import { filterRecords } from "../lib/analyze";
 import { fromEntityId, toEntityId } from "../lib/entityId";
-import { failRatePpm, formatPpm, statusByPpm } from "../lib/format";
+import { failRatePpm, formatPpm, formatWon, statusByPpm } from "../lib/format";
 
 export function ProductDetail() {
   const { id } = useParams();
@@ -131,7 +131,7 @@ export function ProductDetail() {
           ["합격수량", pass.toLocaleString()],
           ["부적합수량", fail.toLocaleString()],
           ["부적합 합계", failTotal.toLocaleString()],
-          ["폐기비용", `₩${scrapCost.toLocaleString()}`],
+          ["폐기비용", formatWon(scrapCost)],
           ["소요시간(분)", minutes.toLocaleString()],
           ["UPH", String(uph)],
           ["부적합률", `${formatPpm(failRate)}`],

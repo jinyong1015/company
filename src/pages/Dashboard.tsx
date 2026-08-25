@@ -24,7 +24,7 @@ import { groupLabel, analysisGroupColor } from "../lib/groups";
 import { useFilters } from "../context/FilterContext";
 import { downloadExcel } from "../lib/download";
 import { DEFECT_TYPE_COLORS } from "../lib/defectColors";
-import { formatPpm } from "../lib/format";
+import { formatPpm, formatWon } from "../lib/format";
 import type { DailyTrend, DefectType, GroupTrendSeries } from "../types";
 import { FileSpreadsheet } from "lucide-react";
 
@@ -328,7 +328,7 @@ function DefectTypePieChart({ data }: { data: DefectType[] }) {
 
 function formatTrendValue(metric: TrendMetricId, value: number) {
   if (metric === "failRate") return formatPpm(value);
-  if (metric === "scrapCost") return `₩${value.toLocaleString()}`;
+  if (metric === "scrapCost") return formatWon(value);
   return value.toLocaleString();
 }
 
@@ -598,7 +598,7 @@ export function Dashboard() {
                   <td className="num px-2 py-2.5">{formatPpm(g.failRate)}</td>
                   <td className="num px-2 py-2.5">{g.fail.toLocaleString()}</td>
                   <td className="num px-2 py-2.5">
-                    ₩{g.scrapCost.toLocaleString()}
+                    {formatWon(g.scrapCost)}
                   </td>
                 </tr>
               ))}
