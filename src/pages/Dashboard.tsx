@@ -20,7 +20,7 @@ import { Panel } from "../components/common/Panel";
 import { PageHeader } from "../components/common/PageHeader";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { useData } from "../context/DataContext";
-import { groupLabel } from "../lib/groups";
+import { groupLabel, analysisGroupColor } from "../lib/groups";
 import { useFilters } from "../context/FilterContext";
 import { downloadExcel } from "../lib/download";
 import { DEFECT_TYPE_COLORS } from "../lib/defectColors";
@@ -36,12 +36,6 @@ const trendMetrics = [
 ] as const;
 
 type TrendMetricId = (typeof trendMetrics)[number]["id"];
-
-const GROUP_BAR_STYLE: { id: string; color: string }[] = [
-  { id: "seal", color: "#22c55e" },
-  { id: "hydraulic", color: "#38bdf8" },
-  { id: "plant2", color: "#a78bfa" },
-];
 
 const LINE_COLOR = "#f97316";
 const LABEL_COLOR = "#ef4444";
@@ -526,15 +520,16 @@ export function Dashboard() {
   const metricLabel = trendMetrics.find((m) => m.id === metric)?.label ?? "";
   const showGrouped = filters.analysisGroup === "all";
   const selectedGroupColor =
-    GROUP_BAR_STYLE.find((c) => c.id === filters.analysisGroup)?.color ??
-    LINE_COLOR;
+    filters.analysisGroup === "all"
+      ? LINE_COLOR
+      : analysisGroupColor(filters.analysisGroup);
 
   const chartGroups = useMemo(
     () =>
       groupTrends.map((g) => ({
         id: g.id,
         label: g.label,
-        color: GROUP_BAR_STYLE.find((c) => c.id === g.id)?.color ?? "#94a3b8",
+        color: analysisGroupColor(g.id),
       })),
     [groupTrends],
   );

@@ -4,10 +4,26 @@ export type AnalysisGroupId = 'all' | 'seal' | 'hydraulic' | 'plant2'
 
 export const ANALYSIS_GROUPS: { id: AnalysisGroupId; label: string }[] = [
   { id: 'all', label: '전체' },
-  { id: 'seal', label: '본사(SEAL)' },
-  { id: 'hydraulic', label: '본사(유압+그로멧)' },
+  { id: 'seal', label: '본사(SEAL)' }, // 동의어: 1공장 SEAL
+  { id: 'hydraulic', label: '본사(유압+그로멧)' }, // 동의어: 1공장 GROMMET
   { id: 'plant2', label: '2공장' },
 ]
+
+/** 대시보드·AI 질문 공통 그룹 막대 색 */
+export const ANALYSIS_GROUP_BAR_COLORS: {
+  id: Exclude<AnalysisGroupId, 'all'>
+  color: string
+}[] = [
+  { id: 'seal', color: '#22c55e' },
+  { id: 'hydraulic', color: '#38bdf8' },
+  { id: 'plant2', color: '#a78bfa' },
+]
+
+export const ANALYSIS_GROUP_TOTAL_LINE_COLOR = '#f97316'
+
+export function analysisGroupColor(id: string) {
+  return ANALYSIS_GROUP_BAR_COLORS.find((c) => c.id === id)?.color ?? '#94a3b8'
+}
 
 export function isAnalyzable(record: InspectionRecord) {
   return record.rowClass !== 'excluded' && record.rowClass !== 'error'
