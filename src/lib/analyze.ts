@@ -1,5 +1,5 @@
 import type { FilterState } from "../context/FilterContext";
-import { ANALYSIS_GROUPS, isAnalyzable, matchesAnalysisGroup } from "./groups";
+import { ANALYSIS_GROUPS, isAnalyzable, matchesAnalysisGroup, type AnalysisGroupId } from "./groups";
 import { toEntityId } from "./entityId";
 import { failRatePpm, formatPpm, formatPpmDelta, formatWonSuffix, statusByPpm } from "./format";
 import type {
@@ -1144,4 +1144,42 @@ export function emptyAnalytics(): Analytics {
     workers: [],
     lots: [],
   });
+}
+
+/** 품번 × 사용자 지정 기간 요약 (스마트 비교용) */
+export interface ProductPeriodSummary {
+  qty: number;
+  fail: number;
+  failRate: number;
+  scrapCost: number;
+  recordCount: number;
+}
+
+export function summarizeProductPeriod(
+  records: InspectionRecord[],
+  product: string,
+  startDate: string,
+  endDate: string,
+  analysisGroup: AnalysisGroupId = "all",
+): ProductPeriodSummary {
+  const start = startDate.trim();
+  const end = endDate.trim();
+  const allProducts = !product || product === "__all__";
+  const list = records.filter((r) => {
+    if (!isAnalyzable(r)) return false;
+    if (!allProducts && r.product !== product) return false;
+    if (!matchesAnalysisGroup(r, analysisGroup)) return false;
+    if (start && r.date < start) return false;
+    if (end && r.date > end) return false;
+    return true;
+  });
+  const qty = sum(list, "qty");
+  const fail = sum(list, "fail");
+  return {
+    qty,
+    fail,
+    failRate: failRatePpm(fail, qty),
+    scrapCost: sum(list, "scrapCost"),
+    recordCount: list.length,
+  };
 }
