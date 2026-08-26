@@ -62,6 +62,7 @@ export function InspectorDetail() {
   const { filters } = useFilters()
   const name = fromEntityId(id, 'ins')
   const [selectedProduct, setSelectedProduct] = useState('')
+  const [productQuery, setProductQuery] = useState('')
 
   const inspector =
     analytics.inspectors.find((i) => i.id === id || i.id === toEntityId('ins', name) || i.name === name) ??
@@ -77,17 +78,26 @@ export function InspectorDetail() {
     return inspector?.products ?? []
   }, [scoped, inspector])
 
-  const hasSelection = Boolean(selectedProduct)
+  const activeProduct = productOptions.some((p) => p.product === selectedProduct)
+    ? selectedProduct
+    : ''
+  const hasSelection = Boolean(activeProduct)
+
+  const visibleProducts = useMemo(() => {
+    const q = productQuery.trim().toLowerCase()
+    if (!q) return productOptions
+    return productOptions.filter((p) => p.product.toLowerCase().includes(q))
+  }, [productOptions, productQuery])
 
   const filtered = useMemo(() => {
     if (!hasSelection) return scoped
-    return scoped.filter((r) => r.product === selectedProduct)
-  }, [scoped, hasSelection, selectedProduct])
+    return scoped.filter((r) => r.product === activeProduct)
+  }, [scoped, hasSelection, activeProduct])
 
   const selectedStats = useMemo(() => {
     if (!hasSelection) return productOptions
-    return productOptions.filter((p) => p.product === selectedProduct)
-  }, [productOptions, hasSelection, selectedProduct])
+    return productOptions.filter((p) => p.product === activeProduct)
+  }, [productOptions, hasSelection, activeProduct])
 
   const { trends: byDate, grain: trendGrain } = useMemo(
     () => buildPeriodTrends(filtered, filters),
@@ -180,7 +190,8 @@ export function InspectorDetail() {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 4)
 
-  const scopeLabel = hasSelection ? `품번 ${selectedProduct} 기준` : '전체 품번 기준'
+  const scopeLabel = hasSelection ? `품번 ${activeProduct} 기준` : '전체 품번 기준'
+  const totalQty = productOptions.reduce((s, p) => s + p.qty, 0)
 
   return (
     <div className="space-y-5">
@@ -196,30 +207,166 @@ export function InspectorDetail() {
 
       <Panel
         title="작업 품번 선택"
-        description="해당 기간에 검사한 품번을 선택하면 아래 지표가 선택한 품번 기준으로 바뀝니다."
+        description="카드를 클릭하면 아래 KPI·차트가 해당 품번 기준으로 바뀝니다."
       >
-        <div className="flex flex-wrap items-center gap-3">
-          <label className="text-sm text-muted" htmlFor="inspector-product-select">
-            품번
-          </label>
-          <select
-            id="inspector-product-select"
-            value={selectedProduct}
-            onChange={(e) => setSelectedProduct(e.target.value)}
-            className="min-w-[220px] rounded-lg border border-line bg-white px-3 py-2 text-sm"
-            disabled={!productOptions.length}
-          >
-            <option value="">전체 ({productOptions.length})</option>
-            {productOptions.map((p) => (
-              <option key={p.product} value={p.product}>
-                {p.product} · {p.qty.toLocaleString()} EA
-              </option>
-            ))}
-          </select>
-          {!productOptions.length && (
-            <p className="text-sm text-muted">해당 기간에 작업한 품번이 없습니다.</p>
-          )}
-        </div>
+        {!productOptions.length ? (
+          <p className="text-sm text-muted">해당 기간에 작업한 품번이 없습니다.</p>
+        ) : (
+          <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-accent/40 bg-accent/5 px-3 py-2.5">
+              <p className="text-sm text-ink">
+                <span className="font-medium text-accent">작업 품번을 선택</span>
+                해 검사량·UPH·부적합률을 확인하세요.
+              </p>
+              <p className="text-xs text-muted">
+                현재{' '}
+                <span className="font-semibold text-accent">
+                  {hasSelection ? activeProduct : `전체 (${productOptions.length})`}
+                </span>
+              </p>
+            </div>
+
+            <div className="mb-3 flex flex-wrap items-end gap-3">
+              <label className="min-w-[200px] flex-1 text-xs font-medium text-muted">
+                품번 검색
+                <input
+                  type="search"
+                  value={productQuery}
+                  onChange={(e) => setProductQuery(e.target.value)}
+                  placeholder="품번명으로 찾기"
+                  className="mt-1.5 w-full rounded-full border border-line bg-white px-3.5 py-2 text-sm font-normal text-ink outline-none focus:border-accent"
+                />
+              </label>
+              <label className="text-xs font-medium text-muted">
+                빠른 선택
+                <select
+                  id="inspector-product-select"
+                  value={activeProduct}
+                  onChange={(e) => setSelectedProduct(e.target.value)}
+                  className="mt-1.5 min-w-[200px] rounded-full border border-line bg-white px-3 py-2 text-sm font-normal text-ink"
+                  aria-label="작업 품번 빠른 선택"
+                >
+                  <option value="">전체 ({productOptions.length})</option>
+                  {productOptions.map((p) => (
+                    <option key={p.product} value={p.product}>
+                      {p.product} · {p.qty.toLocaleString()} EA
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div
+              className="grid max-h-[320px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3"
+              role="radiogroup"
+              aria-label="작업 품번 선택"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={!hasSelection}
+                onClick={() => setSelectedProduct('')}
+                className={`group flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition ${
+                  !hasSelection
+                    ? 'border-accent bg-accent/5 shadow-sm ring-1 ring-accent/30'
+                    : 'border-line bg-white hover:border-accent/50 hover:bg-canvas'
+                }`}
+              >
+                <span
+                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                    !hasSelection ? 'border-accent' : 'border-line group-hover:border-accent/60'
+                  }`}
+                  aria-hidden
+                >
+                  {!hasSelection ? <span className="h-2 w-2 rounded-full bg-accent" /> : null}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center justify-between gap-2">
+                    <span className={`text-sm font-semibold ${!hasSelection ? 'text-accent' : 'text-ink'}`}>
+                      전체 품번
+                    </span>
+                    {!hasSelection ? (
+                      <span className="shrink-0 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-medium text-white">
+                        선택됨
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted">
+                    <span>
+                      품번 <span className="num font-medium text-ink/80">{productOptions.length}</span>
+                    </span>
+                    <span>
+                      검수 <span className="num font-medium text-ink/80">{totalQty.toLocaleString()}</span>
+                    </span>
+                  </span>
+                </span>
+              </button>
+
+              {visibleProducts.map((p) => {
+                const active = p.product === activeProduct
+                return (
+                  <button
+                    key={p.product}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setSelectedProduct(p.product)}
+                    className={`group flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition ${
+                      active
+                        ? 'border-accent bg-accent/5 shadow-sm ring-1 ring-accent/30'
+                        : 'border-line bg-white hover:border-accent/50 hover:bg-canvas'
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                        active ? 'border-accent' : 'border-line group-hover:border-accent/60'
+                      }`}
+                      aria-hidden
+                    >
+                      {active ? <span className="h-2 w-2 rounded-full bg-accent" /> : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-2">
+                        <span
+                          className={`truncate text-sm font-semibold ${active ? 'text-accent' : 'text-ink'}`}
+                          title={p.product}
+                        >
+                          {p.product}
+                        </span>
+                        {active ? (
+                          <span className="shrink-0 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-medium text-white">
+                            선택됨
+                          </span>
+                        ) : (
+                          <span className="shrink-0 text-[10px] text-muted opacity-0 transition group-hover:opacity-100">
+                            클릭
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted">
+                        <span>
+                          검수 <span className="num font-medium text-ink/80">{p.qty.toLocaleString()}</span>
+                        </span>
+                        <span>
+                          부적합 <span className="num font-medium text-ink/80">{formatPpm(p.failRate)}</span>
+                        </span>
+                        <span>
+                          UPH <span className="num font-medium text-ink/80">{p.uph.toLocaleString()}</span>
+                        </span>
+                      </span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {productQuery.trim() && !visibleProducts.length && (
+              <p className="mt-3 text-center text-sm text-muted">
+                「{productQuery.trim()}」에 맞는 품번이 없습니다.
+              </p>
+            )}
+          </>
+        )}
       </Panel>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

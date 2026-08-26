@@ -3,8 +3,7 @@ import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
 import { useData } from '../context/DataContext'
 import { useFilters } from '../context/FilterContext'
-import { summarizeProductPeriod } from '../lib/analyze'
-import { ANALYSIS_GROUPS, type AnalysisGroupId } from '../lib/groups'
+import { summarizeProductPeriod, productsInPeriod, summarizeInspectorProductUph } from '../lib/analyze'
 import { formatPpm, formatPpmDelta, formatWon } from '../lib/format'
 
 /** 2026-08-10 → 2026.08.10~2026.08.20 */
@@ -104,28 +103,54 @@ export function SmartCompare() {
   const rangeA = formatDotRange(periodAStart, periodAEnd)
   const rangeB = formatDotRange(periodBStart, periodBEnd)
 
-  const [left, setLeft] = useState<AnalysisGroupId>('seal')
-  const [right, setRight] = useState<AnalysisGroupId>('hydraulic')
-  const [inspA, setInspA] = useState(analytics.inspectors[0]?.name ?? '')
-  const [inspB, setInspB] = useState(analytics.inspectors[1]?.name ?? '')
-  const [eqA, setEqA] = useState(analytics.equipment[0]?.name ?? '')
-  const [eqB, setEqB] = useState(analytics.equipment[1]?.name ?? '')
-  const types = [...new Set(analytics.products.map((p) => p.type))]
-  const [typeA, setTypeA] = useState(types[0] ?? '')
-  const [typeB, setTypeB] = useState(types[1] ?? types[0] ?? '')
+  const [uphStart, setUphStart] = useState(today)
+  const [uphEnd, setUphEnd] = useState(today)
+  const [uphProduct, setUphProduct] = useState('')
+  const [inspA, setInspA] = useState('')
+  const [inspB, setInspB] = useState('')
 
-  const gA = analytics.groupSummaries.find((g) => g.id === left)
-  const gB = analytics.groupSummaries.find((g) => g.id === right)
-  const iA = analytics.inspectors.find((i) => i.name === inspA)
-  const iB = analytics.inspectors.find((i) => i.name === inspB)
-  const eA = analytics.equipment.find((e) => e.name === eqA)
-  const eB = analytics.equipment.find((e) => e.name === eqB)
+  const uphProducts = useMemo(
+    () => productsInPeriod(records, uphStart, uphEnd, filters.analysisGroup),
+    [records, uphStart, uphEnd, filters.analysisGroup],
+  )
+  const selectedUphProduct =
+    uphProduct && uphProducts.includes(uphProduct) ? uphProduct : (uphProducts[0] ?? '')
+
+  const productInspectorRows = useMemo(
+    () =>
+      summarizeInspectorProductUph(
+        records,
+        selectedUphProduct,
+        uphStart,
+        uphEnd,
+        filters.analysisGroup,
+      ),
+    [records, selectedUphProduct, uphStart, uphEnd, filters.analysisGroup],
+  )
+
+  const inspectorNamesForProduct = useMemo(
+    () => productInspectorRows.map((r) => r.inspector),
+    [productInspectorRows],
+  )
+
+  const activeInspA =
+    inspectorNamesForProduct.includes(inspA)
+      ? inspA
+      : (inspectorNamesForProduct[0] ?? '')
+  const activeInspB =
+    inspectorNamesForProduct.includes(inspB)
+      ? inspB
+      : (inspectorNamesForProduct[1] ?? inspectorNamesForProduct[0] ?? '')
+
+  const iA = productInspectorRows.find((r) => r.inspector === activeInspA)
+  const iB = productInspectorRows.find((r) => r.inspector === activeInspB)
+  const uphRangeLabel = formatDotRange(uphStart, uphEnd)
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="스마트 비교"
-        description="품번 기간 비교, 분석 그룹·검사자·설비 간 품질과 효율을 비교합니다."
+        description="품번 기간 비교와 기간·품번별 검사자 UPH를 비교합니다."
       />
 
       <Panel
@@ -281,127 +306,226 @@ export function SmartCompare() {
         )}
       </Panel>
 
-      <Panel title="그룹 비교">
-        <div className="mb-3 flex flex-wrap gap-2">
-          <select value={left} onChange={(e) => setLeft(e.target.value as AnalysisGroupId)} className="rounded-lg border border-line px-3 py-2 text-sm">
-            {ANALYSIS_GROUPS.map((g) => (
-              <option key={g.id} value={g.id}>{g.label}</option>
-            ))}
-          </select>
-          <span className="self-center text-sm text-muted">VS</span>
-          <select value={right} onChange={(e) => setRight(e.target.value as AnalysisGroupId)} className="rounded-lg border border-line px-3 py-2 text-sm">
-            {ANALYSIS_GROUPS.map((g) => (
-              <option key={g.id} value={g.id}>{g.label}</option>
-            ))}
-          </select>
-        </div>
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-line text-xs text-muted">
-              <th className="px-2 py-2">지표</th>
-              <th className="px-2 py-2">{gA?.label}</th>
-              <th className="px-2 py-2">{gB?.label}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              ['검수량', gA?.qty.toLocaleString(), gB?.qty.toLocaleString()],
-              ['부적합률', `${formatPpm(gA?.failRate)}`, `${formatPpm(gB?.failRate)}`],
-              ['부적합수량', gA?.fail.toLocaleString(), gB?.fail.toLocaleString()],
-              ['폐기비용', formatWon(gA?.scrapCost), formatWon(gB?.scrapCost)],
-            ].map(([k, a, b]) => (
-              <tr key={String(k)} className="border-b border-line/70">
-                <td className="px-2 py-2.5">{k}</td>
-                <td className="num px-2 py-2.5">{a}</td>
-                <td className="num px-2 py-2.5">{b}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Panel>
+      <Panel
+        title="기간·품번 → 검사자 UPH 비교"
+        description="기간과 품번을 고른 뒤 검사자 A·B UPH를 비교합니다. (전역 분석 그룹 적용 · 헤더 기간 무관)"
+      >
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-line px-3 py-2">
+            <span className="mb-1 text-xs font-medium text-ink">1. 기간</span>
+            <label className="flex flex-col gap-1 text-xs text-muted">
+              시작
+              <input
+                type="date"
+                value={uphStart}
+                onChange={(e) => {
+                  setUphStart(e.target.value)
+                  setInspA('')
+                  setInspB('')
+                }}
+                className="rounded-lg border border-line px-2 py-1.5 text-sm text-ink"
+              />
+            </label>
+            <span className="self-end pb-2 text-sm text-muted">~</span>
+            <label className="flex flex-col gap-1 text-xs text-muted">
+              종료
+              <input
+                type="date"
+                value={uphEnd}
+                onChange={(e) => {
+                  setUphEnd(e.target.value)
+                  setInspA('')
+                  setInspB('')
+                }}
+                className="rounded-lg border border-line px-2 py-1.5 text-sm text-ink"
+              />
+            </label>
+          </div>
 
-      <Panel title="검사자 비교 → 품번별 검사량">
-        <div className="mb-3 flex flex-wrap gap-2">
-          <select value={inspA} onChange={(e) => setInspA(e.target.value)} className="rounded-lg border border-line px-3 py-2 text-sm">
-            {analytics.inspectors.map((i) => <option key={i.id} value={i.name}>{i.name}</option>)}
-          </select>
-          <span className="self-center text-sm text-muted">VS</span>
-          <select value={inspB} onChange={(e) => setInspB(e.target.value)} className="rounded-lg border border-line px-3 py-2 text-sm">
-            {analytics.inspectors.map((i) => <option key={i.id} value={i.name}>{i.name}</option>)}
-          </select>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {[iA, iB].map((insp) => (
-            <div key={insp?.id ?? 'x'} className="rounded-lg border border-line p-3">
-              <p className="mb-2 font-medium">{insp?.name}</p>
-              <ul className="space-y-1 text-sm">
-                {insp?.products.slice(0, 6).map((p) => (
-                  <li key={p.product} className="flex justify-between">
-                    <span>{p.product}</span>
-                    <span className="num">{p.qty.toLocaleString()}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </Panel>
+          <span className="self-center text-sm text-muted">→</span>
 
-      <Panel title="설비 비교 → 품번별 검사량/부적합률">
-        <div className="mb-3 flex flex-wrap gap-2">
-          <select value={eqA} onChange={(e) => setEqA(e.target.value)} className="rounded-lg border border-line px-3 py-2 text-sm">
-            {analytics.equipment.map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
-          </select>
-          <span className="self-center text-sm text-muted">VS</span>
-          <select value={eqB} onChange={(e) => setEqB(e.target.value)} className="rounded-lg border border-line px-3 py-2 text-sm">
-            {analytics.equipment.map((e) => <option key={e.id} value={e.name}>{e.name}</option>)}
-          </select>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {[eA, eB].map((eq) => (
-            <div key={eq?.id ?? 'y'} className="rounded-lg border border-line p-3">
-              <p className="mb-2 font-medium">{eq?.name} · 부적합률 {formatPpm(eq?.failRate)}</p>
-              <ul className="space-y-1 text-sm">
-                {eq?.products.slice(0, 6).map((p) => (
-                  <li key={p.product} className="flex justify-between">
-                    <span>{p.product}</span>
-                    <span className="num">{p.qty.toLocaleString()} / {formatPpm(p.failRate)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </Panel>
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted">
+            2. 품번
+            <select
+              value={selectedUphProduct}
+              onChange={(e) => {
+                setUphProduct(e.target.value)
+                setInspA('')
+                setInspB('')
+              }}
+              className="min-w-[200px] rounded-lg border border-line bg-white px-3 py-2 text-sm font-normal text-ink"
+              disabled={!uphProducts.length}
+            >
+              {!uphProducts.length ? (
+                <option value="">선택 가능한 품번 없음</option>
+              ) : (
+                uphProducts.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
 
-      <Panel title="제품유형 비교 → 품번별 품질">
-        <div className="mb-3 flex flex-wrap gap-2">
-          <select value={typeA} onChange={(e) => setTypeA(e.target.value)} className="rounded-lg border border-line px-3 py-2 text-sm">
-            {types.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <span className="self-center text-sm text-muted">VS</span>
-          <select value={typeB} onChange={(e) => setTypeB(e.target.value)} className="rounded-lg border border-line px-3 py-2 text-sm">
-            {types.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+          <span className="self-center text-sm text-muted">→</span>
+
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted">
+            3. 검사자 A
+            <select
+              value={activeInspA}
+              onChange={(e) => setInspA(e.target.value)}
+              className="min-w-[160px] rounded-lg border border-line bg-white px-3 py-2 text-sm font-normal text-ink"
+              disabled={!inspectorNamesForProduct.length}
+            >
+              {inspectorNamesForProduct.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="self-center text-sm font-medium text-muted">VS</span>
+          <label className="flex flex-col gap-1 text-xs font-medium text-muted">
+            검사자 B
+            <select
+              value={activeInspB}
+              onChange={(e) => setInspB(e.target.value)}
+              className="min-w-[160px] rounded-lg border border-line bg-white px-3 py-2 text-sm font-normal text-ink"
+              disabled={!inspectorNamesForProduct.length}
+            >
+              {inspectorNamesForProduct.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          {[typeA, typeB].map((type) => {
-            const items = analytics.products.filter((p) => p.type === type).slice(0, 6)
-            return (
-              <div key={type || 'type'} className="rounded-lg border border-line p-3">
-                <p className="mb-2 font-medium">{type || '미지정'}</p>
-                <ul className="space-y-1 text-sm">
-                  {items.map((p) => (
-                    <li key={p.id} className="flex justify-between">
-                      <span>{p.name}</span>
-                      <span className="num">{p.qty.toLocaleString()} / {formatPpm(p.failRate)}</span>
-                    </li>
+
+        {!selectedUphProduct || !productInspectorRows.length ? (
+          <p className="text-sm text-muted">
+            선택한 기간·품번·분석 그룹에서 비교할 검사자 DATA가 없습니다.
+          </p>
+        ) : (
+          <>
+            <p className="mb-2 text-xs text-muted">
+              집계 기간 <span className="font-medium text-ink">{uphRangeLabel}</span>
+              <span className="mx-1.5">·</span>
+              품번 <span className="font-medium text-ink">{selectedUphProduct}</span>
+            </p>
+            <div className="mb-4 overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-line text-xs text-muted">
+                    <th className="px-2 py-2 font-medium">지표</th>
+                    <th className="px-2 py-2 font-medium">
+                      {iA?.inspector ?? activeInspA}
+                      {iA ? <span className="ml-1 font-normal text-muted">({iA.team})</span> : null}
+                    </th>
+                    <th className="px-2 py-2 font-medium">
+                      {iB?.inspector ?? activeInspB}
+                      {iB ? <span className="ml-1 font-normal text-muted">({iB.team})</span> : null}
+                    </th>
+                    <th className="px-2 py-2 font-medium">차이 (A − B)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    {
+                      key: 'UPH',
+                      a: iA?.uph ?? 0,
+                      b: iB?.uph ?? 0,
+                      format: (n: number) => n.toLocaleString(),
+                      delta: (a: number, b: number) => deltaQty(a, b),
+                    },
+                    {
+                      key: '검수량',
+                      a: iA?.qty ?? 0,
+                      b: iB?.qty ?? 0,
+                      format: (n: number) => n.toLocaleString(),
+                      delta: (a: number, b: number) => `${deltaQty(a, b)} EA`,
+                    },
+                    {
+                      key: '부적합수량',
+                      a: iA?.fail ?? 0,
+                      b: iB?.fail ?? 0,
+                      format: (n: number) => n.toLocaleString(),
+                      delta: (a: number, b: number) => deltaQty(a, b),
+                    },
+                    {
+                      key: '부적합률',
+                      a: iA?.failRate ?? 0,
+                      b: iB?.failRate ?? 0,
+                      format: (n: number) => formatPpm(n),
+                      delta: (a: number, b: number) => formatPpmDelta(a - b),
+                    },
+                    {
+                      key: '소요시간(분)',
+                      a: iA?.minutes ?? 0,
+                      b: iB?.minutes ?? 0,
+                      format: (n: number) => n.toLocaleString(),
+                      delta: (a: number, b: number) => deltaQty(a, b),
+                    },
+                  ].map((row) => (
+                    <tr
+                      key={row.key}
+                      className={`border-b border-line/70 ${row.key === 'UPH' ? 'bg-accent-soft/60' : ''}`}
+                    >
+                      <td className="px-2 py-2.5 font-medium">{row.key}</td>
+                      <td className={`num px-2 py-2.5 ${row.key === 'UPH' ? 'font-semibold text-accent' : ''}`}>
+                        {row.format(row.a)}
+                      </td>
+                      <td className={`num px-2 py-2.5 ${row.key === 'UPH' ? 'font-semibold text-accent' : ''}`}>
+                        {row.format(row.b)}
+                      </td>
+                      <td className="num px-2 py-2.5">{row.delta(row.a, row.b)}</td>
+                    </tr>
                   ))}
-                </ul>
-              </div>
-            )
-          })}
-        </div>
+                </tbody>
+              </table>
+            </div>
+
+            <p className="mb-2 text-xs font-medium text-muted">
+              {selectedUphProduct} · {uphRangeLabel} · 검사자별 UPH (높은 순)
+            </p>
+            <div className="overflow-x-auto">
+              <table className="min-w-[720px] w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-line text-xs text-muted">
+                    <th className="px-2 py-2 font-medium">순위</th>
+                    <th className="px-2 py-2 font-medium">검사자</th>
+                    <th className="px-2 py-2 font-medium">소속</th>
+                    <th className="px-2 py-2 font-medium">검수량</th>
+                    <th className="px-2 py-2 font-medium">부적합률</th>
+                    <th className="px-2 py-2 font-medium">소요시간(분)</th>
+                    <th className="px-2 py-2 font-medium">UPH</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productInspectorRows.map((row, idx) => {
+                    const highlight =
+                      row.inspector === activeInspA || row.inspector === activeInspB
+                    return (
+                      <tr
+                        key={row.id}
+                        className={`border-b border-line/70 ${highlight ? 'bg-accent-soft/50' : ''}`}
+                      >
+                        <td className="num px-2 py-2.5 text-muted">{idx + 1}</td>
+                        <td className="px-2 py-2.5 font-medium">{row.inspector}</td>
+                        <td className="px-2 py-2.5">{row.team}</td>
+                        <td className="num px-2 py-2.5">{row.qty.toLocaleString()}</td>
+                        <td className="num px-2 py-2.5">{formatPpm(row.failRate)}</td>
+                        <td className="num px-2 py-2.5">{row.minutes.toLocaleString()}</td>
+                        <td className="num px-2 py-2.5 font-semibold">{row.uph.toLocaleString()}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </Panel>
     </div>
   )

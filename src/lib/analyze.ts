@@ -1184,6 +1184,53 @@ export function summarizeProductPeriod(
   };
 }
 
+/** 스마트 비교: 지정 기간·분석 그룹에서 검사 DATA가 있는 품번 목록 */
+export function productsInPeriod(
+  records: InspectionRecord[],
+  startDate: string,
+  endDate: string,
+  analysisGroup: AnalysisGroupId = "all",
+): string[] {
+  const start = startDate.trim();
+  const end = endDate.trim();
+  const names = new Set<string>();
+  for (const r of records) {
+    if (!isAnalyzable(r)) continue;
+    if (!matchesAnalysisGroup(r, analysisGroup)) continue;
+    if (start && r.date < start) continue;
+    if (end && r.date > end) continue;
+    if (r.product) names.add(r.product);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, "ko"));
+}
+
+/** 스마트 비교: 품번×기간 기준 검사자 UPH */
+export function summarizeInspectorProductUph(
+  records: InspectionRecord[],
+  product: string,
+  startDate: string,
+  endDate: string,
+  analysisGroup: AnalysisGroupId = "all",
+): InspectorProductUph[] {
+  if (!product) return [];
+  const start = startDate.trim();
+  const end = endDate.trim();
+  const list = records.filter((r) => {
+    if (!isAnalyzable(r)) return false;
+    if (r.product !== product) return false;
+    if (!matchesAnalysisGroup(r, analysisGroup)) return false;
+    if (start && r.date < start) return false;
+    if (end && r.date > end) return false;
+    return true;
+  });
+  return buildInspectorProductUph(list).sort(
+    (a, b) =>
+      b.uph - a.uph ||
+      b.qty - a.qty ||
+      a.inspector.localeCompare(b.inspector, "ko"),
+  );
+}
+
 /** 불량 유형 비중 항목 */
 export interface DefectShareItem {
   name: string;
