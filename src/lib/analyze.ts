@@ -1183,3 +1183,94 @@ export function summarizeProductPeriod(
     recordCount: list.length,
   };
 }
+
+/** 불량 유형 비중 항목 */
+export interface DefectShareItem {
+  name: string;
+  count: number;
+  share: number;
+}
+
+/** 불량 유형 → 설비 → 금형 드릴다운 */
+export interface DefectEquipmentBreakdown {
+  equipment: string;
+  count: number;
+  share: number;
+  molds: DefectShareItem[];
+}
+
+export interface DefectEquipmentMoldAnalysis {
+  defectName: string;
+  total: number;
+  equipments: DefectEquipmentBreakdown[];
+  /** 해당 불량 전체 기준 금형별 비중 */
+  molds: DefectShareItem[];
+}
+
+function defectCountOf(record: InspectionRecord, defectName: string) {
+  const defects = record.defects ?? {};
+  if (defects[defectName] != null) return Number(defects[defectName]) || 0;
+  const hit = Object.keys(defects).find(
+    (k) => k.toLowerCase() === defectName.toLowerCase(),
+  );
+  return hit ? Number(defects[hit]) || 0 : 0;
+}
+
+function toShareItems(
+  map: Map<string, number>,
+  total: number,
+): DefectShareItem[] {
+  return [...map.entries()]
+    .map(([name, count]) => ({
+      name: name || "미지정",
+      count,
+      share: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "ko"));
+}
+
+/**
+ * 품번 상세: 선택한 불량 유형의 설비별·금형별 발생 비중
+ * (설비 하위에는 해당 설비에서의 금형 비중)
+ */
+export function buildDefectEquipmentMoldAnalysis(
+  records: InspectionRecord[],
+  defectName: string,
+): DefectEquipmentMoldAnalysis {
+  const byEquipment = new Map<string, number>();
+  const byMold = new Map<string, number>();
+  const byEquipmentMold = new Map<string, Map<string, number>>();
+  let total = 0;
+
+  for (const r of records) {
+    const n = defectCountOf(r, defectName);
+    if (n <= 0) continue;
+    total += n;
+    const eq = r.equipment?.trim() || "미지정";
+    const mold = r.moldNo?.trim() || "미지정";
+    byEquipment.set(eq, (byEquipment.get(eq) ?? 0) + n);
+    byMold.set(mold, (byMold.get(mold) ?? 0) + n);
+    const moldMap = byEquipmentMold.get(eq) ?? new Map<string, number>();
+    moldMap.set(mold, (moldMap.get(mold) ?? 0) + n);
+    byEquipmentMold.set(eq, moldMap);
+  }
+
+  const equipments: DefectEquipmentBreakdown[] = [...byEquipment.entries()]
+    .map(([equipment, count]) => ({
+      equipment,
+      count,
+      share: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+      molds: toShareItems(byEquipmentMold.get(equipment) ?? new Map(), count),
+    }))
+    .sort(
+      (a, b) =>
+        b.count - a.count || a.equipment.localeCompare(b.equipment, "ko"),
+    );
+
+  return {
+    defectName,
+    total,
+    equipments,
+    molds: toShareItems(byMold, total),
+  };
+}

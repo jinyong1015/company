@@ -10,15 +10,25 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "../components/common/PageHeader";
 import { Panel } from "../components/common/Panel";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { useData } from "../context/DataContext";
 import { useFilters } from "../context/FilterContext";
-import { filterRecords } from "../lib/analyze";
+import {
+  buildDefectEquipmentMoldAnalysis,
+  filterRecords,
+} from "../lib/analyze";
 import { fromEntityId, toEntityId } from "../lib/entityId";
-import { failRatePpm, formatPpm, formatWon, statusByPpm } from "../lib/format";
+import {
+  failRatePpm,
+  formatPercent,
+  formatPpm,
+  formatWon,
+  statusByPpm,
+} from "../lib/format";
+import type { Analytics, InspectionRecord, ProductRow } from "../types";
 
 export function ProductDetail() {
   const { id } = useParams();
@@ -69,6 +79,27 @@ export function ProductDetail() {
     );
   }
 
+  return (
+    <ProductDetailBody
+      name={name}
+      product={product}
+      scoped={scoped}
+      analytics={analytics}
+    />
+  );
+}
+
+function ProductDetailBody({
+  name,
+  product,
+  scoped,
+  analytics,
+}: {
+  name: string;
+  product: ProductRow | null;
+  scoped: InspectionRecord[];
+  analytics: Analytics;
+}) {
   const qty = product?.qty ?? scoped.reduce((s, r) => s + r.qty, 0);
   const pass = product?.pass ?? scoped.reduce((s, r) => s + r.pass, 0);
   const fail = product?.fail ?? scoped.reduce((s, r) => s + r.fail, 0);
@@ -84,6 +115,28 @@ export function ProductDetail() {
   const defects = product?.defects ?? [];
   const status = product?.status ?? statusByPpm(failRate);
   const type = product?.type ?? scoped[0]?.productType ?? "미지정";
+
+  const [selectedDefect, setSelectedDefect] = useState(
+    () => defects[0]?.name ?? "",
+  );
+
+  useEffect(() => {
+    if (!defects.length) {
+      setSelectedDefect("");
+      return;
+    }
+    if (!defects.some((d) => d.name === selectedDefect)) {
+      setSelectedDefect(defects[0]!.name);
+    }
+  }, [defects, selectedDefect]);
+
+  const defectDrill = useMemo(
+    () =>
+      selectedDefect
+        ? buildDefectEquipmentMoldAnalysis(scoped, selectedDefect)
+        : null,
+    [scoped, selectedDefect],
+  );
 
   const byDate = Object.values(
     scoped.reduce<Record<string, { date: string; qty: number; fail: number }>>(
@@ -224,58 +277,246 @@ export function ProductDetail() {
         </Panel>
       </div>
 
-      <Panel title="불량 내역 상세">
-        <div className="overflow-x-auto">
-          <table className="min-w-[520px] w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-line text-xs text-muted">
-                <th className="px-2 py-2 font-medium">불량 유형</th>
-                <th className="px-2 py-2 font-medium">발생 수량</th>
-                <th className="px-2 py-2 font-medium">비중</th>
-              </tr>
-            </thead>
-            <tbody>
-              {defects.map((d) => (
-                <tr key={d.name} className="border-b border-line/70">
-                  <td className="px-2 py-2.5 font-medium">{d.name}</td>
-                  <td className="num px-2 py-2.5">
-                    {d.count.toLocaleString()}
-                  </td>
-                  <td className="num px-2 py-2.5">{d.share.toFixed(1)}%</td>
-                </tr>
-              ))}
-              {!defects.length && (
-                <tr>
-                  <td colSpan={3} className="px-2 py-4 text-sm text-muted">
-                    이 기간에 불량 상세가 없습니다.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      <Panel
+        title="불량 내역 상세"
+        description="유형을 선택하면 아래 설비·금형 비중이 바로 바뀝니다."
+      >
+        {defects.length ? (
+          <>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-accent/40 bg-accent/5 px-3 py-2.5">
+              <p className="text-sm text-ink">
+                <span className="font-medium text-accent">불량 유형을 선택</span>
+                해 설비·금형별 발생 비중을 확인하세요.
+              </p>
+              {selectedDefect ? (
+                <p className="text-xs text-muted">
+                  현재 선택{" "}
+                  <span className="font-semibold text-accent">
+                    {selectedDefect}
+                  </span>
+                </p>
+              ) : null}
+            </div>
+
+            <div
+              className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+              role="radiogroup"
+              aria-label="불량 유형 선택"
+            >
+              {defects.map((d) => {
+                const active = d.name === selectedDefect;
+                return (
+                  <button
+                    key={d.name}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setSelectedDefect(d.name)}
+                    className={`group flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition ${
+                      active
+                        ? "border-accent bg-accent/5 shadow-sm ring-1 ring-accent/30"
+                        : "border-line bg-white hover:border-accent/50 hover:bg-canvas"
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                        active
+                          ? "border-accent"
+                          : "border-line group-hover:border-accent/60"
+                      }`}
+                      aria-hidden
+                    >
+                      {active ? (
+                        <span className="h-2 w-2 rounded-full bg-accent" />
+                      ) : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-2">
+                        <span
+                          className={`truncate text-sm font-semibold ${
+                            active ? "text-accent" : "text-ink"
+                          }`}
+                        >
+                          {d.name}
+                        </span>
+                        {active ? (
+                          <span className="shrink-0 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-medium text-white">
+                            선택됨
+                          </span>
+                        ) : (
+                          <span className="shrink-0 text-[10px] text-muted opacity-0 transition group-hover:opacity-100">
+                            클릭
+                          </span>
+                        )}
+                      </span>
+                      <span className="mt-1.5 flex items-baseline justify-between gap-2 text-xs text-muted">
+                        <span className="num">
+                          {d.count.toLocaleString()}건
+                        </span>
+                        <span className="num font-medium text-ink/80">
+                          {d.share.toFixed(1)}%
+                        </span>
+                      </span>
+                      <span className="mt-2 block h-1 overflow-hidden rounded-full bg-line/70">
+                        <span
+                          className={`block h-full rounded-full ${
+                            active ? "bg-accent" : "bg-slate-300"
+                          }`}
+                          style={{ width: `${Math.min(100, d.share)}%` }}
+                        />
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-muted">이 기간에 불량 상세가 없습니다.</p>
+        )}
+
+        {defectDrill && defectDrill.total > 0 ? (
+          <div className="mt-5 border-t border-line pt-5">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="rounded-md bg-accent px-2 py-1 text-xs font-semibold text-white">
+                {defectDrill.defectName}
+              </span>
+              <span className="text-sm font-medium text-ink">
+                설비 · 금형 비중
+              </span>
+              <span className="text-xs text-muted">
+                총 {defectDrill.total.toLocaleString()}건
+              </span>
+            </div>
+            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-line p-4">
+              <p className="text-sm font-medium">
+                설비별 비중
+                <span className="ml-2 text-xs font-normal text-muted">
+                  {defectDrill.defectName} · {defectDrill.total.toLocaleString()}
+                  건
+                </span>
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                해당 불량이 어느 설비에서 얼마나 발생했는지 · 설비 아래 금형
+                비중
+              </p>
+              <ul className="mt-3 space-y-3">
+                {defectDrill.equipments.map((eq) => (
+                  <li
+                    key={eq.equipment}
+                    className="rounded-lg border border-line/80 bg-canvas/40 px-3 py-2.5"
+                  >
+                    <div className="flex items-baseline justify-between gap-2 text-sm">
+                      <span className="font-medium">{eq.equipment}</span>
+                      <span className="num text-muted">
+                        {eq.count.toLocaleString()}건 ·{" "}
+                        {formatPercent(eq.share)}
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line/60">
+                      <div
+                        className="h-full rounded-full bg-accent"
+                        style={{ width: `${Math.min(100, eq.share)}%` }}
+                      />
+                    </div>
+                    <ul className="mt-2 space-y-1 border-l-2 border-line pl-3 text-xs text-muted">
+                      <li className="font-medium text-ink/70">금형</li>
+                      {eq.molds.map((m) => (
+                        <li
+                          key={`${eq.equipment}-${m.name}`}
+                          className="flex justify-between gap-2"
+                        >
+                          <span>{m.name}</span>
+                          <span className="num">
+                            {m.count.toLocaleString()}건 ·{" "}
+                            {formatPercent(m.share)}
+                          </span>
+                        </li>
+                      ))}
+                      {!eq.molds.length && <li>금형 DATA 없음</li>}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-xl border border-line p-4">
+              <p className="text-sm font-medium">
+                금형별 비중
+                <span className="ml-2 text-xs font-normal text-muted">
+                  {defectDrill.defectName} 전체 기준
+                </span>
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                해당 불량 제품을 작업한 금형별 발생 비율
+              </p>
+              <ul className="mt-3 space-y-2">
+                {defectDrill.molds.map((m) => (
+                  <li
+                    key={m.name}
+                    className="rounded-lg border border-line/80 px-3 py-2.5"
+                  >
+                    <div className="flex items-baseline justify-between gap-2 text-sm">
+                      <span className="font-medium">{m.name}</span>
+                      <span className="num text-muted">
+                        {m.count.toLocaleString()}건 · {formatPercent(m.share)}
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line/60">
+                      <div
+                        className="h-full rounded-full bg-sky-500"
+                        style={{ width: `${Math.min(100, m.share)}%` }}
+                      />
+                    </div>
+                  </li>
+                ))}
+                {!defectDrill.molds.length && (
+                  <li className="text-sm text-muted">금형 DATA 없음</li>
+                )}
+              </ul>
+            </div>
+            </div>
+          </div>
+        ) : selectedDefect ? (
+          <p className="mt-4 text-sm text-muted">
+            선택한 불량 유형의 설비·금형 DATA가 없습니다.
+          </p>
+        ) : null}
       </Panel>
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        {[
-          ["금형", [...new Set(scoped.map((r) => r.moldNo))]],
-          ["설비", [...new Set(scoped.map((r) => r.equipment))]],
-          ["검사자", [...new Set(scoped.map((r) => r.inspector))]],
-          ["LOT", [...new Set(scoped.map((r) => r.lot))]],
-        ].map(([title, items]) => (
-          <Panel key={String(title)} title={String(title)}>
-            <ul className="space-y-1.5 text-sm">
-              {(items as string[]).slice(0, 8).map((item) => (
-                <li key={item} className="border-b border-line/60 py-1.5">
-                  {item}
-                </li>
-              ))}
-              {!(items as string[]).length && (
-                <li className="text-muted">없음</li>
-              )}
-            </ul>
-          </Panel>
-        ))}
+      <div className="grid gap-5 md:grid-cols-2">
+        {(
+          [
+            ["금형", [...new Set(scoped.map((r) => r.moldNo).filter(Boolean))]],
+            [
+              "설비",
+              [...new Set(scoped.map((r) => r.equipment).filter(Boolean))],
+            ],
+          ] as const
+        ).map(([title, items]) => {
+          const sorted = [...items].sort((a, b) => a.localeCompare(b, "ko"));
+          return (
+            <Panel
+              key={title}
+              title={title}
+              description={`이 품번·기간 기준 ${sorted.length}개 전체`}
+            >
+              <div className="max-h-72 overflow-y-auto pr-1">
+                <ul className="space-y-1.5 text-sm">
+                  {sorted.map((item) => (
+                    <li key={item} className="border-b border-line/60 py-1.5">
+                      {item}
+                    </li>
+                  ))}
+                  {!sorted.length && (
+                    <li className="text-muted">없음</li>
+                  )}
+                </ul>
+              </div>
+            </Panel>
+          );
+        })}
       </div>
 
       <Panel
