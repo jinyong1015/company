@@ -156,12 +156,15 @@ function ProductDetailBody({
       failRate: failRatePpm(d.fail, d.qty),
     }));
 
-  const workerUph = analytics.workerProductUph.filter(
-    (w) => w.product === name,
-  );
-  const inspectorUph = analytics.inspectorProductUph.filter(
-    (row) => row.product === name,
-  );
+  const workerUph = analytics.workerProductUph
+    .filter((w) => w.product === name)
+    .sort((a, b) => b.uph - a.uph || a.worker.localeCompare(b.worker, "ko"));
+  const inspectorUph = analytics.inspectorProductUph
+    .filter((row) => row.product === name)
+    .sort(
+      (a, b) =>
+        b.uph - a.uph || a.inspector.localeCompare(b.inspector, "ko"),
+    );
 
   return (
     <div className="space-y-5">
@@ -521,7 +524,7 @@ function ProductDetailBody({
 
       <Panel
         title="작업자별 품번 UPH"
-        description={`${name}를 담당한 작업자 효율`}
+        description={`${name}를 담당한 작업자 효율 · UPH 높은 순`}
       >
         <div className="overflow-x-auto">
           <table className="min-w-[900px] w-full text-left text-sm">
@@ -570,7 +573,7 @@ function ProductDetailBody({
 
       <Panel
         title="검사자별 품번 UPH"
-        description={`${name}를 검사한 검사자 효율`}
+        description={`${name}를 검사한 검사자 효율 · UPH 높은 순`}
       >
         <div className="overflow-x-auto">
           <table className="min-w-[960px] w-full text-left text-sm">
