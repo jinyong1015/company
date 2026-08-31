@@ -29,12 +29,20 @@ export function isAnalyzable(record: InspectionRecord) {
   return record.rowClass !== 'excluded' && record.rowClass !== 'error'
 }
 
+/** Excel 소속 등 — 구지공장 → 2공장 */
+export function normalizeTeam(team: string): string {
+  const t = team.trim()
+  if (!t) return ''
+  if (t.includes('구지공장')) return '2공장'
+  return t
+}
+
 function isHq(team: string) {
-  return team.includes('본사')
+  return normalizeTeam(team).includes('본사')
 }
 
 function isPlant2(team: string) {
-  return team.includes('2공장')
+  return normalizeTeam(team).includes('2공장')
 }
 
 function isSealType(type: string) {

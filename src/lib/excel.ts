@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx'
 import type { InspectionRecord, QualityCheckItem, UploadResult } from '../types'
 import { failRatePpm } from './format'
+import { normalizeTeam } from './groups'
 
 export const KNOWN_DEFECT_TYPES = [
   'BURR',
@@ -24,6 +25,10 @@ export const KNOWN_DEFECT_TYPES = [
 
 export const ALLOWED_WORK_TYPES = ['검사작업']
 
+const DEFECT_HEADER_ALIASES: Record<string, (typeof KNOWN_DEFECT_TYPES)[number]> = {
+  뜯김: '뜯김/찢어짐',
+}
+
 const COLUMN_ALIASES: Record<
   keyof Omit<InspectionRecord, 'id' | 'hours' | 'failRate' | 'defects' | 'rowClass' | 'issues'>,
   string[]
@@ -33,7 +38,7 @@ const COLUMN_ALIASES: Record<
   inspector: ['검사원', '검사자', '검사작업자', 'inspector'],
   team: ['소속', '팀', '공장', 'team', 'department'],
   productType: ['제품 유형', '제품유형', '제품타입', 'product_type', 'type'],
-  lot: ['성형 lot', '성형lot', 'lot', '로트', '성형로트'],
+  lot: ['성형 lot', '성형lot', 'lot no', 'lot', '로트', '성형로트'],
   worker: ['작업자', '생산자', 'worker', 'operator'],
   equipment: ['설비', '설비명', 'equipment', 'machine'],
   product: [
@@ -53,10 +58,10 @@ const COLUMN_ALIASES: Record<
   end: ['종료', '종료시간', 'end', 'end_time'],
   duration: ['소요시간(분)', '소요시간 분', '소요분', '소요시간', '검사시간', '시간', 'duration', 'minutes', '분'],
   qty: ['검수량', '검사수량', '검사량', '수량', 'qty', 'quantity', 'inspection_qty'],
-  pass: ['합격 수량', '합격수량', '합격', 'pass', 'ok'],
-  fail: ['부적합 수량', '부적합수량', '부적합', '불량', 'fail', 'ng'],
+  pass: ['합격 수량', '합격수량', '합격수', '합격', 'pass', 'ok'],
+  fail: ['부적합 수량', '부적합수량', '부적합수', '부적합', '불량', 'fail', 'ng'],
   mainDefect: ['주요 불량', '주요불량', '불량유형', '불량 유형', 'defect', 'main_defect'],
-  scrapCost: ['폐기비용', '폐기 비용', '비용', 'scrap', 'scrap_cost', 'cost'],
+  scrapCost: ['폐기비용', '폐기 비용', '폐기금액', '비용', 'scrap', 'scrap_cost', 'cost'],
 }
 
 const REQUIRED_FIELDS: (keyof typeof COLUMN_ALIASES)[] = [
@@ -300,9 +305,18 @@ function str(value: unknown): string {
   return String(value).trim()
 }
 
-function isKnownDefectHeader(header: string) {
+function resolveDefectHeader(header: string): string | null {
   const key = normalizeHeader(header)
-  return KNOWN_DEFECT_TYPES.some((d) => normalizeHeader(d) === key)
+  const direct = KNOWN_DEFECT_TYPES.find((d) => normalizeHeader(d) === key)
+  if (direct) return direct === 'HoleNG' ? 'Hole NG' : direct
+  for (const [alias, canonical] of Object.entries(DEFECT_HEADER_ALIASES)) {
+    if (normalizeHeader(alias) === key) return canonical === 'HoleNG' ? 'Hole NG' : canonical
+  }
+  return null
+}
+
+function isKnownDefectHeader(header: string) {
+  return resolveDefectHeader(header) !== null
 }
 
 function extractDefects(
@@ -319,9 +333,7 @@ function extractDefects(
     if (!isKnownDefectHeader(header)) continue
     const count = toNumber(row[header]) ?? 0
     if (count > 0) {
-      const canonical =
-        KNOWN_DEFECT_TYPES.find((d) => normalizeHeader(d) === normalizeHeader(header)) ?? header
-      const name = canonical === 'HoleNG' ? 'Hole NG' : canonical
+      const name = resolveDefectHeader(header) ?? header
       defects[name] = (defects[name] ?? 0) + count
     }
   }
@@ -435,7 +447,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     const fail = toNumber(cell(row, headerMap.fail))
     const scrapCost = Math.round(toNumber(cell(row, headerMap.scrapCost)) ?? 0)
     const workType = str(cell(row, headerMap.workType))
-    const team = str(cell(row, headerMap.team))
+    const team = normalizeTeam(str(cell(row, headerMap.team)))
     const productTypeRaw = str(cell(row, headerMap.productType))
     const productType =
       isPlaceholder(productTypeRaw) || isNaValue(productTypeRaw) ? '' : productTypeRaw
