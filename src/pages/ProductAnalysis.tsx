@@ -7,6 +7,7 @@ import { Pager } from '../components/common/Pager'
 import { StatusBadge } from '../components/common/StatusBadge'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
+import { buildProductDetailHref } from '../lib/productDetailNav'
 import type { ProductRow } from '../types'
 import { formatPpm, formatWon } from '../lib/format'
 
@@ -222,7 +223,10 @@ export function ProductAnalysis() {
                   <tr key={row.id} className="border-b border-line/70 hover:bg-canvas">
                     {showTypeColumn && <td className="px-2 py-3">{row.type}</td>}
                     <td className="px-2 py-3">
-                      <Link to={`/products/${row.id}`} className="font-medium text-accent hover:underline">
+                      <Link
+                        to={buildProductDetailHref(row.id, 'products')}
+                        className="font-medium text-accent hover:underline"
+                      >
                         {row.name}
                       </Link>
                     </td>

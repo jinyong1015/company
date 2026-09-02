@@ -1,4 +1,13 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import {
+  Activity,
+  ArrowLeft,
+  CalendarRange,
+  ChevronRight,
+  LayoutDashboard,
+  Package,
+  type LucideIcon,
+} from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -10,17 +19,24 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { PageHeader } from "../components/common/PageHeader";
 import { Panel } from "../components/common/Panel";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { useData } from "../context/DataContext";
 import { useFilters } from "../context/FilterContext";
 import {
+  analyzeRecords,
   buildDefectEquipmentMoldAnalysis,
   filterRecords,
 } from "../lib/analyze";
 import { fromEntityId, toEntityId } from "../lib/entityId";
+import {
+  parseProductDetailFrom,
+  PRODUCT_DETAIL_FROM_LABELS,
+  PRODUCT_DETAIL_FROM_PATHS,
+  type ProductDetailFromId,
+} from "../lib/productDetailNav";
 import {
   failRatePpm,
   formatPercent,
@@ -29,23 +45,100 @@ import {
   statusByPpm,
 } from "../lib/format";
 import type { Analytics, InspectionRecord, ProductRow } from "../types";
+import type { FilterState } from "../context/FilterContext";
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function readUrlDateRange(searchParams: URLSearchParams) {
+  const startDate = searchParams.get("startDate");
+  const endDate = searchParams.get("endDate");
+  if (
+    !startDate ||
+    !endDate ||
+    !DATE_PATTERN.test(startDate) ||
+    !DATE_PATTERN.test(endDate)
+  ) {
+    return null;
+  }
+  return { startDate, endDate };
+}
+
+const BACK_NAV_ICONS: Record<ProductDetailFromId, LucideIcon> = {
+  "weekly-report": CalendarRange,
+  dashboard: LayoutDashboard,
+  products: Package,
+  quality: Activity,
+};
+
+function buildBackNav(from: ProductDetailFromId) {
+  return {
+    from,
+    label: PRODUCT_DETAIL_FROM_LABELS[from],
+    path: PRODUCT_DETAIL_FROM_PATHS[from],
+    icon: BACK_NAV_ICONS[from],
+  };
+}
 
 export function ProductDetail() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const { analytics, records } = useData();
-  const { filters } = useFilters();
+  const { filters, setCustomDateRange } = useFilters();
   const name = fromEntityId(id, "prd");
+  const urlDateRange = useMemo(
+    () => readUrlDateRange(searchParams),
+    [searchParams],
+  );
 
-  const product =
-    analytics.products.find(
-      (p) => p.id === id || p.id === toEntityId("prd", name) || p.name === name,
-    ) ?? null;
+  useLayoutEffect(() => {
+    if (!urlDateRange) return;
+    setCustomDateRange(urlDateRange.startDate, urlDateRange.endDate);
+  }, [urlDateRange, setCustomDateRange]);
+
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [id, searchParams]);
+
+  const effectiveFilters = useMemo<FilterState>(
+    () =>
+      urlDateRange
+        ? {
+            ...filters,
+            period: "custom",
+            startDate: urlDateRange.startDate,
+            endDate: urlDateRange.endDate,
+          }
+        : filters,
+    [filters, urlDateRange],
+  );
 
   const scoped = useMemo(
     () =>
-      filterRecords(records, filters, true).filter((r) => r.product === name),
-    [records, filters, name],
+      filterRecords(records, effectiveFilters, true).filter(
+        (r) => r.product === name,
+      ),
+    [records, effectiveFilters, name],
   );
+
+  const productAnalytics = useMemo(
+    () => (urlDateRange ? analyzeRecords(records, effectiveFilters) : analytics),
+    [urlDateRange, records, effectiveFilters, analytics],
+  );
+
+  const product =
+    productAnalytics.products.find(
+      (p) => p.id === id || p.id === toEntityId("prd", name) || p.name === name,
+    ) ?? null;
+
+  const backFrom = parseProductDetailFrom(searchParams.get("from"));
+  const backNav = buildBackNav(backFrom);
+  const fromWeeklyReport = backFrom === "weekly-report";
+  const weeklyStart = searchParams.get("startDate");
+  const weeklyEnd = searchParams.get("endDate");
+  const periodRange =
+    fromWeeklyReport && weeklyStart && weeklyEnd
+      ? { start: weeklyStart, end: weeklyEnd }
+      : null;
 
   if (!name) {
     return (
@@ -58,17 +151,10 @@ export function ProductDetail() {
   if (!product && scoped.length === 0) {
     return (
       <div className="space-y-5">
+        <ProductDetailBackNav backNav={backNav} periodRange={periodRange} />
         <PageHeader
           title={name}
           description="선택한 기간/분석 그룹에 이 품번의 DATA가 없습니다."
-          actions={
-            <Link
-              to="/products"
-              className="text-sm text-accent hover:underline"
-            >
-              ← 목록으로
-            </Link>
-          }
         />
         <Panel>
           <p className="text-sm text-muted">
@@ -84,8 +170,68 @@ export function ProductDetail() {
       name={name}
       product={product}
       scoped={scoped}
-      analytics={analytics}
+      analytics={productAnalytics}
+      backNav={backNav}
+      periodRange={periodRange}
     />
+  );
+}
+
+function ProductDetailBackNav({
+  backNav,
+  periodRange,
+}: {
+  backNav: ReturnType<typeof buildBackNav>;
+  periodRange?: { start: string; end: string } | null;
+}) {
+  const Icon = backNav.icon;
+
+  return (
+    <nav aria-label="품번 상세 돌아가기" className="sticky top-16 z-10">
+      <Link
+        to={backNav.path}
+        className="group flex items-center gap-3 rounded-2xl border-2 border-accent/50 bg-white p-3 shadow-[0_8px_24px_rgba(59,130,246,0.12)] ring-1 ring-accent/20 transition hover:border-accent hover:bg-accent/[0.03] hover:shadow-[0_12px_28px_rgba(59,130,246,0.18)] sm:gap-4 sm:p-4"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-white shadow-sm transition group-hover:bg-blue-600 sm:h-12 sm:w-12">
+          <ArrowLeft size={20} strokeWidth={2.5} aria-hidden />
+        </span>
+
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/25 sm:h-12 sm:w-12">
+          <Icon size={20} strokeWidth={2.25} aria-hidden />
+        </span>
+
+        <span className="min-w-0 flex-1">
+          <span className="block text-[11px] font-bold tracking-[0.12em] text-accent uppercase">
+            돌아가기
+          </span>
+          <span className="mt-0.5 block truncate text-base font-bold text-ink transition group-hover:text-accent sm:text-lg">
+            {backNav.label}
+          </span>
+        </span>
+
+        {periodRange ? (
+          <span className="hidden shrink-0 rounded-xl border border-line bg-canvas px-3 py-2 text-right sm:block">
+            <span className="block text-[10px] font-semibold tracking-wide text-muted uppercase">
+              조회기간
+            </span>
+            <span className="num mt-0.5 block text-xs font-semibold text-ink">
+              {periodRange.start} ~ {periodRange.end}
+            </span>
+          </span>
+        ) : null}
+
+        <ChevronRight
+          size={20}
+          className="shrink-0 text-muted/60 transition group-hover:translate-x-0.5 group-hover:text-accent"
+          aria-hidden
+        />
+      </Link>
+      {periodRange ? (
+        <p className="num mt-2 px-1 text-center text-xs font-medium text-muted sm:hidden">
+          조회기간 {periodRange.start} ~ {periodRange.end}
+        </p>
+      ) : null}
+    </nav>
   );
 }
 
@@ -94,11 +240,15 @@ function ProductDetailBody({
   product,
   scoped,
   analytics,
+  backNav,
+  periodRange,
 }: {
   name: string;
   product: ProductRow | null;
   scoped: InspectionRecord[];
   analytics: Analytics;
+  backNav: ReturnType<typeof buildBackNav>;
+  periodRange?: { start: string; end: string } | null;
 }) {
   const qty = product?.qty ?? scoped.reduce((s, r) => s + r.qty, 0);
   const pass = product?.pass ?? scoped.reduce((s, r) => s + r.pass, 0);
@@ -168,20 +318,16 @@ function ProductDetailBody({
 
   return (
     <div className="space-y-5">
+      <ProductDetailBackNav backNav={backNav} periodRange={periodRange} />
+
       <PageHeader
         title={name}
-        description={`${type} · 선택한 기간/분석 그룹 기준`}
-        actions={
-          <div className="flex items-center gap-3">
-            <StatusBadge status={status} />
-            <Link
-              to="/products"
-              className="text-sm text-accent hover:underline"
-            >
-              ← 목록으로
-            </Link>
-          </div>
+        description={
+          periodRange
+            ? `${type} · 선택 주차 품번 상세`
+            : `${type} · 선택한 기간/분석 그룹 기준`
         }
+        actions={<StatusBadge status={status} />}
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

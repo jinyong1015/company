@@ -17,6 +17,7 @@ import { DataManagement } from './pages/DataManagement'
 import { DataQuality } from './pages/DataQuality'
 import { SmartCompare } from './pages/SmartCompare'
 import { AiAsk } from './pages/AiAsk'
+import { WeeklyReport } from './pages/WeeklyReport'
 
 export default function App() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
               <Route path="manage" element={<DataManagement />} />
               <Route path="quality-data" element={<DataQuality />} />
               <Route path="anomalies" element={<AnomalyAnalysis />} />
+              <Route path="weekly-report" element={<WeeklyReport />} />
               <Route path="ai" element={<AiAsk />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

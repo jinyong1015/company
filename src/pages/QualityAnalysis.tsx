@@ -8,6 +8,7 @@ import { useData } from '../context/DataContext'
 import { useFilters } from '../context/FilterContext'
 import { filterRecords } from '../lib/analyze'
 import { toEntityId } from '../lib/entityId'
+import { buildProductDetailHref } from '../lib/productDetailNav'
 import { formatPpm, formatWon, failRatePpm } from '../lib/format'
 import type { InspectionRecord } from '../types'
 
@@ -234,7 +235,10 @@ export function QualityAnalysis() {
                   <tr key={row.id} className="border-b border-line/70 hover:bg-canvas">
                     <td className="num px-2 py-2.5 text-muted">{row.rank}</td>
                     <td className="px-2 py-2.5 font-medium">
-                      <Link to={`/products/${row.id}`} className="text-accent hover:underline">
+                      <Link
+                        to={buildProductDetailHref(row.id, 'quality')}
+                        className="text-accent hover:underline"
+                      >
                         {row.product}
                       </Link>
                     </td>
@@ -262,7 +266,7 @@ export function QualityAnalysis() {
             {productFailTop.map((p, i) => (
               <Link
                 key={p.id}
-                to={`/products/${p.id}`}
+                to={buildProductDetailHref(p.id, 'quality')}
                 className="flex items-center justify-between rounded-xl bg-canvas/70 px-3 py-2.5 transition hover:bg-accent-soft"
               >
                 <div className="flex items-start gap-3">

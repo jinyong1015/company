@@ -277,6 +277,88 @@ export interface FilterOptions {
   lots: string[]
 }
 
+export type WeeklyReportMetric = 'qty' | 'fail' | 'failRate' | 'scrapCost'
+
+export type WeeklyReportOrgId = 'seal' | 'hydraulic' | 'plant2'
+
+export interface MonthlyOrgMetric {
+  monthKey: string
+  monthLabel: string
+  seal: number
+  hydraulic: number
+  plant2: number
+  total: number
+}
+
+export interface WeekPeriod {
+  year: number
+  month: number
+  weekOfMonth: number
+  label: string
+  startDate: string
+  endDate: string
+  hasData: boolean
+}
+
+export interface OrgWeeklyStats {
+  qty: number
+  fail: number
+  failRate: number
+  scrapCost: number
+}
+
+export interface WeeklyProductionRow {
+  periodKey: string
+  periodLabel: string
+  isCurrent: boolean
+  columns: {
+    hydraulic: OrgWeeklyStats
+    seal: OrgWeeklyStats
+    plant2: OrgWeeklyStats
+    total: OrgWeeklyStats
+  }
+}
+
+export interface WorstProductItem {
+  rank: number
+  product: string
+  qty: number
+  fail: number
+  failRate: number
+  failRatePercent: number
+  mainDefect: string
+}
+
+export interface WeeklyIssue {
+  id: string
+  source: 'auto' | 'manual'
+  order: number
+  product?: string
+  failRatePercent?: number
+  title: string
+  bullets: string[]
+}
+
+export interface WeeklyReportDetail {
+  period: WeekPeriod
+  title: string
+  productionRows: WeeklyProductionRow[]
+  issues: WeeklyIssue[]
+  worst5: Record<WeeklyReportOrgId, WorstProductItem[]>
+  worst5Thresholds: Record<WeeklyReportOrgId, number>
+}
+
+export interface WeeklyReportMonthlyView {
+  metric: WeeklyReportMetric
+  months: MonthlyOrgMetric[]
+  tableRows: {
+    id: WeeklyReportOrgId | 'total'
+    label: string
+    values: Record<string, number>
+  }[]
+  range: { from: string; to: string }
+}
+
 export interface Analytics {
   kpis: KpiItem[]
   dailyTrends: DailyTrend[]

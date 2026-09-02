@@ -5,6 +5,7 @@ import {
   BarChart3,
   Bell,
   Boxes,
+  CalendarRange,
   ClipboardList,
   Coins,
   Factory,
@@ -29,6 +30,7 @@ const nav = [
   { to: '/equipment', label: '설비 분석', icon: Factory, group: '분석' },
   { to: '/costs', label: '비용 분석', icon: Coins, group: '분석' },
   { to: '/compare', label: '스마트 비교', icon: GitCompare, group: '인사이트' },
+  { to: '/weekly-report', label: '주간업무 보고', icon: CalendarRange, group: '인사이트' },
   { to: '/anomalies', label: '이상징후', icon: AlertTriangle, group: '인사이트' },
   { to: '/data', label: '검사 DATA', icon: ClipboardList, group: '인사이트' },
   { to: '/quality-data', label: '데이터 품질', icon: ShieldCheck, group: '인사이트' },
@@ -45,6 +47,7 @@ const pageTitles: Record<string, string> = {
   '/equipment': '설비 분석',
   '/costs': '비용 분석',
   '/compare': '스마트 비교',
+  '/weekly-report': '주간업무 보고',
   '/data': '검사 DATA',
   '/manage': '데이터 업로드',
   '/quality-data': '데이터 품질',
@@ -52,7 +55,7 @@ const pageTitles: Record<string, string> = {
   '/ai': 'AI에게 질문하기',
 }
 
-const hideGlobalFilters = ['/manage', '/ai']
+const hideGlobalFilters = ['/manage', '/ai', '/weekly-report']
 
 export function Layout() {
   const { analytics } = useData()

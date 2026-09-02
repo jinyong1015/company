@@ -23,6 +23,7 @@ import { useData } from "../context/DataContext";
 import { groupLabel, analysisGroupColor } from "../lib/groups";
 import { useFilters } from "../context/FilterContext";
 import { downloadExcel } from "../lib/download";
+import { buildProductDetailHref } from "../lib/productDetailNav";
 import { DEFECT_TYPE_COLORS } from "../lib/defectColors";
 import { formatPpm, formatWon } from "../lib/format";
 import type { DailyTrend, DefectType, GroupTrendSeries } from "../types";
@@ -703,7 +704,7 @@ export function Dashboard() {
             {productTop.map((p) => (
               <Link
                 key={p.id}
-                to={`/products/${p.id}`}
+                to={buildProductDetailHref(p.id, "dashboard")}
                 className="flex items-center justify-between rounded-xl bg-canvas/70 px-3 py-2.5 hover:bg-accent-soft"
               >
                 <div>

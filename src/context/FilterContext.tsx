@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useMemo,
   useState,
@@ -31,6 +32,7 @@ interface FilterContextValue {
   setAnalysisGroup: (group: AnalysisGroupId) => void
   setPeriod: (period: PeriodId) => void
   setDateRange: (start: string, end: string) => void
+  setCustomDateRange: (start: string, end: string) => void
   toggleMulti: (key: MultiKey, value: string) => void
   clearFilters: () => void
   activeFilterCount: number
@@ -68,6 +70,50 @@ const FilterContext = createContext<FilterContextValue | null>(null)
 export function FilterProvider({ children }: { children: ReactNode }) {
   const [filters, setFilters] = useState<FilterState>(initial)
 
+  const setAnalysisGroup = useCallback((analysisGroup: AnalysisGroupId) => {
+    setFilters((prev) => ({ ...prev, analysisGroup }))
+  }, [])
+
+  const setPeriod = useCallback((period: PeriodId) => {
+    setFilters((prev) => ({ ...prev, period }))
+  }, [])
+
+  const setDateRange = useCallback((startDate: string, endDate: string) => {
+    setFilters((prev) => ({ ...prev, startDate, endDate }))
+  }, [])
+
+  const setCustomDateRange = useCallback((startDate: string, endDate: string) => {
+    setFilters((prev) => {
+      if (
+        prev.period === 'custom' &&
+        prev.startDate === startDate &&
+        prev.endDate === endDate
+      ) {
+        return prev
+      }
+      return {
+        ...prev,
+        period: 'custom',
+        startDate,
+        endDate,
+      }
+    })
+  }, [])
+
+  const toggleMulti = useCallback((key: MultiKey, value: string) => {
+    setFilters((prev) => {
+      const list = prev[key]
+      const next = list.includes(value)
+        ? list.filter((v) => v !== value)
+        : [...list, value]
+      return { ...prev, [key]: next }
+    })
+  }, [])
+
+  const clearFilters = useCallback(() => {
+    setFilters((prev) => ({ ...initial, analysisGroup: prev.analysisGroup }))
+  }, [])
+
   const value = useMemo<FilterContextValue>(() => {
     const multiKeys: MultiKey[] = [
       'teams',
@@ -83,23 +129,23 @@ export function FilterProvider({ children }: { children: ReactNode }) {
 
     return {
       filters,
-      setAnalysisGroup: (analysisGroup) =>
-        setFilters((prev) => ({ ...prev, analysisGroup })),
-      setPeriod: (period) => setFilters((prev) => ({ ...prev, period })),
-      setDateRange: (startDate, endDate) =>
-        setFilters((prev) => ({ ...prev, startDate, endDate })),
-      toggleMulti: (key, value) =>
-        setFilters((prev) => {
-          const list = prev[key]
-          const next = list.includes(value)
-            ? list.filter((v) => v !== value)
-            : [...list, value]
-          return { ...prev, [key]: next }
-        }),
-      clearFilters: () => setFilters({ ...initial, analysisGroup: filters.analysisGroup }),
+      setAnalysisGroup,
+      setPeriod,
+      setDateRange,
+      setCustomDateRange,
+      toggleMulti,
+      clearFilters,
       activeFilterCount: multiKeys.reduce((sum, key) => sum + filters[key].length, 0),
     }
-  }, [filters])
+  }, [
+    filters,
+    setAnalysisGroup,
+    setPeriod,
+    setDateRange,
+    setCustomDateRange,
+    toggleMulti,
+    clearFilters,
+  ])
 
   return <FilterContext.Provider value={value}>{children}</FilterContext.Provider>
 }
