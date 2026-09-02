@@ -111,9 +111,6 @@ export function WeeklyProductionTable({ rows }: { rows: WeeklyProductionRow[] })
       {METRICS.map((metric) => (
         <MetricBlock key={metric.key} metric={metric} rows={rows} />
       ))}
-      <p className="text-[11px] text-muted">
-        유압 및 ORANGE = 1공장 유압+GROMMET · 파란 테두리 = 현재 선택 주차
-      </p>
     </div>
   )
 }
