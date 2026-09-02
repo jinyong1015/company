@@ -62,8 +62,8 @@ function formatCell(metric: WeeklyReportMetric, value: number) {
 
 function yAxisTick(metric: WeeklyReportMetric, v: number) {
   if (metric === 'failRate') return `${Math.round(v / 1000)}k`
-  if (metric === 'scrapCost' && v >= 1_000_000) {
-    return `${Math.round(v / 1_000_000)}M`
+  if (metric === 'scrapCost') {
+    return Math.round(v).toLocaleString('ko-KR')
   }
   return Math.round(v).toLocaleString('ko-KR')
 }
@@ -129,7 +129,7 @@ export function MonthlyTrendSection({
               tick={{ fontSize: 11, fill: '#5b6577' }}
               axisLine={false}
               tickLine={false}
-              width={56}
+              width={metric === 'scrapCost' ? 80 : 56}
               tickFormatter={(v) => yAxisTick(metric, Number(v))}
             />
             <Tooltip
@@ -188,7 +188,7 @@ export function MonthlyTrendSection({
                   const n = Number(v ?? 0)
                   if (!Number.isFinite(n)) return ''
                   if (metric === 'failRate') return formatPpm(n)
-                  if (metric === 'scrapCost') return `${Math.round(n / 1000)}k`
+                  if (metric === 'scrapCost') return `${Math.round(n).toLocaleString('ko-KR')}원`
                   return Math.round(n).toLocaleString()
                 }}
               />
