@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { formatWonSuffix } from '../../lib/format'
 import { WEEKLY_REPORT_ORGS } from '../../lib/weeklyReport'
 import type { OrgWeeklyStats, WeeklyProductionRow } from '../../types'
@@ -18,6 +19,13 @@ const ORG_COLUMNS = [
   })),
   { id: 'total' as const, label: 'TOTAL', fullLabel: 'TOTAL' },
 ]
+
+export type EditableCustomPeriodLabelProps = {
+  label: string
+  defaultLabel: string
+  queryPeriodTitle: string
+  onChange: (value: string) => void
+}
 
 function formatValue(key: MetricKey, value: number) {
   if (key === 'scrapCost') return formatWonSuffix(value)
@@ -40,12 +48,124 @@ function customPeriodTitle(periodKey: string) {
   return startDate === endDate ? startDate : `${startDate} ~ ${endDate}`
 }
 
+const periodLabelWrapClass =
+  'inline-flex items-center gap-1.5 whitespace-nowrap'
+
+const periodLabelCellClass =
+  'border-t border-line/40 px-3 py-3 text-xs font-semibold text-ink'
+
+function CurrentBadge() {
+  return <span className="text-[10px] font-bold text-accent">현재</span>
+}
+
+function EditableCustomPeriodLabel({
+  label,
+  defaultLabel,
+  queryPeriodTitle,
+  onChange,
+}: EditableCustomPeriodLabelProps) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(label)
+
+  useEffect(() => {
+    if (!editing) setDraft(label)
+  }, [label, editing])
+
+  const commit = () => {
+    const trimmed = draft.trim()
+    onChange(trimmed || defaultLabel)
+    setEditing(false)
+  }
+
+  if (editing) {
+    const inputCh = Math.max(12, draft.length + 2)
+    return (
+      <span className={periodLabelWrapClass}>
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit()
+            if (e.key === 'Escape') {
+              setDraft(label)
+              setEditing(false)
+            }
+          }}
+          onBlur={commit}
+          onFocus={(e) => e.target.select()}
+          style={{ width: `${inputCh}ch` }}
+          className="min-w-[10ch] max-w-[24ch] rounded border border-accent bg-white px-1.5 py-0.5 text-inherit focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
+          autoFocus
+          aria-label="기간 표시 문구"
+        />
+        <CurrentBadge />
+      </span>
+    )
+  }
+
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={() => setEditing(true)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          setEditing(true)
+        }
+      }}
+      className={`${periodLabelWrapClass} cursor-pointer`}
+      title={`조회기간: ${queryPeriodTitle}\n클릭하여 표시 문구 수정 (기본: ${defaultLabel})`}
+    >
+      {label}
+      <CurrentBadge />
+    </span>
+  )
+}
+
+function PeriodLabelCell({
+  period,
+  editableCustomPeriodLabel,
+}: {
+  period: WeeklyProductionRow
+  editableCustomPeriodLabel?: EditableCustomPeriodLabelProps
+}) {
+  const isEditableCustomCurrent =
+    period.isCurrent &&
+    period.periodKey.startsWith('custom:') &&
+    editableCustomPeriodLabel
+
+  if (isEditableCustomCurrent) {
+    return (
+      <EditableCustomPeriodLabel
+        label={editableCustomPeriodLabel.label}
+        defaultLabel={editableCustomPeriodLabel.defaultLabel}
+        queryPeriodTitle={editableCustomPeriodLabel.queryPeriodTitle}
+        onChange={editableCustomPeriodLabel.onChange}
+      />
+    )
+  }
+
+  return (
+    <span
+      className={periodLabelWrapClass}
+      title={customPeriodTitle(period.periodKey)}
+    >
+      {period.periodLabel}
+      {period.isCurrent ? <CurrentBadge /> : null}
+    </span>
+  )
+}
+
 function MetricBlock({
   metric,
   rows,
+  editableCustomPeriodLabel,
 }: {
   metric: (typeof METRICS)[number]
   rows: WeeklyProductionRow[]
+  editableCustomPeriodLabel?: EditableCustomPeriodLabelProps
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border-2 border-ink/90 shadow-sm">
@@ -81,16 +201,11 @@ function MetricBlock({
                   : 'bg-white'
               }
             >
-              <td className="border-t border-line/40 px-3 py-3">
-                <span
-                  className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-ink"
-                  title={customPeriodTitle(period.periodKey)}
-                >
-                  <span className="num">{period.periodLabel}</span>
-                  {period.isCurrent ? (
-                    <span className="text-[10px] font-bold text-accent">현재</span>
-                  ) : null}
-                </span>
+              <td className={periodLabelCellClass}>
+                <PeriodLabelCell
+                  period={period}
+                  editableCustomPeriodLabel={editableCustomPeriodLabel}
+                />
               </td>
               {ORG_COLUMNS.map((col) => {
                 const value = cellValue(period, col.id, metric.key)
@@ -117,11 +232,22 @@ function MetricBlock({
   )
 }
 
-export function WeeklyProductionTable({ rows }: { rows: WeeklyProductionRow[] }) {
+export function WeeklyProductionTable({
+  rows,
+  editableCustomPeriodLabel,
+}: {
+  rows: WeeklyProductionRow[]
+  editableCustomPeriodLabel?: EditableCustomPeriodLabelProps
+}) {
   return (
     <div className="space-y-4">
       {METRICS.map((metric) => (
-        <MetricBlock key={metric.key} metric={metric} rows={rows} />
+        <MetricBlock
+          key={metric.key}
+          metric={metric}
+          rows={rows}
+          editableCustomPeriodLabel={editableCustomPeriodLabel}
+        />
       ))}
     </div>
   )

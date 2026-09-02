@@ -14,6 +14,7 @@ import {
   buildWeeklyReportDetail,
   buildWeeklyReportDetailByDateRange,
   findDefaultWeek,
+  formatProductionPeriodLabel,
   getWeekDateRange,
   listWeeksInMonth,
   loadWorst5Thresholds,
@@ -22,6 +23,12 @@ import {
   saveWorst5Thresholds,
   WEEKLY_REPORT_ORGS,
 } from '../lib/weeklyReport'
+import {
+  formatProductionQueryPeriodTitle,
+  loadProductionPeriodLabel,
+  productionPeriodLabelKey,
+  saveProductionPeriodLabel,
+} from '../lib/weeklyReportProductionLabel'
 import {
   buildWeeklyReportSearchParams,
   loadWeeklyReportPeriod,
@@ -261,6 +268,52 @@ export function WeeklyReport() {
   const rangeInvalid =
     periodMode === 'custom' && !isValidDateRange(rangeStart, rangeEnd)
 
+  const customProductionLabelKey = useMemo(() => {
+    if (periodMode !== 'custom' || rangeInvalid) return null
+    return productionPeriodLabelKey(rangeStart, rangeEnd)
+  }, [periodMode, rangeInvalid, rangeStart, rangeEnd])
+
+  const defaultCustomProductionLabel = useMemo(() => {
+    if (!customProductionLabelKey) return ''
+    return formatProductionPeriodLabel(rangeStart, rangeEnd)
+  }, [customProductionLabelKey, rangeStart, rangeEnd])
+
+  const [customProductionLabel, setCustomProductionLabel] = useState('')
+
+  useEffect(() => {
+    if (!customProductionLabelKey) return
+    const saved = loadProductionPeriodLabel(customProductionLabelKey)
+    setCustomProductionLabel(
+      saved ?? formatProductionPeriodLabel(rangeStart, rangeEnd),
+    )
+  }, [customProductionLabelKey, rangeStart, rangeEnd])
+
+  const displayProductionRows = useMemo(() => {
+    if (!customProductionLabelKey) return weeklyDetail.productionRows
+    return weeklyDetail.productionRows.map((row) =>
+      row.isCurrent && row.periodKey.startsWith('custom:')
+        ? { ...row, periodLabel: customProductionLabel }
+        : row,
+    )
+  }, [
+    weeklyDetail.productionRows,
+    customProductionLabelKey,
+    customProductionLabel,
+  ])
+
+  const handleCustomProductionLabelChange = useCallback(
+    (label: string) => {
+      const trimmed = label.trim()
+      const next =
+        trimmed || formatProductionPeriodLabel(rangeStart, rangeEnd)
+      setCustomProductionLabel(next)
+      if (customProductionLabelKey) {
+        saveProductionPeriodLabel(customProductionLabelKey, next)
+      }
+    },
+    [customProductionLabelKey, rangeStart, rangeEnd],
+  )
+
   if (!records.length) {
     return (
       <div className="space-y-4">
@@ -412,7 +465,22 @@ export function WeeklyReport() {
                 title="주간 생산/검사 실적"
                 description="전주 대비 주차별 실적 비교"
               >
-                <WeeklyProductionTable rows={weeklyDetail.productionRows} />
+                <WeeklyProductionTable
+                  rows={displayProductionRows}
+                  editableCustomPeriodLabel={
+                    customProductionLabelKey
+                      ? {
+                          label: customProductionLabel,
+                          defaultLabel: defaultCustomProductionLabel,
+                          queryPeriodTitle: formatProductionQueryPeriodTitle(
+                            rangeStart,
+                            rangeEnd,
+                          ),
+                          onChange: handleCustomProductionLabelChange,
+                        }
+                      : undefined
+                  }
+                />
               </Panel>
               <WeeklyIssuePanel
                 issues={issues}

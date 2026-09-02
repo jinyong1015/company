@@ -419,7 +419,7 @@ function buildProductionRowByRange(
 }
 
 /** 생산/검사 실적 표 1열 — 짧은 날짜로 한 줄 표시 */
-function formatProductionPeriodLabel(startDate: string, endDate: string) {
+export function formatProductionPeriodLabel(startDate: string, endDate: string) {
   const short = (date: string) => `${date.slice(5, 7)}/${date.slice(8, 10)}`
   if (startDate === endDate) return short(startDate)
   return `${short(startDate)} ~ ${short(endDate)}`
