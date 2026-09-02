@@ -298,6 +298,8 @@ export interface WeekPeriod {
   startDate: string
   endDate: string
   hasData: boolean
+  /** 사용자가 직접 지정한 조회 기간 */
+  isCustom?: boolean
 }
 
 export interface OrgWeeklyStats {

@@ -272,6 +272,58 @@ export function buildMonthlyReportView(
   }
 }
 
+export function getDefaultWorst5Thresholds(): Record<WeeklyReportOrgId, number> {
+  return Object.fromEntries(
+    WEEKLY_REPORT_ORGS.map((org) => [org.id, org.worstMinQty]),
+  ) as Record<WeeklyReportOrgId, number>
+}
+
+const WORST5_THRESHOLD_STORAGE_KEY = 'weekly-report-worst5-thresholds'
+
+function normalizeWorst5Threshold(value: unknown, fallback: number) {
+  const n = Math.round(Number(value))
+  if (!Number.isFinite(n) || n < 0) return fallback
+  return n
+}
+
+export function loadWorst5Thresholds(): Record<WeeklyReportOrgId, number> {
+  const defaults = getDefaultWorst5Thresholds()
+  try {
+    const raw = localStorage.getItem(WORST5_THRESHOLD_STORAGE_KEY)
+    if (!raw) return defaults
+    const parsed = JSON.parse(raw) as Partial<Record<WeeklyReportOrgId, number>>
+    return {
+      seal: normalizeWorst5Threshold(parsed.seal, defaults.seal),
+      hydraulic: normalizeWorst5Threshold(parsed.hydraulic, defaults.hydraulic),
+      plant2: normalizeWorst5Threshold(parsed.plant2, defaults.plant2),
+    }
+  } catch {
+    return defaults
+  }
+}
+
+export function saveWorst5Thresholds(
+  thresholds: Record<WeeklyReportOrgId, number>,
+) {
+  try {
+    localStorage.setItem(WORST5_THRESHOLD_STORAGE_KEY, JSON.stringify(thresholds))
+  } catch {
+    /* ignore */
+  }
+}
+
+function buildWorst5Map(
+  weekRecords: InspectionRecord[],
+  thresholds: Record<WeeklyReportOrgId, number>,
+): WeeklyReportDetail['worst5'] {
+  return Object.fromEntries(
+    WEEKLY_REPORT_ORGS.map((org) => [
+      org.id,
+      buildWorst5(weekRecords, org.groupId, thresholds[org.id]),
+    ]),
+  ) as WeeklyReportDetail['worst5']
+}
+
 function buildWorst5(
   records: InspectionRecord[],
   groupId: AnalysisGroupId,
@@ -305,14 +357,12 @@ function buildWorst5(
     .map((p, i) => ({ ...p, rank: i + 1 }))
 }
 
-function buildProductionRow(
-  records: InspectionRecord[],
-  year: number,
-  month: number,
-  weekOfMonth: number,
+function buildProductionRowFromRecords(
+  weekRecords: InspectionRecord[],
+  periodKey: string,
+  periodLabel: string,
   isCurrent: boolean,
 ): WeeklyProductionRow {
-  const weekRecords = recordsInWeek(records, year, month, weekOfMonth)
   const hydraulic = orgStats(filterByGroup(weekRecords, 'hydraulic'))
   const seal = orgStats(filterByGroup(weekRecords, 'seal'))
   const plant2 = orgStats(filterByGroup(weekRecords, 'plant2'))
@@ -326,11 +376,60 @@ function buildProductionRow(
   }
 
   return {
-    periodKey: `${year}-${String(month).padStart(2, '0')}-W${weekOfMonth}`,
-    periodLabel: weekLabel(month, weekOfMonth),
+    periodKey,
+    periodLabel,
     isCurrent,
     columns: { hydraulic, seal, plant2, total },
   }
+}
+
+function buildProductionRow(
+  records: InspectionRecord[],
+  year: number,
+  month: number,
+  weekOfMonth: number,
+  isCurrent: boolean,
+): WeeklyProductionRow {
+  const weekRecords = recordsInWeek(records, year, month, weekOfMonth)
+  return buildProductionRowFromRecords(
+    weekRecords,
+    `${year}-${String(month).padStart(2, '0')}-W${weekOfMonth}`,
+    weekLabel(month, weekOfMonth),
+    isCurrent,
+  )
+}
+
+function buildProductionRowByRange(
+  records: InspectionRecord[],
+  startDate: string,
+  endDate: string,
+  periodKey: string,
+  periodLabel: string,
+  isCurrent: boolean,
+): WeeklyProductionRow {
+  const weekRecords = records.filter((r) =>
+    inDateRange(r.date, startDate, endDate),
+  )
+  return buildProductionRowFromRecords(
+    weekRecords,
+    periodKey,
+    periodLabel,
+    isCurrent,
+  )
+}
+
+/** 생산/검사 실적 표 1열 — 짧은 날짜로 한 줄 표시 */
+function formatProductionPeriodLabel(startDate: string, endDate: string) {
+  const short = (date: string) => `${date.slice(5, 7)}/${date.slice(8, 10)}`
+  if (startDate === endDate) return short(startDate)
+  return `${short(startDate)} ~ ${short(endDate)}`
+}
+
+export function periodKeyFromPeriod(period: WeekPeriod) {
+  if (period.isCustom) {
+    return `custom:${period.startDate}:${period.endDate}`
+  }
+  return periodKeyOf(period.year, period.month, period.weekOfMonth)
 }
 
 export function buildAutoWeeklyIssues(
@@ -409,6 +508,7 @@ export function buildWeeklyReportDetail(
   year: number,
   month: number,
   weekOfMonth: number,
+  worst5Thresholds: Record<WeeklyReportOrgId, number> = getDefaultWorst5Thresholds(),
 ): WeeklyReportDetail {
   const analyzable = analyzableRecords(records)
   const { startDate, endDate } = getWeekDateRange(year, month, weekOfMonth)
@@ -422,16 +522,7 @@ export function buildWeeklyReportDetail(
     buildProductionRow(analyzable, year, month, weekOfMonth, true),
   ]
 
-  const worst5 = Object.fromEntries(
-    WEEKLY_REPORT_ORGS.map((org) => [
-      org.id,
-      buildWorst5(weekRecords, org.groupId, org.worstMinQty),
-    ]),
-  ) as WeeklyReportDetail['worst5']
-
-  const worst5Thresholds = Object.fromEntries(
-    WEEKLY_REPORT_ORGS.map((org) => [org.id, org.worstMinQty]),
-  ) as WeeklyReportDetail['worst5Thresholds']
+  const worst5 = buildWorst5Map(weekRecords, worst5Thresholds)
 
   const period: WeekPeriod = {
     year,
@@ -449,11 +540,82 @@ export function buildWeeklyReportDetail(
     prev.year,
     prev.month,
     prev.weekOfMonth,
+    worst5Thresholds,
   )
   const saved = loadWeeklyIssues(periodKey)
   const detail: WeeklyReportDetail = {
     period,
     title: `${year}년 ${weekLabel(month, weekOfMonth)} 완성품 부적합 현황`,
+    productionRows,
+    issues: [],
+    worst5,
+    worst5Thresholds,
+  }
+  detail.issues = saved ?? buildAutoWeeklyIssues(detail, prevDetail)
+  return detail
+}
+
+export function buildWeeklyReportDetailByDateRange(
+  records: InspectionRecord[],
+  startDate: string,
+  endDate: string,
+  anchorWeek: { year: number; month: number; weekOfMonth: number },
+  worst5Thresholds: Record<WeeklyReportOrgId, number> = getDefaultWorst5Thresholds(),
+): WeeklyReportDetail {
+  const analyzable = analyzableRecords(records)
+  const weekRecords = analyzable.filter((r) =>
+    inDateRange(r.date, startDate, endDate),
+  )
+  const prev = previousWeek(
+    anchorWeek.year,
+    anchorWeek.month,
+    anchorWeek.weekOfMonth,
+  )
+  const productionPeriodLabel = formatProductionPeriodLabel(startDate, endDate)
+
+  const productionRows: WeeklyProductionRow[] = [
+    buildProductionRow(
+      analyzable,
+      prev.year,
+      prev.month,
+      prev.weekOfMonth,
+      false,
+    ),
+    buildProductionRowByRange(
+      analyzable,
+      startDate,
+      endDate,
+      `custom:${startDate}:${endDate}`,
+      productionPeriodLabel,
+      true,
+    ),
+  ]
+
+  const worst5 = buildWorst5Map(weekRecords, worst5Thresholds)
+
+  const period: WeekPeriod = {
+    year: anchorWeek.year,
+    month: anchorWeek.month,
+    weekOfMonth: anchorWeek.weekOfMonth,
+    label: '사용자 지정 기간',
+    startDate,
+    endDate,
+    hasData: weekRecords.length > 0,
+    isCustom: true,
+  }
+
+  const periodKey = periodKeyFromPeriod(period)
+  const prevDetail = buildWeeklyReportDetailLite(
+    analyzable,
+    prev.year,
+    prev.month,
+    prev.weekOfMonth,
+    worst5Thresholds,
+  )
+  const saved = loadWeeklyIssues(periodKey)
+  const detail: WeeklyReportDetail = {
+    period,
+    title: `사용자 지정 기간 완성품 부적합 현황`,
     productionRows,
     issues: [],
     worst5,
@@ -472,18 +634,11 @@ function buildWeeklyReportDetailLite(
   year: number,
   month: number,
   weekOfMonth: number,
+  worst5Thresholds: Record<WeeklyReportOrgId, number> = getDefaultWorst5Thresholds(),
 ): WeeklyReportDetail {
   const { startDate, endDate } = getWeekDateRange(year, month, weekOfMonth)
   const weekRecords = records.filter((r) => inDateRange(r.date, startDate, endDate))
-  const worst5 = Object.fromEntries(
-    WEEKLY_REPORT_ORGS.map((org) => [
-      org.id,
-      buildWorst5(weekRecords, org.groupId, org.worstMinQty),
-    ]),
-  ) as WeeklyReportDetail['worst5']
-  const worst5Thresholds = Object.fromEntries(
-    WEEKLY_REPORT_ORGS.map((org) => [org.id, org.worstMinQty]),
-  ) as WeeklyReportDetail['worst5Thresholds']
+  const worst5 = buildWorst5Map(weekRecords, worst5Thresholds)
 
   return {
     period: {
@@ -525,14 +680,16 @@ export function chartDataFromMonthly(view: WeeklyReportMonthlyView) {
   }))
 }
 
-/** 주간업무 보고 → 품번 상세 (조회 기간 쿼리 유지) */
+import type { WeeklyReportPeriodState } from './weeklyReportPeriod'
+
+/** 주간업무 보고 → 품번 상세 (조회 기간·주차 컨텍스트 유지) */
 export function buildWeeklyReportProductLink(
   product: string,
-  startDate: string,
-  endDate: string,
+  period: WeeklyReportPeriodState,
 ) {
   return buildProductDetailHref(toEntityId('prd', product), 'weekly-report', {
-    startDate,
-    endDate,
+    startDate: period.rangeStart,
+    endDate: period.rangeEnd,
+    weeklyReportPeriod: period,
   })
 }

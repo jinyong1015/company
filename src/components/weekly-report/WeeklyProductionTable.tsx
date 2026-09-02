@@ -33,6 +33,13 @@ function cellValue(
   return stats[key]
 }
 
+function customPeriodTitle(periodKey: string) {
+  if (!periodKey.startsWith('custom:')) return undefined
+  const [, startDate, endDate] = periodKey.split(':')
+  if (!startDate || !endDate) return undefined
+  return startDate === endDate ? startDate : `${startDate} ~ ${endDate}`
+}
+
 function MetricBlock({
   metric,
   rows,
@@ -41,7 +48,7 @@ function MetricBlock({
   rows: WeeklyProductionRow[]
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border-2 border-ink/90 shadow-sm">
+    <div className="overflow-x-auto rounded-xl border-2 border-ink/90 shadow-sm">
       <table className="w-full min-w-[480px] text-sm">
         <thead>
           <tr className="bg-ink text-white">
@@ -74,11 +81,16 @@ function MetricBlock({
                   : 'bg-white'
               }
             >
-              <td className="border-t border-line/40 px-3 py-3 text-xs font-semibold text-ink">
-                {period.periodLabel}
-                {period.isCurrent ? (
-                  <span className="ml-1.5 text-[10px] font-bold text-accent">현재</span>
-                ) : null}
+              <td className="border-t border-line/40 px-3 py-3">
+                <span
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold text-ink"
+                  title={customPeriodTitle(period.periodKey)}
+                >
+                  <span className="num">{period.periodLabel}</span>
+                  {period.isCurrent ? (
+                    <span className="text-[10px] font-bold text-accent">현재</span>
+                  ) : null}
+                </span>
               </td>
               {ORG_COLUMNS.map((col) => {
                 const value = cellValue(period, col.id, metric.key)

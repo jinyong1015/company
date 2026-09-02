@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Bar,
@@ -13,6 +13,7 @@ import {
 } from 'recharts'
 import { formatPpm, formatPpmAsPercent } from '../../lib/format'
 import { buildWeeklyReportProductLink } from '../../lib/weeklyReport'
+import type { WeeklyReportPeriodState } from '../../lib/weeklyReportPeriod'
 import type { WorstProductItem } from '../../types'
 
 function niceYMax(max: number) {
@@ -23,20 +24,88 @@ function niceYMax(max: number) {
   return Math.ceil(padded)
 }
 
+function MinQtyThresholdControl({
+  minQty,
+  onChange,
+}: {
+  minQty: number
+  onChange: (value: number) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(String(minQty))
+
+  useEffect(() => {
+    if (!editing) setDraft(String(minQty))
+  }, [minQty, editing])
+
+  const commit = () => {
+    const n = Math.round(Number(draft.replace(/,/g, '')))
+    if (!Number.isFinite(n) || n < 0) {
+      setDraft(String(minQty))
+      setEditing(false)
+      return
+    }
+    onChange(n)
+    setEditing(false)
+  }
+
+  if (editing) {
+    const inputCh = Math.max(5, draft.length + 1)
+    return (
+      <div className="inline-flex items-center rounded border border-accent/40 bg-accent/5 px-1 py-0.5">
+        <input
+          type="text"
+          inputMode="numeric"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.replace(/[^\d]/g, ''))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit()
+            if (e.key === 'Escape') {
+              setDraft(String(minQty))
+              setEditing(false)
+            }
+          }}
+          onBlur={commit}
+          onFocus={(e) => e.target.select()}
+          style={{ width: `${inputCh}ch` }}
+          className="num min-w-[5ch] max-w-[8ch] rounded border border-line bg-white px-1 py-0.5 text-[10px] font-semibold tabular-nums text-ink focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
+          autoFocus
+          aria-label="검수량 기준 EA"
+        />
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="inline-flex items-center rounded border border-line/80 bg-canvas/50 px-1 py-px text-[9px] leading-none text-muted transition hover:border-accent/30 hover:bg-white hover:text-ink"
+      title="클릭하여 검수량 기준 수정"
+    >
+      <span className="whitespace-nowrap">
+        <span>검수량 </span>
+        <span className="num font-medium text-ink">{minQty.toLocaleString()}</span>
+        <span> EA 이상</span>
+      </span>
+    </button>
+  )
+}
+
 export function Worst5Card({
   title,
   color,
   minQty,
+  onMinQtyChange,
   items,
-  periodStart,
-  periodEnd,
+  period,
 }: {
   title: string
   color: string
   minQty: number
+  onMinQtyChange: (value: number) => void
   items: WorstProductItem[]
-  periodStart: string
-  periodEnd: string
+  period: WeeklyReportPeriodState
 }) {
   const chartData = useMemo(
     () =>
@@ -63,16 +132,17 @@ export function Worst5Card({
 
   return (
     <section className="rounded-2xl border border-line bg-white p-4">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-ink">{title}</h3>
-        <p className="text-[11px] text-muted">
-          대상: 검수량 {minQty.toLocaleString()}EA 이상
-        </p>
+        <MinQtyThresholdControl
+          minQty={minQty}
+          onChange={onMinQtyChange}
+        />
       </div>
 
       {items.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted">
-          조건에 맞는 품번이 없습니다.
+          검수량 {minQty.toLocaleString()}EA 이상 조건에 맞는 품번이 없습니다.
         </p>
       ) : (
         <div className="grid items-stretch gap-4 lg:grid-cols-2">
@@ -174,8 +244,7 @@ export function Worst5Card({
                         <Link
                           to={buildWeeklyReportProductLink(
                             item.product,
-                            periodStart,
-                            periodEnd,
+                            period,
                           )}
                           className="block truncate font-semibold text-accent hover:underline"
                           title={item.product}

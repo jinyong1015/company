@@ -35,6 +35,7 @@ import {
   parseProductDetailFrom,
   PRODUCT_DETAIL_FROM_LABELS,
   PRODUCT_DETAIL_FROM_PATHS,
+  buildWeeklyReportBackHref,
   type ProductDetailFromId,
 } from "../lib/productDetailNav";
 import {
@@ -70,11 +71,16 @@ const BACK_NAV_ICONS: Record<ProductDetailFromId, LucideIcon> = {
   quality: Activity,
 };
 
-function buildBackNav(from: ProductDetailFromId) {
+function buildBackNav(from: ProductDetailFromId, searchParams: URLSearchParams) {
+  const path =
+    from === "weekly-report"
+      ? buildWeeklyReportBackHref(searchParams)
+      : PRODUCT_DETAIL_FROM_PATHS[from];
+
   return {
     from,
     label: PRODUCT_DETAIL_FROM_LABELS[from],
-    path: PRODUCT_DETAIL_FROM_PATHS[from],
+    path,
     icon: BACK_NAV_ICONS[from],
   };
 }
@@ -131,7 +137,7 @@ export function ProductDetail() {
     ) ?? null;
 
   const backFrom = parseProductDetailFrom(searchParams.get("from"));
-  const backNav = buildBackNav(backFrom);
+  const backNav = buildBackNav(backFrom, searchParams);
   const fromWeeklyReport = backFrom === "weekly-report";
   const weeklyStart = searchParams.get("startDate");
   const weeklyEnd = searchParams.get("endDate");
