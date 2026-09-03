@@ -1,32 +1,212 @@
-# React + TypeScript + Vite
+# Qualitics
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+**AI 기반 품질 인텔리전스 플랫폼**
 
-Currently, two official plugins are available:
+엑셀 속 수많은 검사 데이터를, 관리자를 위한 직관적인 품질 인사이트로 자동 변환합니다.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+<p align="center">
+  <img src="docs/readme/01-dashboard.png" alt="Qualitics 대시보드" width="900" />
+</p>
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 한눈에 보기
 
-## Expanding the Oxlint configuration
+| | |
+| --- | --- |
+| **목적** | 근무일지·검사 Excel을 업로드하면 검증·집계·분석까지 한 번에 |
+| **주요 사용자** | 검사관리자 · 품질관리자 · 현장 책임자 |
+| **분석 그룹** | 전체 · 본사(SEAL) · 본사(유압+그로멧) · 2공장 |
+| **핵심 지표** | 검수량 · 부적합률(ppm) · 부적합수량 · 폐기비용(원) · UPH |
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+---
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+## 시작하기
+
+### 요구 사항
+
+- Node.js 18+
+- npm
+
+### 실행
+
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+브라우저에서 안내되는 로컬 주소(보통 `http://localhost:5173`)로 접속합니다.
+
+### 기타 명령
+
+```bash
+npm run build    # 프로덕션 빌드
+npm run preview  # 빌드 결과 미리보기
+npm run lint     # 린트
+```
+
+---
+
+## 분석 흐름
+
+문제 탐지부터 원인 분석까지, **끊김 없는 Drill-down** 구조를 제공합니다.  
+복잡한 조건 없이 **분석 그룹 + 기간**만 선택하면 탐색을 시작할 수 있습니다.
+
+<p align="center">
+  <img src="docs/readme/02-analysis-flow.png" alt="분석 흐름" width="900" />
+</p>
+
+**현재 상태 → 변화 → 문제 → 원인 → 비교 → 상세 DATA**
+
+---
+
+## 주요 기능
+
+### 1. 대시보드
+
+전사 품질 현황을 KPI·추이·불량 유형 TOP으로 요약합니다.
+
+- 검수량 / 부적합률 / 부적합수량 / 폐기비용
+- 그룹·기간별 품질 추이 콤보 차트
+- 불량 유형 TOP 10 도넛 차트
+- 업로드 시 `#N/A` 등 오류 데이터 원천 차단으로 신뢰성 확보
+
+### 2. 검사자 분석
+
+「누가, 어느 소속에서, 어떤 품번을, 얼마나 효율적으로」 검사했는지 추적합니다.
+
+<p align="center">
+  <img src="docs/readme/03-inspector-analysis.png" alt="검사자 분석" width="900" />
+</p>
+
+- 소속별 검수량 · 부적합률 · UPH
+- 품번별 검사량·UPH 드릴다운
+- 기간별 추이로 병목 시점 즉시 진단
+
+### 3. 품번 분석
+
+위험 품번을 찾아내고, 클릭 한 번으로 설비·금형까지 역추적합니다.
+
+<p align="center">
+  <img src="docs/readme/04-product-analysis.png" alt="품번 분석" width="900" />
+</p>
+
+- 품번 상태(위험/주의/정상) · 부적합률(ppm)
+- 불량 유형 선택 → 설비별 비중 → 설비 내 금형 비중
+- Excel 검색 없이 원인 추적
+
+### 4. 비용 분석
+
+품질 문제를 직관적인 **돈(₩)**으로 환산해 개선 우선순위를 재정렬합니다.
+
+<p align="center">
+  <img src="docs/readme/05-cost-analysis.png" alt="비용 분석" width="900" />
+</p>
+
+- 품번 / 불량 유형 / 금형 / 설비 기준 폐기비용
+- 건수만이 아니라 **실손실 금액**으로 판단
+- 원 단위 정수 표기(요약 단위로 손실 무게를 희석하지 않음)
+
+### 5. 스마트 비교
+
+조건 필터 고민 없이, 원하는 조건의 비교표를 즉시 만듭니다.
+
+<p align="center">
+  <img src="docs/readme/06-smart-compare.png" alt="스마트 비교" width="900" />
+</p>
+
+- **품번 기간 비교** — 기간 A vs B (검수량 · 부적합률 · 폐기비용)
+- **검사자 UPH 비교** — 소속·검수량·UPH 순위
+- 날짜 선택 즉시 표 갱신
+
+### 6. AI에게 질문하기
+
+자연어로 대화하듯 데이터를 추출합니다.
+
+<p align="center">
+  <img src="docs/readme/07-ai-ask.png" alt="AI 질문" width="900" />
+</p>
+
+- 공장·기간·그래프 유형을 문장에서 자동 해석
+- 대시보드와 동일한 고해상도 차트·표 블록으로 답변
+- 「그럼 1위 불량 원인은?」 같은 **이어 질문** 지원
+
+### 7. 주간업무 보고
+
+관리자용 주간 품질·부적합 보고 화면입니다.
+
+- 최근 12개월 월별 추세 + 주간 상세(단일 페이지)
+- 주차 모드 / **사용자 지정 기간**
+- 주간 생산·검사 실적, ISSUE, 조직별 부적합 WORST 5
+- 조회 조건 URL·localStorage 유지 (품번 상세 복귀 시에도 기간 복원)
+
+### 8. 데이터 관리
+
+Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
+
+- `#N/A`·제품유형 누락 등은 오류로 차단
+- 소속 정규화(예: `구지공장` → `2공장`)
+- 근무일지 실제 컬럼명 별칭 지원
+
+---
+
+## 도입 효과
+
+<p align="center">
+  <img src="docs/readme/08-benefits.png" alt="Qualitics 도입 효과" width="900" />
+</p>
+
+| 축 | 내용 |
+| --- | --- |
+| **시간 단축** | 수십 개 Excel 취합·`#N/A` 필터링 수작업 → 즉시 인사이트 |
+| **원인 추적** | 불량 유형 → 금형·설비까지 2~3클릭 Drill-down |
+| **비용 최적화** | ppm 단위 관리 + 정확한 폐기비용으로 긴급 손실 우선 대응 |
+
+> 현업 관리자의 의사결정 속도와 질이 달라집니다.
+
+---
+
+## 서비스 구조
+
+각 메뉴는 목적에 맞는 사용자와 업무 활용 방안을 제공합니다.
+
+<p align="center">
+  <img src="docs/readme/09-service-structure.png" alt="Qualitics 서비스 구조" width="900" />
+</p>
+
+| 메뉴 | 주요 목적 | 핵심 기능 | 주요 사용자 |
+| --- | --- | --- | --- |
+| 대시보드 | 전사 품질 현황 요약 | KPI, 품질 추이, 불량 TOP | 품질·검사관리자 |
+| 품질 분석 | 불량 주원인 파악 | 유형별 발생량·품번 매칭 | 품질관리자 |
+| 검사자 분석 | 인력 효율·품질 평가 | 소속별 검수량·UPH | 검사관리자 |
+| 품번 분석 | 제품 단위 위험 관리 | 불량→설비·금형 연동 | 품질관리자 |
+| 금형 분석 | 금형 상태 추적 | 검수량·부적합률·이력 | 품질관리자 |
+| 설비 분석 | 설비 불량·부하 분석 | 설비별 부적합률·품번 | 생산·품질관리자 |
+| 비용 분석 | 재무적 손실 가시화 | 다차원 폐기비용(원) | 현장 책임자 |
+| AI 질문 | 자연어 데이터 추출 | 조건 해석·차트/표·이어질문 | 전 관리자 |
+| 주간업무 보고 | 주간 품질 보고 | 월·주·WORST 5·ISSUE | 품질·검사관리자 |
+
+---
+
+## 기술 스택
+
+| 구분 | 기술 |
+| --- | --- |
+| UI | React 19, TypeScript, Vite |
+| 스타일 | Tailwind CSS 4 |
+| 차트 | Recharts |
+| 라우팅 | React Router |
+| Excel | SheetJS (`xlsx`) |
+| 아이콘 | Lucide React |
+
+---
+
+## 문서
+
+- [화면설계서](./화면설계서.md) — UI/UX·화면·지표·메뉴 명세 (최신 V25)
+
+---
+
+## 라이선스
+
+Private — 내부용 프로젝트입니다.
