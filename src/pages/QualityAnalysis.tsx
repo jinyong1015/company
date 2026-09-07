@@ -8,12 +8,47 @@ import { useData } from '../context/DataContext'
 import { useFilters } from '../context/FilterContext'
 import { filterRecords } from '../lib/analyze'
 import { toEntityId } from '../lib/entityId'
+import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
 import { buildProductDetailHref } from '../lib/productDetailNav'
 import { formatPpm, formatWon, failRatePpm } from '../lib/format'
 import type { InspectionRecord } from '../types'
 
 type TopMode = 'byDefect' | 'byProduct'
 type ProductSort = 'fail' | 'failRate' | 'qty' | 'scrapCost'
+
+const VIEW_STATE_KEY = 'quality-analysis'
+
+type QualityAnalysisViewState = {
+  selected: string
+  topMode: TopMode
+  productSort: ProductSort
+}
+
+const defaultViewState: QualityAnalysisViewState = {
+  selected: '',
+  topMode: 'byDefect',
+  productSort: 'fail',
+}
+
+function isTopMode(value: unknown): value is TopMode {
+  return value === 'byDefect' || value === 'byProduct'
+}
+
+function isProductSort(value: unknown): value is ProductSort {
+  return value === 'fail' || value === 'failRate' || value === 'qty' || value === 'scrapCost'
+}
+
+function readViewState(): QualityAnalysisViewState {
+  const stored = loadPageViewState<Partial<QualityAnalysisViewState>>(VIEW_STATE_KEY)
+  if (!stored) return defaultViewState
+  return {
+    selected: typeof stored.selected === 'string' ? stored.selected : defaultViewState.selected,
+    topMode: isTopMode(stored.topMode) ? stored.topMode : defaultViewState.topMode,
+    productSort: isProductSort(stored.productSort)
+      ? stored.productSort
+      : defaultViewState.productSort,
+  }
+}
 
 function defectCountOf(record: InspectionRecord, defect: string) {
   const fromMap = record.defects?.[defect]
@@ -26,10 +61,17 @@ export function QualityAnalysis() {
   const { analytics, records } = useData()
   const { filters } = useFilters()
   const { defectTypes, products } = analytics
-  const [selected, setSelected] = useState(defectTypes[0]?.name ?? '')
+  const [view, setView] = useState<QualityAnalysisViewState>(readViewState)
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [topMode, setTopMode] = useState<TopMode>('byDefect')
-  const [productSort, setProductSort] = useState<ProductSort>('fail')
+  const { selected, topMode, productSort } = view
+
+  useEffect(() => {
+    savePageViewState(VIEW_STATE_KEY, view)
+  }, [view])
+
+  function patchView(patch: Partial<QualityAnalysisViewState>) {
+    setView((prev) => ({ ...prev, ...patch }))
+  }
 
   const activeDefect = defectTypes.some((d) => d.name === selected)
     ? selected
@@ -101,9 +143,8 @@ export function QualityAnalysis() {
   const activeMeta = defectTypes.find((d) => d.name === activeDefect)
 
   function pickDefect(name: string) {
-    setSelected(name)
+    patchView({ selected: name, topMode: 'byDefect' })
     setPickerOpen(false)
-    setTopMode('byDefect')
   }
 
   return (
@@ -175,7 +216,7 @@ export function QualityAnalysis() {
             <div className="inline-flex rounded-full border border-line bg-white p-0.5">
               <button
                 type="button"
-                onClick={() => setTopMode('byDefect')}
+                onClick={() => patchView({ topMode: 'byDefect' })}
                 className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                   topMode === 'byDefect' ? 'bg-accent text-white shadow-sm' : 'text-muted hover:text-ink'
                 }`}
@@ -184,7 +225,7 @@ export function QualityAnalysis() {
               </button>
               <button
                 type="button"
-                onClick={() => setTopMode('byProduct')}
+                onClick={() => patchView({ topMode: 'byProduct' })}
                 className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                   topMode === 'byProduct' ? 'bg-accent text-white shadow-sm' : 'text-muted hover:text-ink'
                 }`}
@@ -195,7 +236,7 @@ export function QualityAnalysis() {
             {topMode === 'byProduct' && (
               <select
                 value={productSort}
-                onChange={(e) => setProductSort(e.target.value as ProductSort)}
+                onChange={(e) => patchView({ productSort: e.target.value as ProductSort })}
                 className="rounded-full border border-line bg-white px-3 py-1.5 text-xs"
               >
                 <option value="fail">부적합수량</option>

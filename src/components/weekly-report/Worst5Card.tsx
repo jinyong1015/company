@@ -145,7 +145,7 @@ export function Worst5Card({
           검수량 {minQty.toLocaleString()}EA 이상 조건에 맞는 품번이 없습니다.
         </p>
       ) : (
-        <div className="grid items-stretch gap-4 lg:grid-cols-2">
+        <div className="grid-split items-stretch">
           <div
             className="w-full overflow-visible pr-1"
             style={{ height: Math.max(220, items.length * 34 + 56) }}

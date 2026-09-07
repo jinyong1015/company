@@ -18,6 +18,7 @@ import {
 import { KpiCard } from "../components/kpi/KpiCard";
 import { Panel } from "../components/common/Panel";
 import { PageHeader } from "../components/common/PageHeader";
+import { ResponsiveGrid } from "../components/common/ResponsiveGrid";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { useData } from "../context/DataContext";
 import { groupLabel, analysisGroupColor } from "../lib/groups";
@@ -573,11 +574,11 @@ export function Dashboard() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ResponsiveGrid variant="kpi">
         {kpis.map((item) => (
           <KpiCard key={item.id} item={item} />
         ))}
-      </div>
+      </ResponsiveGrid>
 
       <Panel title="분석 그룹 비교" description="오류 제외 유효 DATA">
         <div className="overflow-x-auto">
@@ -646,19 +647,19 @@ export function Dashboard() {
         />
       </Panel>
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <ResponsiveGrid variant="split">
         <Panel title="불량 유형 TOP 10" description="선택 기간 기준 점유율">
-          <div className="flex h-[520px] gap-3">
+          <div className="flex h-auto min-h-[320px] flex-col gap-3 sm:h-[520px] sm:flex-row">
             {defectTypes.length === 0 ? (
               <div className="flex h-full flex-1 items-center justify-center text-sm text-muted">
                 표시할 불량 유형 데이터가 없습니다.
               </div>
             ) : (
               <>
-                <div className="min-w-0 flex-1">
+                <div className="min-h-[280px] min-w-0 flex-1 sm:min-h-0">
                   <DefectTypePieChart data={defectTypes} />
                 </div>
-                <ul className="flex w-[148px] shrink-0 flex-col justify-center space-y-1.5 self-stretch text-sm">
+                <ul className="flex w-full shrink-0 flex-col justify-center space-y-1.5 self-stretch text-sm sm:w-[148px]">
                   {defectTypes.map((d, i) => (
                     <li
                       key={`${d.name}-${i}`}
@@ -719,7 +720,7 @@ export function Dashboard() {
             ))}
           </div>
         </Panel>
-      </div>
+      </ResponsiveGrid>
     </div>
   );
 }

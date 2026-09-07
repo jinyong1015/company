@@ -20,6 +20,10 @@
   --color-sidebar: #152033;
   --color-sidebar-muted: #8b9bb3;
   --shadow-card: 0 8px 24px rgba(15, 23, 42, 0.04);
+
+  /* 반응형 셸: 사이드바·콘텐츠 최소 폭 */
+  --layout-sidebar: 248px;
+  --layout-content-max: 1600px;
 }
 
 * {
@@ -57,6 +61,50 @@ select {
   border: 1px solid var(--color-line);
   border-radius: 16px;
   box-shadow: var(--shadow-card);
+}
+
+/* ── Responsive Grid (container-width auto columns) ── */
+
+@utility grid-kpi {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+}
+
+@utility grid-filters {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+}
+
+@utility grid-split {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+}
+
+@utility grid-cards {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+
+@utility grid-dense {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+}
+
+@utility grid-stats {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+}
+
+@utility content-shell {
+  width: 100%;
+  max-width: var(--layout-content-max);
+  margin-inline: auto;
 }
 
 ::-webkit-scrollbar {

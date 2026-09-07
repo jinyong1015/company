@@ -54,7 +54,7 @@ export function AnomalyAnalysis() {
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-4 grid-stats">
                 {(
                   [
                     ['현재 값', item.current],

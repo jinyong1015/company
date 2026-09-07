@@ -1,5 +1,6 @@
 import { PageHeader } from "../components/common/PageHeader";
 import { Panel } from "../components/common/Panel";
+import { ResponsiveGrid } from "../components/common/ResponsiveGrid";
 import { useData } from "../context/DataContext";
 import { formatPpm } from '../lib/format'
 
@@ -19,7 +20,7 @@ export function DataQuality() {
         title="데이터 품질"
         description="오류(#N/A 포함)는 업로드 차단, 경고는 확인 후 저장합니다."
       />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ResponsiveGrid variant="kpi">
         {[
           ["정상", counts.ok, "text-ok"],
           ["경고", counts.warn, "text-warn"],
@@ -36,13 +37,13 @@ export function DataQuality() {
             </p>
           </div>
         ))}
-      </div>
+      </ResponsiveGrid>
       {result && (
         <Panel
           title={`Data Quality ${result.score}%`}
           description="업로드 검증 항목"
         >
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          <ResponsiveGrid variant="dense">
             {result.qualityChecks.map((item) => (
               <div
                 key={item.label}
@@ -56,7 +57,7 @@ export function DataQuality() {
                 </span>
               </div>
             ))}
-          </div>
+          </ResponsiveGrid>
         </Panel>
       )}
       <Panel title="분석 반영 현황">

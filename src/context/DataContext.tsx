@@ -107,7 +107,7 @@ function persist(records: InspectionRecord[], meta: DataMeta) {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const { filters } = useFilters()
+  const { filters, resetFilters } = useFilters()
   const [records, setRecords] = useState<InspectionRecord[]>(() => loadStoredRecords() ?? seedRecords)
   const [meta, setMeta] = useState<DataMeta>(() => {
     const stored = loadStoredRecords()
@@ -139,7 +139,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     persist(parsed, nextMeta)
     setPending(null)
     setUploadError(null)
-  }, [])
+    resetFilters()
+  }, [resetFilters])
 
   const uploadExcel = useCallback(async (file: File) => {
     setUploading(true)
@@ -221,7 +222,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     persist(seedRecords, nextMeta)
     setUploadError(null)
     setPending(null)
-  }, [])
+    resetFilters()
+  }, [resetFilters])
 
   const value = useMemo<DataContextValue>(
     () => ({

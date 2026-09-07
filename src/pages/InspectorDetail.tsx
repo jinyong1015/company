@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
+import { ArrowLeft, ChevronRight, Users } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -13,6 +14,7 @@ import {
 } from 'recharts'
 import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
+import { ResponsiveGrid } from '../components/common/ResponsiveGrid'
 import { useData } from '../context/DataContext'
 import { useFilters } from '../context/FilterContext'
 import { filterRecords, buildPeriodTrends } from '../lib/analyze'
@@ -20,6 +22,40 @@ import { fromEntityId, toEntityId } from '../lib/entityId'
 import { useMemo, useState } from 'react'
 import { failRatePpm, formatPpm, formatWon } from '../lib/format'
 import type { ProductBreakdown } from '../types'
+
+function InspectorDetailBackNav() {
+  return (
+    <nav aria-label="검사자 상세 돌아가기" className="sticky top-16 z-10">
+      <Link
+        to="/inspectors"
+        className="group flex items-center gap-3 rounded-2xl border-2 border-accent/50 bg-white p-3 shadow-[0_8px_24px_rgba(59,130,246,0.12)] ring-1 ring-accent/20 transition hover:border-accent hover:bg-accent/[0.03] hover:shadow-[0_12px_28px_rgba(59,130,246,0.18)] sm:gap-4 sm:p-4"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-white shadow-sm transition group-hover:bg-blue-600 sm:h-12 sm:w-12">
+          <ArrowLeft size={20} strokeWidth={2.5} aria-hidden />
+        </span>
+
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/25 sm:h-12 sm:w-12">
+          <Users size={20} strokeWidth={2.25} aria-hidden />
+        </span>
+
+        <span className="min-w-0 flex-1">
+          <span className="block text-[11px] font-bold tracking-[0.12em] text-accent uppercase">
+            돌아가기
+          </span>
+          <span className="mt-0.5 block truncate text-base font-bold text-ink transition group-hover:text-accent sm:text-lg">
+            검사자 분석
+          </span>
+        </span>
+
+        <ChevronRight
+          size={20}
+          className="shrink-0 text-muted/60 transition group-hover:translate-x-0.5 group-hover:text-accent"
+          aria-hidden
+        />
+      </Link>
+    </nav>
+  )
+}
 
 function buildProductStats(
   records: { product: string; qty: number; fail: number; hours: number; scrapCost: number; mainDefect: string }[],
@@ -107,6 +143,7 @@ export function InspectorDetail() {
   if (!name) {
     return (
       <div className="space-y-5">
+        <InspectorDetailBackNav />
         <PageHeader title="검사자 상세" description="대상을 찾을 수 없습니다." />
       </div>
     )
@@ -115,14 +152,10 @@ export function InspectorDetail() {
   if (!inspector && scoped.length === 0) {
     return (
       <div className="space-y-5">
+        <InspectorDetailBackNav />
         <PageHeader
           title={name}
           description="선택한 기간/분석 그룹에 이 검사자의 DATA가 없습니다."
-          actions={
-            <Link to="/inspectors" className="text-sm text-accent hover:underline">
-              ← 목록으로
-            </Link>
-          }
         />
         <Panel>
           <p className="text-sm text-muted">기간이나 분석 그룹을 바꿔 다시 확인해 주세요.</p>
@@ -195,14 +228,10 @@ export function InspectorDetail() {
 
   return (
     <div className="space-y-5">
+      <InspectorDetailBackNav />
       <PageHeader
         title={row.name}
         description={`${row.team} · 선택한 기간/분석 그룹 기준 · ${scopeLabel}`}
-        actions={
-          <Link to="/inspectors" className="text-sm text-accent hover:underline">
-            ← 목록으로
-          </Link>
-        }
       />
 
       <Panel
@@ -257,7 +286,7 @@ export function InspectorDetail() {
             </div>
 
             <div
-              className="grid max-h-[320px] gap-2 overflow-y-auto pr-1 sm:grid-cols-2 xl:grid-cols-3"
+              className="grid-dense max-h-[320px] overflow-y-auto pr-1"
               role="radiogroup"
               aria-label="작업 품번 선택"
             >
@@ -369,7 +398,7 @@ export function InspectorDetail() {
         )}
       </Panel>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ResponsiveGrid variant="kpi">
         {[
           ['검수량', qty.toLocaleString()],
           ['부적합률', formatPpm(failRate)],
@@ -381,9 +410,9 @@ export function InspectorDetail() {
             <p className="num mt-1 text-xl font-semibold">{value}</p>
           </div>
         ))}
-      </div>
+      </ResponsiveGrid>
 
-      <div className="grid gap-5 xl:grid-cols-3">
+      <ResponsiveGrid variant="cards">
         <Panel title={`기간별 검사량 (${grainLabel})`}>
           <div className="h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -522,7 +551,7 @@ export function InspectorDetail() {
             </ResponsiveContainer>
           </div>
         </Panel>
-      </div>
+      </ResponsiveGrid>
 
       <Panel title="선택 품번별 지표" description="선택한 품번(또는 전체)의 검사량 · UPH · 부적합률">
         <div className="overflow-x-auto">
@@ -558,7 +587,7 @@ export function InspectorDetail() {
         </div>
       </Panel>
 
-      <div className="grid gap-5 md:grid-cols-2">
+      <ResponsiveGrid variant="split">
         <Panel title="담당 금형">
           <ul className="space-y-2 text-sm">
             {molds.slice(0, 8).map((m) => (
@@ -580,7 +609,7 @@ export function InspectorDetail() {
             {!defects.length && <li className="text-muted">데이터 없음</li>}
           </ul>
         </Panel>
-      </div>
+      </ResponsiveGrid>
     </div>
   )
 }

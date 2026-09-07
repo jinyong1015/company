@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
@@ -7,11 +7,48 @@ import { Pager } from '../components/common/Pager'
 import { StatusBadge } from '../components/common/StatusBadge'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
+import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
 import { buildProductDetailHref } from '../lib/productDetailNav'
 import type { ProductRow } from '../types'
 import { formatPpm, formatWon } from '../lib/format'
 
 const ALL_TYPES = ''
+const VIEW_STATE_KEY = 'product-analysis'
+
+type ProductAnalysisViewState = {
+  query: string
+  sortKey: string
+  asc: boolean
+  typeFilter: string
+  page: number
+  pageSize: number
+}
+
+const defaultViewState: ProductAnalysisViewState = {
+  query: '',
+  sortKey: 'qty',
+  asc: false,
+  typeFilter: ALL_TYPES,
+  page: 1,
+  pageSize: 10,
+}
+
+function readViewState(): ProductAnalysisViewState {
+  const stored = loadPageViewState<Partial<ProductAnalysisViewState>>(VIEW_STATE_KEY)
+  if (!stored) return defaultViewState
+  return {
+    query: typeof stored.query === 'string' ? stored.query : defaultViewState.query,
+    sortKey: typeof stored.sortKey === 'string' ? stored.sortKey : defaultViewState.sortKey,
+    asc: typeof stored.asc === 'boolean' ? stored.asc : defaultViewState.asc,
+    typeFilter:
+      typeof stored.typeFilter === 'string' ? stored.typeFilter : defaultViewState.typeFilter,
+    page: typeof stored.page === 'number' && stored.page >= 1 ? stored.page : defaultViewState.page,
+    pageSize:
+      typeof stored.pageSize === 'number' && stored.pageSize > 0
+        ? stored.pageSize
+        : defaultViewState.pageSize,
+  }
+}
 
 const sortKeys = [
   { id: 'type', label: '제품유형' },
@@ -27,12 +64,16 @@ const sortKeys = [
 
 export function ProductAnalysis() {
   const { analytics } = useData()
-  const [query, setQuery] = useState('')
-  const [sortKey, setSortKey] = useState('qty')
-  const [asc, setAsc] = useState(false)
-  const [typeFilter, setTypeFilter] = useState(ALL_TYPES)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [view, setView] = useState<ProductAnalysisViewState>(readViewState)
+  const { query, sortKey, asc, typeFilter, page, pageSize } = view
+
+  useEffect(() => {
+    savePageViewState(VIEW_STATE_KEY, view)
+  }, [view])
+
+  function patchView(patch: Partial<ProductAnalysisViewState>) {
+    setView((prev) => ({ ...prev, ...patch }))
+  }
 
   const typeOptions = useMemo(() => {
     const map = new Map<string, number>()
@@ -66,12 +107,12 @@ export function ProductAnalysis() {
   }, [analytics.products, query, sortKey, asc, activeType])
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
-  const pageRows = rows.slice((page - 1) * pageSize, page * pageSize)
+  const safePage = Math.min(page, totalPages)
+  const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
   const showTypeColumn = !activeType
 
   function selectType(type: string) {
-    setTypeFilter(type)
-    setPage(1)
+    patchView({ typeFilter: type, page: 1 })
   }
 
   return (
@@ -162,21 +203,15 @@ export function ProductAnalysis() {
 
         <SortSearchBar
           query={query}
-          onQuery={(v) => {
-            setQuery(v)
-            setPage(1)
-          }}
+          onQuery={(v) => patchView({ query: v, page: 1 })}
           placeholder={activeType ? '품번 검색' : '품번 / 제품유형 검색'}
           sortKey={sortKey}
           sortKeys={sortKeys}
           asc={asc}
-          onSortKey={setSortKey}
-          onToggleDir={() => setAsc((v) => !v)}
+          onSortKey={(v) => patchView({ sortKey: v })}
+          onToggleDir={() => patchView({ asc: !asc })}
           pageSize={pageSize}
-          onPageSize={(size) => {
-            setPageSize(size)
-            setPage(1)
-          }}
+          onPageSize={(size) => patchView({ pageSize: size, page: 1 })}
           onDownload={() =>
             downloadExcel(
               '품번분석.xlsx',
@@ -244,7 +279,12 @@ export function ProductAnalysis() {
             </tbody>
           </table>
         </div>
-        <Pager page={page} totalPages={totalPages} total={rows.length} onPage={setPage} />
+        <Pager
+          page={safePage}
+          totalPages={totalPages}
+          total={rows.length}
+          onPage={(p) => patchView({ page: p })}
+        />
       </Panel>
     </div>
   )

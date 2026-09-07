@@ -459,8 +459,8 @@ export function WeeklyReport() {
         </div>
 
         {!rangeInvalid ? (
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-            <div className="space-y-5">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+            <div className="space-y-5 min-w-0">
               <Panel
                 title="주간 생산/검사 실적"
                 description="전주 대비 주차별 실적 비교"
@@ -489,7 +489,7 @@ export function WeeklyReport() {
               />
             </div>
 
-            <div className="space-y-4">
+            <div className="min-w-0 space-y-4">
               <p className="text-sm font-semibold text-ink">부적합 WORST 5</p>
               {WEEKLY_REPORT_ORGS.map((org) => (
                 <Worst5Card

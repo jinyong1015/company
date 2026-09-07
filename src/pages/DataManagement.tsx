@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, RotateCcw, Upload } from 'lucide-react'
 import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
+import { ResponsiveGrid } from '../components/common/ResponsiveGrid'
 import { useData } from '../context/DataContext'
 import { createSampleWorkbook } from '../lib/excel'
 import { formatPpm } from '../lib/format'
@@ -177,7 +178,7 @@ export function DataManagement() {
 
       {result && (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <ResponsiveGrid variant="kpi">
             {[
               ['정상', counts.ok, 'text-ok'],
               ['경고', counts.warn, 'text-warn'],
@@ -191,10 +192,10 @@ export function DataManagement() {
                 </p>
               </div>
             ))}
-          </div>
+          </ResponsiveGrid>
 
           <Panel title={`데이터 품질 검사 결과 · Score ${result.score}%`} description="문제 데이터 건수">
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            <ResponsiveGrid variant="dense">
               {result.qualityChecks.map((item) => (
                 <div
                   key={item.label}
@@ -206,7 +207,7 @@ export function DataManagement() {
                   </span>
                 </div>
               ))}
-            </div>
+            </ResponsiveGrid>
           </Panel>
 
           {!pending && hasUploadedData && (
@@ -219,7 +220,7 @@ export function DataManagement() {
                 </Link>
               }
             >
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 text-sm">
+              <div className="grid-kpi text-sm">
                 <div className="rounded-lg border border-line px-3 py-2">
                   <p className="text-xs text-muted">분석 건수</p>
                   <p className="num mt-1 font-semibold">

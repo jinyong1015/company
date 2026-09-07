@@ -197,7 +197,7 @@ export function MonthlyTrendSection({
         </ResponsiveContainer>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-line shadow-sm">
+      <div className="min-w-0 overflow-hidden rounded-xl border border-line shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-canvas/60 px-4 py-2.5">
           <p className="text-xs font-medium text-ink">월별 수치표</p>
           <p className="text-[11px] text-muted">
@@ -206,17 +206,11 @@ export function MonthlyTrendSection({
           </p>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] table-fixed text-sm">
-            <colgroup>
-              <col className="w-[156px]" />
-              {view.months.map((m) => (
-                <col key={m.monthKey} />
-              ))}
-            </colgroup>
+        <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
+          <table className="w-max min-w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-line bg-slate-50/90 text-left text-xs text-muted">
-                <th className="sticky left-0 z-20 bg-slate-50/95 px-3 py-3 font-semibold text-ink shadow-[4px_0_8px_-4px_rgba(15,23,42,0.12)]">
+                <th className="sticky left-0 z-20 min-w-[148px] bg-slate-50 px-3 py-3 font-semibold whitespace-nowrap text-ink shadow-[4px_0_8px_-4px_rgba(15,23,42,0.12)]">
                   구분
                 </th>
                 {view.months.map((m) => {
@@ -224,7 +218,7 @@ export function MonthlyTrendSection({
                   return (
                     <th
                       key={m.monthKey}
-                      className={`px-2 py-3 text-right font-semibold whitespace-nowrap transition-colors ${
+                      className={`min-w-[5.5rem] px-2.5 py-3 text-right font-semibold whitespace-nowrap transition-colors ${
                         isSelected
                           ? `${selectedColumnClass(true)} text-ink`
                           : onMonthSelect
@@ -255,10 +249,12 @@ export function MonthlyTrendSection({
                     }`}
                   >
                     <td
-                      className={`sticky left-0 z-10 px-3 py-3 font-medium shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] ${
+                      className={`sticky left-0 z-10 min-w-[148px] px-3 py-3 font-medium whitespace-nowrap shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] ${
                         isTotal
-                          ? 'bg-red-50/90 font-semibold text-danger'
-                          : 'bg-inherit text-ink'
+                          ? 'bg-red-50 font-semibold text-danger'
+                          : rowIndex % 2 === 0
+                            ? 'bg-white text-ink'
+                            : 'bg-slate-50 text-ink'
                       }`}
                     >
                       <span className="flex items-center gap-2">
@@ -284,7 +280,7 @@ export function MonthlyTrendSection({
                       return (
                         <td
                           key={m.monthKey}
-                          className={`num px-2 py-3 text-right text-[13px] whitespace-nowrap transition-colors ${
+                          className={`num min-w-[5.5rem] px-2.5 py-3 text-right text-[13px] whitespace-nowrap transition-colors ${
                             isSelected ? selectedColumnClass(true) : ''
                           } ${
                             isTotal

@@ -19,12 +19,17 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PageHeader } from "../components/common/PageHeader";
 import { Panel } from "../components/common/Panel";
+import { ResponsiveGrid } from "../components/common/ResponsiveGrid";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { useData } from "../context/DataContext";
-import { useFilters } from "../context/FilterContext";
+import {
+  cloneFilterState,
+  useFilters,
+  type FilterState,
+} from "../context/FilterContext";
 import {
   analyzeRecords,
   buildDefectEquipmentMoldAnalysis,
@@ -46,7 +51,6 @@ import {
   statusByPpm,
 } from "../lib/format";
 import type { Analytics, InspectionRecord, ProductRow } from "../types";
-import type { FilterState } from "../context/FilterContext";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -89,17 +93,32 @@ export function ProductDetail() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const { analytics, records } = useData();
-  const { filters, setCustomDateRange } = useFilters();
+  const { filters, setCustomDateRange, replaceFilters } = useFilters();
   const name = fromEntityId(id, "prd");
   const urlDateRange = useMemo(
     () => readUrlDateRange(searchParams),
     [searchParams],
   );
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
 
+  // 주간업무 보고 등 URL 기간은 상세 화면에만 임시 반영하고,
+  // 이탈 시 진입 전 전역 조회기준으로 복원한다.
   useLayoutEffect(() => {
     if (!urlDateRange) return;
+
+    const snapshot = cloneFilterState(filtersRef.current);
     setCustomDateRange(urlDateRange.startDate, urlDateRange.endDate);
-  }, [urlDateRange, setCustomDateRange]);
+
+    return () => {
+      replaceFilters(snapshot);
+    };
+  }, [
+    urlDateRange?.startDate,
+    urlDateRange?.endDate,
+    setCustomDateRange,
+    replaceFilters,
+  ]);
 
   useLayoutEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
@@ -336,7 +355,7 @@ function ProductDetailBody({
         actions={<StatusBadge status={status} />}
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <ResponsiveGrid variant="kpi">
         {[
           ["검사량", qty.toLocaleString()],
           ["합격수량", pass.toLocaleString()],
@@ -352,9 +371,9 @@ function ProductDetailBody({
             <p className="num mt-1 text-xl font-semibold">{value}</p>
           </div>
         ))}
-      </div>
+      </ResponsiveGrid>
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <ResponsiveGrid variant="split">
         <Panel title="기간별 부적합률 추이">
           <div className="h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -430,7 +449,7 @@ function ProductDetailBody({
             </ResponsiveContainer>
           </div>
         </Panel>
-      </div>
+      </ResponsiveGrid>
 
       <Panel
         title="불량 내역 상세"
@@ -454,7 +473,7 @@ function ProductDetailBody({
             </div>
 
             <div
-              className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3"
+              className="grid-dense max-h-[360px] overflow-y-auto pr-1"
               role="radiogroup"
               aria-label="불량 유형 선택"
             >
@@ -543,7 +562,7 @@ function ProductDetailBody({
                 총 {defectDrill.total.toLocaleString()}건
               </span>
             </div>
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid-split">
             <div className="rounded-xl border border-line p-4">
               <p className="text-sm font-medium">
                 설비별 비중
@@ -640,7 +659,7 @@ function ProductDetailBody({
         ) : null}
       </Panel>
 
-      <div className="grid gap-5 md:grid-cols-2">
+      <ResponsiveGrid variant="split">
         {(
           [
             ["금형", [...new Set(scoped.map((r) => r.moldNo).filter(Boolean))]],
@@ -672,7 +691,7 @@ function ProductDetailBody({
             </Panel>
           );
         })}
-      </div>
+      </ResponsiveGrid>
 
       <Panel
         title="작업자별 품번 UPH"

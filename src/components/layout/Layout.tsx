@@ -11,14 +11,18 @@ import {
   Factory,
   GitCompare,
   LayoutDashboard,
+  Menu,
   Package,
   Plus,
   ShieldCheck,
   Sparkles,
   Users,
+  X,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { GlobalFilter } from '../filters/GlobalFilter'
 import { AnalysisGroupBar } from '../filters/AnalysisGroupBar'
+import { ResponsiveGrid } from '../common/ResponsiveGrid'
 import { useData } from '../../context/DataContext'
 
 const nav = [
@@ -57,9 +61,85 @@ const pageTitles: Record<string, string> = {
 
 const hideGlobalFilters = ['/manage', '/ai', '/weekly-report']
 
+function SidebarNav({
+  anomalyCount,
+  onNavigate,
+}: {
+  anomalyCount: number
+  onNavigate?: () => void
+}) {
+  return (
+    <>
+      <div className="flex h-16 items-center gap-3 px-5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent">
+          <BarChart3 size={18} />
+        </div>
+        <div>
+          <p className="text-[15px] font-semibold leading-tight">Qualitics</p>
+          <p className="text-[11px] text-sidebar-muted">Quality Intelligence</p>
+        </div>
+      </div>
+
+      <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-2">
+        {groups.map((group) => (
+          <div key={group}>
+            {group !== 'main' && (
+              <p className="mb-1.5 px-3 text-[11px] font-medium tracking-wide text-sidebar-muted">
+                {group}
+              </p>
+            )}
+            <div className="flex flex-col gap-0.5">
+              {nav
+                .filter((item) => item.group === group)
+                .map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      end={item.end}
+                      onClick={onNavigate}
+                      className={({ isActive }) =>
+                        `flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors ${
+                          isActive
+                            ? 'bg-accent font-medium text-white'
+                            : 'text-sidebar-muted hover:bg-white/5 hover:text-white'
+                        }`
+                      }
+                    >
+                      <Icon size={16} />
+                      <span className="flex-1">{item.label}</span>
+                      {item.to === '/anomalies' && anomalyCount > 0 && (
+                        <span className="rounded-full bg-danger px-1.5 text-[10px] font-semibold text-white">
+                          {anomalyCount}
+                        </span>
+                      )}
+                    </NavLink>
+                  )
+                })}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      <div className="p-3">
+        <Link
+          to="/manage"
+          onClick={onNavigate}
+          className="flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
+        >
+          <Plus size={16} />
+          데이터 업로드
+        </Link>
+      </div>
+    </>
+  )
+}
+
 export function Layout() {
   const { analytics } = useData()
   const { pathname } = useLocation()
+  const [navOpen, setNavOpen] = useState(false)
   const showFilters = !hideGlobalFilters.includes(pathname)
   const title =
     pageTitles[pathname] ??
@@ -67,80 +147,70 @@ export function Layout() {
     '대시보드'
   const anomalyCount = analytics.anomalies.length
 
+  useEffect(() => {
+    setNavOpen(false)
+  }, [pathname])
+
+  useEffect(() => {
+    if (!navOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setNavOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [navOpen])
+
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[248px_1fr]">
-      <aside className="flex flex-col bg-sidebar text-white lg:sticky lg:top-0 lg:h-screen">
-        <div className="flex h-16 items-center gap-3 px-5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent">
-            <BarChart3 size={18} />
-          </div>
-          <div>
-            <p className="text-[15px] font-semibold leading-tight">Qualitics</p>
-            <p className="text-[11px] text-sidebar-muted">Quality Intelligence</p>
-          </div>
-        </div>
-
-        <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-2">
-          {groups.map((group) => (
-            <div key={group}>
-              {group !== 'main' && (
-                <p className="mb-1.5 px-3 text-[11px] font-medium tracking-wide text-sidebar-muted">
-                  {group}
-                </p>
-              )}
-              <div className="flex flex-col gap-0.5">
-                {nav
-                  .filter((item) => item.group === group)
-                  .map((item) => {
-                    const Icon = item.icon
-                    return (
-                      <NavLink
-                        key={item.to}
-                        to={item.to}
-                        end={item.end}
-                        className={({ isActive }) =>
-                          `flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors ${
-                            isActive
-                              ? 'bg-accent font-medium text-white'
-                              : 'text-sidebar-muted hover:bg-white/5 hover:text-white'
-                          }`
-                        }
-                      >
-                        <Icon size={16} />
-                        <span className="flex-1">{item.label}</span>
-                        {item.to === '/anomalies' && anomalyCount > 0 && (
-                          <span className="rounded-full bg-danger px-1.5 text-[10px] font-semibold text-white">
-                            {anomalyCount}
-                          </span>
-                        )}
-                      </NavLink>
-                    )
-                  })}
-              </div>
-            </div>
-          ))}
-        </nav>
-
-        <div className="p-3">
-          <Link
-            to="/manage"
-            className="flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-3 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
-          >
-            <Plus size={16} />
-            데이터 업로드
-          </Link>
-        </div>
+    <div className="min-h-screen lg:grid lg:grid-cols-[var(--layout-sidebar)_minmax(0,1fr)]">
+      {/* Desktop sidebar */}
+      <aside className="hidden flex-col bg-sidebar text-white lg:sticky lg:top-0 lg:flex lg:h-screen">
+        <SidebarNav anomalyCount={anomalyCount} />
       </aside>
+
+      {/* Mobile / tablet drawer */}
+      {navOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]"
+            aria-label="메뉴 닫기"
+            onClick={() => setNavOpen(false)}
+          />
+          <aside className="absolute inset-y-0 left-0 flex w-[min(100%,280px)] flex-col bg-sidebar text-white shadow-xl">
+            <div className="flex items-center justify-end px-3 pt-3">
+              <button
+                type="button"
+                className="rounded-full p-2 text-sidebar-muted hover:bg-white/10 hover:text-white"
+                aria-label="메뉴 닫기"
+                onClick={() => setNavOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <SidebarNav anomalyCount={anomalyCount} onNavigate={() => setNavOpen(false)} />
+          </aside>
+        </div>
+      )}
 
       <div className="min-w-0">
         <header className="sticky top-0 z-20 border-b border-line/80 bg-white/90 backdrop-blur">
-          <div className="flex h-16 items-center justify-between gap-4 px-5 lg:px-8">
-            <p className="text-sm text-muted">
-              Quality Intelligence
-              <span className="mx-2 text-line">/</span>
-              <span className="font-medium text-ink">{title}</span>
-            </p>
-            <div className="flex items-center gap-2">
+          <div className="content-shell flex h-16 items-center justify-between gap-3 px-4 sm:px-5 lg:px-8">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+              <button
+                type="button"
+                className="rounded-full p-2 text-muted hover:bg-canvas hover:text-ink lg:hidden"
+                aria-label="메뉴 열기"
+                onClick={() => setNavOpen(true)}
+              >
+                <Menu size={18} />
+              </button>
+              <p className="truncate text-sm text-muted">
+                <span className="hidden sm:inline">Quality Intelligence</span>
+                <span className="mx-2 hidden text-line sm:inline">/</span>
+                <span className="font-medium text-ink">{title}</span>
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
               <button
                 type="button"
                 className="rounded-full p-2 text-muted hover:bg-canvas hover:text-ink"
@@ -150,24 +220,25 @@ export function Layout() {
               </button>
               <Link
                 to="/ai"
-                className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-600"
+                className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-600 sm:px-3.5"
               >
                 <Sparkles size={14} />
-                AI에게 질문
+                <span className="hidden sm:inline">AI에게 질문</span>
+                <span className="sm:hidden">AI</span>
               </Link>
             </div>
           </div>
         </header>
 
-        <main className="space-y-4 px-5 py-6 lg:px-8">
+        <main className="content-shell space-y-4 px-4 py-5 sm:px-5 sm:py-6 lg:px-8">
           {showFilters && (
-            <div className="grid gap-3 xl:grid-cols-2">
+            <ResponsiveGrid variant="filters">
               <div className="card px-4 py-3">
                 <p className="mb-2 text-xs font-medium text-muted">분석 그룹</p>
                 <AnalysisGroupBar />
               </div>
               <GlobalFilter />
-            </div>
+            </ResponsiveGrid>
           )}
           <Outlet />
         </main>
