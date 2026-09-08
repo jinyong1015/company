@@ -167,10 +167,15 @@ function chartGroupBars(): AiChartSeries[] {
   }))
 }
 
-type PeriodHint = {
+export type AiQueryPeriod = {
   startDate: string
   endDate: string
   label: string
+}
+
+export type AiAnswerOptions = {
+  defaultPeriod?: AiQueryPeriod | null
+  now?: Date
 }
 
 function pad2(n: number) {
@@ -183,6 +188,49 @@ function ymd(y: number, m: number, d: number) {
 
 function lastDayOfMonth(y: number, m: number) {
   return new Date(y, m, 0).getDate()
+}
+
+export function periodFromFilters(
+  filters: FilterState,
+  now = new Date(),
+): AiQueryPeriod {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  let start = new Date(today)
+  let end = new Date(today)
+  let label = '시스템 기본 조회기간'
+
+  if (filters.period === '7d') {
+    start.setDate(end.getDate() - 6)
+    label = '최근 7일(시스템 기본)'
+  } else if (filters.period === 'thisMonth') {
+    start = new Date(end.getFullYear(), end.getMonth(), 1)
+    label = '이번 달(시스템 기본)'
+  } else if (filters.period === 'lastMonth') {
+    start = new Date(end.getFullYear(), end.getMonth() - 1, 1)
+    end = new Date(end.getFullYear(), end.getMonth(), 0)
+    label = '지난달(시스템 기본)'
+  } else if (filters.period === 'year') {
+    start = new Date(end.getFullYear(), 0, 1)
+    label = '올해(시스템 기본)'
+  } else if (filters.period === 'custom') {
+    const validStart = /^\d{4}-\d{2}-\d{2}$/.test(filters.startDate)
+    const validEnd = /^\d{4}-\d{2}-\d{2}$/.test(filters.endDate)
+    if (validStart && validEnd) {
+      return {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        label: `${filters.startDate} ~ ${filters.endDate}(시스템 기본)`,
+      }
+    }
+  } else {
+    label = '오늘(시스템 기본)'
+  }
+
+  return {
+    startDate: ymd(start.getFullYear(), start.getMonth() + 1, start.getDate()),
+    endDate: ymd(end.getFullYear(), end.getMonth() + 1, end.getDate()),
+    label,
+  }
 }
 
 function inferDataYear(records: InspectionRecord[]) {
@@ -198,14 +246,40 @@ function inferDataYear(records: InspectionRecord[]) {
 /** 질문 문장에서 기간을 읽습니다. 예: 7월 / 7월 22일부터 28일까지 */
 export function parsePeriodFromQuestion(
   text: string,
-  records: InspectionRecord[],
-): PeriodHint | null {
+  _records: InspectionRecord[],
+  now = new Date(),
+): AiQueryPeriod | null {
   const yearFromText = text.match(/(20\d{2})\s*년/)
-  const year = yearFromText ? Number(yearFromText[1]) : inferDataYear(records)
+  const year = yearFromText ? Number(yearFromText[1]) : now.getFullYear()
+
+  if (/지난\s*달|전월/.test(text)) {
+    const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const y = previousMonth.getFullYear()
+    const m = previousMonth.getMonth() + 1
+    return {
+      startDate: ymd(y, m, 1),
+      endDate: ymd(y, m, lastDayOfMonth(y, m)),
+      label: `${y}년 ${m}월(지난달)`,
+    }
+  }
+
+  if (/이번\s*달|금월/.test(text)) {
+    const y = now.getFullYear()
+    const m = now.getMonth() + 1
+    return {
+      startDate: ymd(y, m, 1),
+      endDate: ymd(y, m, now.getDate()),
+      label: `${y}년 ${m}월(이번 달)`,
+    }
+  }
 
   // 1월~12월 전체 추이 질문은 연간으로 둠
   if (/1\s*월\s*[~～\-–—부터까지\s]*12\s*월/.test(text) && /월별|월간|그래프/.test(text)) {
-    return null
+    return {
+      startDate: ymd(year, 1, 1),
+      endDate: ymd(year, 12, 31),
+      label: `${year}년 1월 ~ 12월`,
+    }
   }
 
   // 7월 22일부터 28일까지 / 7월22일~7월28일
@@ -286,10 +360,12 @@ export function parsePeriodFromQuestion(
   const uniqueMonths = [...new Set(monthHits.filter((m) => m >= 1 && m <= 12))]
   if (uniqueMonths.length === 1 && !/(\d{1,2})\s*월\s*\d{1,2}\s*일/.test(text)) {
     const m = uniqueMonths[0]!
+    const startDate = ymd(year, m, 1)
+    const endDate = ymd(year, m, lastDayOfMonth(year, m))
     return {
-      startDate: ymd(year, m, 1),
-      endDate: ymd(year, m, lastDayOfMonth(year, m)),
-      label: `${year}년 ${m}월`,
+      startDate,
+      endDate,
+      label: `${startDate} ~ ${endDate}`,
     }
   }
 
@@ -298,7 +374,7 @@ export function parsePeriodFromQuestion(
 
 function baseFilters(
   group: AnalysisGroupId = 'all',
-  period?: PeriodHint | null,
+  period?: AiQueryPeriod | null,
 ): FilterState {
   return {
     analysisGroup: group,
@@ -629,7 +705,7 @@ function groupLabel(id: string) {
 function analyzeGroup(
   records: InspectionRecord[],
   group: AnalysisGroupId,
-  period?: PeriodHint | null,
+  period?: AiQueryPeriod | null,
 ) {
   return analyzeRecords(records, baseFilters(group, period))
 }
@@ -964,7 +1040,7 @@ function buildDefectDailyTrend(
   records: InspectionRecord[],
   product: string,
   defectNames: string[],
-  period?: PeriodHint | null,
+  period?: AiQueryPeriod | null,
 ): {
   data: Record<string, string | number>[]
   series: AiChartSeries[]
@@ -1075,7 +1151,7 @@ function buildDefectDailyTrend(
 function topDefectNamesForProducts(
   records: InspectionRecord[],
   products: string[],
-  period: PeriodHint | null,
+  period: AiQueryPeriod | null,
   topN: number,
 ): { name: string; count: number; share: number }[] {
   const set = new Set(products.map((p) => compact(p)))
@@ -1106,7 +1182,7 @@ function buildMultiProductDefectTrend(
   records: InspectionRecord[],
   products: string[],
   defectNames: string[],
-  period?: PeriodHint | null,
+  period?: AiQueryPeriod | null,
   forceMonth = false,
 ): {
   data: Record<string, string | number>[]
@@ -1270,7 +1346,7 @@ function isSoftFollowUp(
   text: string,
   n: string,
   prior: AiConversationContext,
-  period: PeriodHint | null,
+  period: AiQueryPeriod | null,
 ): boolean {
   // 1) 기간만 변경
   if (period) {
@@ -1437,7 +1513,7 @@ function metricLabelOf(metric: 'failRate' | 'qty' | 'scrapCost') {
 function productRowsForNames(
   records: InspectionRecord[],
   productNames: string[],
-  period: PeriodHint | null,
+  period: AiQueryPeriod | null,
 ): ProductRow[] {
   const ga = analyzeRecords(records, baseFilters('all', period))
   const map = new Map(ga.products.map((p) => [compact(p.name), p] as const))
@@ -1528,7 +1604,7 @@ function buildContextFromBlocks(
   }
 }
 
-function yearSpanPeriod(records: InspectionRecord[]): PeriodHint {
+function yearSpanPeriod(records: InspectionRecord[]): AiQueryPeriod {
   const year = inferDataYear(records)
   return {
     startDate: ymd(year, 1, 1),
@@ -1579,7 +1655,7 @@ function rankProductsByDefectShare(
   records: InspectionRecord[],
   products: string[],
   defectName: string,
-  period: PeriodHint | null,
+  period: AiQueryPeriod | null,
 ): ProductDefectShareRow[] {
   const order = new Map(products.map((p, i) => [compact(p), i]))
   const productSet = new Set(order.keys())
@@ -1666,9 +1742,11 @@ function tryAnswerFollowUp(
   n: string,
   records: InspectionRecord[],
   prior: AiConversationContext,
-  period: PeriodHint | null,
+  period: AiQueryPeriod | null,
   periodNote: string,
   limit: number,
+  defaultPeriod: AiQueryPeriod | null,
+  now: Date,
 ): AiBlock[] | null {
   if (!prior.productNames.length) return null
 
@@ -1676,7 +1754,8 @@ function tryAnswerFollowUp(
   const effectivePeriod =
     period ??
     prior.lastPeriod ??
-    parsePeriodFromQuestion(prior.lastQuestion, records)
+    parsePeriodFromQuestion(prior.lastQuestion, records, now) ??
+    defaultPeriod
   const effectiveNote = effectivePeriod
     ? `기간: ${effectivePeriod.label}`
     : periodNote
@@ -2160,6 +2239,8 @@ function answerOne(
   analytics: Analytics,
   records: InspectionRecord[],
   priorContext?: AiConversationContext | null,
+  defaultPeriod: AiQueryPeriod | null = null,
+  now = new Date(),
 ): AiBlock[] {
   const text = q.trim()
   const n = compact(text)
@@ -2167,7 +2248,8 @@ function answerOne(
 
   const limit = topN(text)
   const { groups, grommetOverall } = detectGroups(n)
-  const period = parsePeriodFromQuestion(text, records)
+  const questionPeriod = parsePeriodFromQuestion(text, records, now)
+  const period = questionPeriod ?? defaultPeriod
   const periodNote = period ? `기간: ${period.label}` : '기간: 올해(연간)'
   const scopedAnalytics = period
     ? analyzeRecords(records, baseFilters('all', period))
@@ -2176,16 +2258,18 @@ function answerOne(
   // ── 후속 질문 (직전 품번 리스트 이어받기) ──
   if (
     priorContext?.productNames.length &&
-    (isFollowUpAsk(n) || isSoftFollowUp(text, n, priorContext, period))
+    (isFollowUpAsk(n) || isSoftFollowUp(text, n, priorContext, questionPeriod))
   ) {
     const follow = tryAnswerFollowUp(
       text,
       n,
       records,
       priorContext,
-      period,
+      questionPeriod,
       periodNote,
       limit,
+      defaultPeriod,
+      now,
     )
     if (follow) return follow
   }
@@ -2285,7 +2369,7 @@ function answerOne(
         description: wantTotalLine
           ? '막대: 본사(SEAL) / 본사(유압+그로멧) / 2공장 · 선: TOTAL'
           : '막대: 본사(SEAL) / 본사(유압+그로멧) / 2공장',
-        data: buildGroupedMonthly(analytics, m.key, m.million),
+        data: buildGroupedMonthly(scopedAnalytics, m.key, m.million),
         xKey: 'date',
         bars,
         line,
@@ -3188,16 +3272,28 @@ function legacyAnswer(
 
   if (includesAny(n, ['폐기', '비용']) && !n.includes('부적합률') && !n.includes('부적합율')) {
     const rows = [...products].sort((a, b) => b.scrapCost - a.scrapCost).slice(0, limit)
-    if (!rows.length) return [textBlock(`${scope}에서 해당 품번 데이터가 없습니다.`)]
+    if (!rows.length) {
+      return [
+        textBlock(
+          `${scope}에서 해당 품번 데이터가 없습니다. (${periodNote})`,
+        ),
+      ]
+    }
     return [
-      textBlock(`${scope}에서 폐기비용이 높은 품번 TOP ${rows.length}입니다.`),
+      textBlock(
+        `${scope}에서 폐기비용이 높은 품번 TOP ${rows.length}입니다. (${periodNote})`,
+      ),
       {
         type: 'table',
-        title: '폐기비용 TOP',
+        title: `폐기비용 TOP (${periodNote.replace('기간: ', '')})`,
         headers: PRODUCT_HEADERS,
         rows: productTableRows(rows),
       },
-      barFromProducts('폐기비용 TOP 5', rows, 'scrapCost'),
+      barFromProducts(
+        `폐기비용 TOP 5 (${periodNote.replace('기간: ', '')})`,
+        rows,
+        'scrapCost',
+      ),
     ]
   }
 
@@ -3248,7 +3344,10 @@ function legacyAnswer(
     ]
   }
 
-  if (includesAny(n, ['증가', '지난달', '이전기간'])) {
+  const wantsPreviousPeriodChange =
+    includesAny(n, ['증가', '이전기간']) ||
+    (n.includes('지난달') && includesAny(n, ['대비', '비교', '변화']))
+  if (wantsPreviousPeriodChange) {
     const rows = [...products].sort((a, b) => b.changeRate - a.changeRate).slice(0, limit)
     if (!rows.length) return [textBlock(`${scope}에서 해당 품번 데이터가 없습니다.`)]
     return [
@@ -3345,6 +3444,7 @@ export function answerQuestion(
   analytics: Analytics,
   records: InspectionRecord[] = [],
   priorContext?: AiConversationContext | null,
+  options: AiAnswerOptions = {},
 ): AiAnswer {
   const text = q.trim()
   if (!text) return emptyAnswer('질문을 입력하세요.')
@@ -3357,17 +3457,28 @@ export function answerQuestion(
     blocks.push(textBlock(`질문 ${parts.length}건을 나눠 분석했습니다.`))
   }
 
+  const now = options.now ?? new Date()
+  const defaultPeriod = options.defaultPeriod ?? null
+
   parts.forEach((part, i) => {
     if (parts.length > 1) {
       blocks.push(textBlock(`── Q${i + 1}. ${part} ──`))
     }
-    const partBlocks = answerOne(part, analytics, records, ctx)
+    const partBlocks = answerOne(
+      part,
+      analytics,
+      records,
+      ctx,
+      defaultPeriod,
+      now,
+    )
     blocks.push(...partBlocks)
     const next = buildContextFromBlocks(part, partBlocks)
     if (next) {
       const period =
-        parsePeriodFromQuestion(part, records) ??
+        parsePeriodFromQuestion(part, records, now) ??
         ctx?.lastPeriod ??
+        defaultPeriod ??
         null
       ctx = {
         ...next,

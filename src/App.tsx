@@ -18,6 +18,7 @@ import { DataQuality } from './pages/DataQuality'
 import { SmartCompare } from './pages/SmartCompare'
 import { AiAsk } from './pages/AiAsk'
 import { WeeklyReport } from './pages/WeeklyReport'
+import { AiChatbot } from './components/ai/AiChatbot'
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
       <FilterProvider>
         <DataProvider>
           <Routes>
+            <Route path="ai-chatbot-popup" element={<AiChatbot popupMode />} />
             <Route element={<Layout />}>
               <Route index element={<Dashboard />} />
               <Route path="quality" element={<QualityAnalysis />} />

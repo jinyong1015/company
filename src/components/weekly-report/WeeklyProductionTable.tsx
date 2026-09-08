@@ -197,7 +197,7 @@ function MetricBlock({
               key={`${metric.key}-${period.periodKey}`}
               className={
                 period.isCurrent
-                  ? 'bg-blue-50 ring-2 ring-inset ring-accent'
+                  ? 'weekly-current-row ring-2 ring-inset ring-accent'
                   : 'bg-white'
               }
             >

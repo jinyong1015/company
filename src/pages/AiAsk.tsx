@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { PageHeader } from "../components/common/PageHeader";
 import { Panel } from "../components/common/Panel";
 import { AiAnswerBlocks } from "../components/ai/AiAnswerCharts";
 import { useData } from "../context/DataContext";
-import { analyzeRecords } from "../lib/analyze";
+import { useFilters } from "../context/FilterContext";
 import {
   answerQuestion,
+  periodFromFilters,
   type AiAnswer,
   type AiConversationContext,
 } from "../lib/aiAsk";
@@ -19,26 +20,8 @@ const samples = [
 ];
 
 export function AiAsk() {
-  const { records } = useData();
-  const analytics = useMemo(
-    () =>
-      analyzeRecords(records, {
-        analysisGroup: "all",
-        period: "year",
-        startDate: "",
-        endDate: "",
-        teams: [],
-        inspectors: [],
-        workTypes: [],
-        productTypes: [],
-        products: [],
-        molds: [],
-        equipment: [],
-        workers: [],
-        lots: [],
-      }),
-    [records],
-  );
+  const { records, analytics } = useData();
+  const { filters } = useFilters();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<{ q: string; a: AiAnswer }[]>([]);
   const [context, setContext] = useState<AiConversationContext | null>(null);
@@ -46,7 +29,9 @@ export function AiAsk() {
   const ask = (q: string) => {
     const text = q.trim();
     if (!text) return;
-    const a = answerQuestion(text, analytics, records, context);
+    const a = answerQuestion(text, analytics, records, context, {
+      defaultPeriod: periodFromFilters(filters),
+    });
     setMessages((prev) => [...prev, { q: text, a }]);
     if (a.context) setContext(a.context);
     setInput("");
@@ -55,7 +40,7 @@ export function AiAsk() {
   return (
     <div className="space-y-5">
       <PageHeader
-        title="AI에게 질문하기"
+        title="AI CHATBOT"
         description="질문에서 공장·지표·TOP N·그래프 유형을 해석해 표와 차트로 답합니다. (1공장 SEAL=본사(SEAL), 1공장 GROMMET=본사(유압+그로멧))"
       />
       <Panel>

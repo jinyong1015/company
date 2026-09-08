@@ -36,7 +36,7 @@ const ROW_ACCENT: Record<
 
 function selectedColumnClass(isSelected: boolean) {
   if (!isSelected) return ''
-  return 'bg-amber-50/90 ring-1 ring-inset ring-amber-200/70'
+  return 'weekly-selected-column'
 }
 
 const LEGEND_ORDER = ['seal', 'hydraulic', 'plant2', 'total']

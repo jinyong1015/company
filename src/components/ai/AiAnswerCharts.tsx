@@ -45,6 +45,19 @@ function AiBarBlock({
   format,
   valueLabel,
 }: Extract<AiBlock, { type: 'bar' }>) {
+  const hostRef = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(0)
+
+  useEffect(() => {
+    const el = hostRef.current
+    if (!el) return
+    const update = () => setWidth(el.getBoundingClientRect().width)
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
   if (!data.length) {
     return (
       <div className="rounded-xl border border-line p-3">
@@ -53,30 +66,43 @@ function AiBarBlock({
       </div>
     )
   }
+  const compact = width > 0 && width < 520
+  const tiltLabels =
+    compact &&
+    (data.length >= 4 || data.some((item) => String(item.name).length > 8))
+
   return (
-    <div className="rounded-xl border border-line p-3">
+    <div ref={hostRef} className="rounded-xl border border-line p-3">
       <p className="text-sm font-medium">{title}</p>
-      <div className="mt-2 h-[280px] w-full">
+      <div className={`mt-2 w-full ${tiltLabels ? 'h-[310px]' : 'h-[280px]'}`}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 28, right: 12, left: 8, bottom: 8 }}>
+          <BarChart
+            data={data}
+            margin={{
+              top: 28,
+              right: compact ? 2 : 12,
+              left: compact ? -8 : 8,
+              bottom: tiltLabels ? 24 : 8,
+            }}
+          >
             <CartesianGrid stroke="#eef1f5" vertical={false} />
             <XAxis
               dataKey="name"
-              tick={{ fill: '#5b6577', fontSize: 11 }}
+              tick={{ fill: '#5b6577', fontSize: compact ? 10 : 11 }}
               axisLine={false}
               tickLine={false}
               interval={0}
-              angle={0}
-              textAnchor="middle"
-              height={36}
+              angle={tiltLabels ? -35 : 0}
+              textAnchor={tiltLabels ? 'end' : 'middle'}
+              height={tiltLabels ? 66 : 36}
               tickMargin={8}
-              tickFormatter={(v) => shortName(String(v), 14)}
+              tickFormatter={(v) => shortName(String(v), compact ? 10 : 14)}
             />
             <YAxis
-              tick={{ fill: '#5b6577', fontSize: 11 }}
+              tick={{ fill: '#5b6577', fontSize: compact ? 10 : 11 }}
               axisLine={false}
               tickLine={false}
-              width={56}
+              width={compact ? 48 : 56}
               tickFormatter={(v) => formatAiBarTopLabel(Number(v), format)}
             />
             <Tooltip
@@ -227,12 +253,14 @@ function buildOutsideLabelLayout(
   width: number,
   height: number,
   outerRadius: number,
+  cxRatio = PIE_CX_RATIO,
 ) {
   if (!width || !height) return []
 
-  const cx = width * PIE_CX_RATIO
+  const cx = width * cxRatio
   const cy = height / 2
   const midAngles = buildPieSectorMidAngles(items)
+  const labelInset = width < 520 ? 62 : 76
 
   const candidates = items
     .map((d, index) => {
@@ -250,7 +278,7 @@ function buildOutsideLabelLayout(
         side: (cos >= 0 ? 'right' : 'left') as 'right' | 'left',
         anchorX: cx + outerRadius * cos,
         anchorY: cy + outerRadius * sin,
-        x: cx + (outerRadius + 52) * (cos >= 0 ? 1 : -1),
+        x: cos >= 0 ? width - labelInset : labelInset,
         y: cy + (outerRadius + 18) * sin,
       }
     })
@@ -289,9 +317,23 @@ function AiPieBlock({ title, data }: Extract<AiBlock, { type: 'pie' }>) {
     return () => ro.disconnect()
   }, [])
 
+  const compact = size.width > 0 && size.width < 520
+  const pieCxRatio = compact ? 0.5 : PIE_CX_RATIO
+  const outerRadius = compact
+    ? Math.max(72, Math.min(96, size.width * 0.25))
+    : PIE_OUTER_RADIUS
+  const innerRadius = compact ? Math.round(outerRadius * 0.48) : PIE_INNER_RADIUS
+
   const outsideLabels = useMemo(
-    () => buildOutsideLabelLayout(data, size.width, size.height, PIE_OUTER_RADIUS),
-    [data, size.width, size.height],
+    () =>
+      buildOutsideLabelLayout(
+        data,
+        size.width,
+        size.height,
+        outerRadius,
+        pieCxRatio,
+      ),
+    [data, size.width, size.height, outerRadius, pieCxRatio],
   )
 
   if (!data.length) {
@@ -306,19 +348,22 @@ function AiPieBlock({ title, data }: Extract<AiBlock, { type: 'pie' }>) {
   return (
     <div className="rounded-xl border border-line p-3">
       <p className="text-sm font-medium">{title}</p>
-      <div ref={hostRef} className="relative mt-2 h-[360px] w-full">
+      <div
+        ref={hostRef}
+        className={`relative mt-2 w-full ${compact ? 'h-[320px]' : 'h-[360px]'}`}
+      >
         <ResponsiveContainer width="100%" height="100%">
           <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
             <Pie
               data={data}
               dataKey="value"
               nameKey="name"
-              cx={`${PIE_CX_RATIO * 100}%`}
+              cx={`${pieCxRatio * 100}%`}
               cy="50%"
               startAngle={PIE_START_ANGLE}
               endAngle={PIE_END_ANGLE}
-              outerRadius={PIE_OUTER_RADIUS}
-              innerRadius={PIE_INNER_RADIUS}
+              outerRadius={outerRadius}
+              innerRadius={innerRadius}
               paddingAngle={PIE_PADDING_ANGLE}
               stroke="#fff"
               strokeWidth={2}
@@ -344,7 +389,7 @@ function AiPieBlock({ title, data }: Extract<AiBlock, { type: 'pie' }>) {
 
         {size.width > 0 ? (
           <svg
-            className="pointer-events-none absolute inset-0"
+            className="ai-pie-labels pointer-events-none absolute inset-0"
             width={size.width}
             height={size.height}
           >
