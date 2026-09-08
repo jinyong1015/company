@@ -12,8 +12,9 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  ComposedChart,
+  LabelList,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -34,6 +35,7 @@ import {
   analyzeRecords,
   buildDefectEquipmentMoldAnalysis,
   filterRecords,
+  resolvePeriodRange,
 } from "../lib/analyze";
 import { fromEntityId, toEntityId } from "../lib/entityId";
 import {
@@ -47,7 +49,7 @@ import {
   failRatePpm,
   formatPercent,
   formatPpm,
-  formatWon,
+  formatWonSuffix,
   statusByPpm,
 } from "../lib/format";
 import type { Analytics, InspectionRecord, ProductRow } from "../types";
@@ -154,6 +156,7 @@ export function ProductDetail() {
     productAnalytics.products.find(
       (p) => p.id === id || p.id === toEntityId("prd", name) || p.name === name,
     ) ?? null;
+  const trendRange = resolvePeriodRange(effectiveFilters);
 
   const backFrom = parseProductDetailFrom(searchParams.get("from"));
   const backNav = buildBackNav(backFrom, searchParams);
@@ -198,6 +201,7 @@ export function ProductDetail() {
       analytics={productAnalytics}
       backNav={backNav}
       periodRange={periodRange}
+      trendRange={trendRange}
     />
   );
 }
@@ -267,6 +271,7 @@ function ProductDetailBody({
   analytics,
   backNav,
   periodRange,
+  trendRange,
 }: {
   name: string;
   product: ProductRow | null;
@@ -274,6 +279,7 @@ function ProductDetailBody({
   analytics: Analytics;
   backNav: ReturnType<typeof buildBackNav>;
   periodRange?: { start: string; end: string } | null;
+  trendRange: { start: Date; end: Date };
 }) {
   const qty = product?.qty ?? scoped.reduce((s, r) => s + r.qty, 0);
   const pass = product?.pass ?? scoped.reduce((s, r) => s + r.pass, 0);
@@ -286,7 +292,6 @@ function ProductDetailBody({
   const hours = product?.hours ?? scoped.reduce((s, r) => s + r.hours, 0);
   const uph = product?.uph ?? (hours > 0 ? Math.round(qty / hours) : 0);
   const failRate = product?.failRate ?? failRatePpm(fail, qty);
-  const failTotal = product?.failTotal ?? fail;
   const defects = product?.defects ?? [];
   const status = product?.status ?? statusByPpm(failRate);
   const type = product?.type ?? scoped[0]?.productType ?? "미지정";
@@ -294,6 +299,7 @@ function ProductDetailBody({
   const [selectedDefect, setSelectedDefect] = useState(
     () => defects[0]?.name ?? "",
   );
+  const [trendMetric, setTrendMetric] = useState<"qty" | "scrapCost">("qty");
 
   useEffect(() => {
     if (!defects.length) {
@@ -313,19 +319,44 @@ function ProductDetailBody({
     [scoped, selectedDefect],
   );
 
-  const byDate = Object.values(
-    scoped.reduce<Record<string, { date: string; qty: number; fail: number }>>(
+  const startMonthIndex =
+    trendRange.start.getFullYear() * 12 + trendRange.start.getMonth();
+  const endMonthIndex =
+    trendRange.end.getFullYear() * 12 + trendRange.end.getMonth();
+  const isMonthlyTrend = endMonthIndex - startMonthIndex >= 2;
+
+  const trendData = Object.values(
+    scoped.reduce<
+      Record<
+        string,
+        {
+          period: string;
+          date: string;
+          qty: number;
+          fail: number;
+          scrapCost: number;
+        }
+      >
+    >(
       (acc, r) => {
-        if (!acc[r.date])
-          acc[r.date] = { date: r.date.slice(5), qty: 0, fail: 0 };
-        acc[r.date].qty += r.qty;
-        acc[r.date].fail += r.fail;
+        const period = isMonthlyTrend ? r.date.slice(0, 7) : r.date;
+        if (!acc[period])
+          acc[period] = {
+            period,
+            date: isMonthlyTrend ? period : r.date.slice(5),
+            qty: 0,
+            fail: 0,
+            scrapCost: 0,
+          };
+        acc[period].qty += r.qty;
+        acc[period].fail += r.fail;
+        acc[period].scrapCost += r.scrapCost;
         return acc;
       },
       {},
     ),
   )
-    .sort((a, b) => a.date.localeCompare(b.date))
+    .sort((a, b) => a.period.localeCompare(b.period))
     .map((d) => ({
       ...d,
       failRate: failRatePpm(d.fail, d.qty),
@@ -360,8 +391,7 @@ function ProductDetailBody({
           ["검사량", qty.toLocaleString()],
           ["합격수량", pass.toLocaleString()],
           ["부적합수량", fail.toLocaleString()],
-          ["부적합 합계", failTotal.toLocaleString()],
-          ["폐기비용", formatWon(scrapCost)],
+          ["폐기비용", formatWonSuffix(scrapCost)],
           ["소요시간(분)", minutes.toLocaleString()],
           ["UPH", String(uph)],
           ["부적합률", `${formatPpm(failRate)}`],
@@ -374,11 +404,50 @@ function ProductDetailBody({
       </ResponsiveGrid>
 
       <ResponsiveGrid variant="split">
-        <Panel title="기간별 부적합률 추이">
-          <div className="h-[240px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={byDate}>
-                <CartesianGrid stroke="#eef1f5" vertical={false} />
+        <Panel
+          title="기간별 부적합률 추이"
+          description={`${isMonthlyTrend ? "월별" : "일별"} ${
+            trendMetric === "qty" ? "검수량" : "폐기비용"
+          }과 부적합률을 함께 비교합니다.`}
+          actions={
+            <div
+              role="group"
+              aria-label="차트 조회 기준"
+              className="inline-flex items-center rounded-full border border-line bg-canvas/80 p-1"
+            >
+              {[
+                { id: "qty" as const, label: "검수량" },
+                { id: "scrapCost" as const, label: "폐기비용" },
+              ].map((metric) => (
+                <button
+                  key={metric.id}
+                  type="button"
+                  aria-pressed={trendMetric === metric.id}
+                  onClick={() => setTrendMetric(metric.id)}
+                  className={`min-w-[72px] rounded-full px-4 py-2 text-xs font-semibold transition-all ${
+                    trendMetric === metric.id
+                      ? "bg-white text-accent shadow-sm ring-1 ring-black/5"
+                      : "text-muted hover:bg-white/60 hover:text-ink"
+                  }`}
+                >
+                  {metric.label}
+                </button>
+              ))}
+            </div>
+          }
+        >
+          <div className="rounded-2xl border border-line/70 bg-white px-3 pb-3 pt-4">
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart
+                  data={trendData}
+                  margin={{ top: 28, right: 8, left: 12, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    stroke="#e5eaf1"
+                    strokeDasharray="4 4"
+                    vertical={false}
+                  />
                 <XAxis
                   dataKey="date"
                   tick={{ fontSize: 11, fill: "#5b6577" }}
@@ -386,29 +455,96 @@ function ProductDetailBody({
                   tickLine={false}
                 />
                 <YAxis
+                  yAxisId="metric"
                   tick={{ fontSize: 11, fill: "#5b6577" }}
                   axisLine={false}
                   tickLine={false}
-                  width={36}
+                  width={trendMetric === "scrapCost" ? 120 : 80}
+                  tickFormatter={(value) =>
+                    trendMetric === "scrapCost"
+                      ? formatWonSuffix(Number(value))
+                      : Number(value).toLocaleString()
+                  }
+                />
+                <YAxis
+                  yAxisId="rate"
+                  orientation="right"
+                  tick={{ fontSize: 11, fill: "#5b6577" }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={72}
+                  tickFormatter={(value) => formatPpm(Number(value))}
                 />
                 <Tooltip
                   contentStyle={{
-                    border: "1px solid #e2e6ec",
-                    borderRadius: 12,
-                    boxShadow: "none",
+                    border: "1px solid #dbe3ee",
+                    borderRadius: 14,
+                    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
                     fontSize: 12,
+                    backgroundColor: "rgba(255, 255, 255, 0.96)",
                   }}
+                  cursor={{ fill: "rgba(59, 130, 246, 0.06)" }}
+                  formatter={(value, name) => {
+                    const numericValue = Number(value ?? 0);
+                    if (name === "부적합률")
+                      return [formatPpm(numericValue), name];
+                    if (name === "폐기비용")
+                      return [formatWonSuffix(numericValue), name];
+                    return [numericValue.toLocaleString(), String(name)];
+                  }}
+                  labelFormatter={(label) =>
+                    `${isMonthlyTrend ? "월" : "날짜"} ${label}`
+                  }
+                />
+                <Bar
+                  yAxisId="metric"
+                  dataKey={trendMetric}
+                  name={trendMetric === "qty" ? "검수량" : "폐기비용"}
+                  fill="#93c5fd"
+                  radius={[7, 7, 2, 2]}
+                  maxBarSize={30}
                 />
                 <Line
+                  yAxisId="rate"
                   type="monotone"
                   dataKey="failRate"
                   name="부적합률"
-                  stroke="#ef4444"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+                  stroke="#e05252"
+                  strokeWidth={2.5}
+                  dot={{ r: 2.5, fill: "#fff", strokeWidth: 2 }}
+                  activeDot={{
+                    r: 5,
+                    fill: "#fff",
+                    stroke: "#e05252",
+                    strokeWidth: 2.5,
+                  }}
+                >
+                  <LabelList
+                    dataKey="failRate"
+                    position="top"
+                    offset={8}
+                    fill="#b84343"
+                    fontSize={9}
+                    fontWeight={600}
+                    formatter={(value: unknown) => {
+                      const rate = Math.round(Number(value ?? 0));
+                      return rate > 0 ? rate.toLocaleString() : "";
+                    }}
+                  />
+                </Line>
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-[11px] font-medium text-muted">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-sm bg-blue-400" />
+                {trendMetric === "qty" ? "검수량" : "폐기비용"}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-0.5 w-4 rounded-full bg-red-500" />
+                부적합률 (ppm)
+              </span>
+            </div>
           </div>
         </Panel>
         <Panel

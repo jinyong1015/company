@@ -10,7 +10,7 @@ import { downloadExcel } from '../lib/download'
 import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
 import { buildProductDetailHref } from '../lib/productDetailNav'
 import type { ProductRow } from '../types'
-import { formatPpm, formatWon } from '../lib/format'
+import { formatPpm, formatWonSuffix } from '../lib/format'
 
 const ALL_TYPES = ''
 const VIEW_STATE_KEY = 'product-analysis'
@@ -269,7 +269,7 @@ export function ProductAnalysis() {
                     <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
                     <td className="num px-2 py-3">{formatPpm(row.failRate)}</td>
                     <td className="px-2 py-3">{row.mainDefect}</td>
-                    <td className="num px-2 py-3">{formatWon(row.scrapCost)}</td>
+                    <td className="num px-2 py-3">{formatWonSuffix(row.scrapCost)}</td>
                     <td className="px-2 py-3">
                       <StatusBadge status={row.status} />
                     </td>

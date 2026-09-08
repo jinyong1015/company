@@ -108,7 +108,7 @@ function formatDateInput(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-function resolvePeriodRange(filters: FilterState) {
+export function resolvePeriodRange(filters: FilterState) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   let start = new Date(today);
