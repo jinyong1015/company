@@ -8,10 +8,8 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useData } from '../../context/DataContext'
-import { useFilters } from '../../context/FilterContext'
 import {
   answerQuestion,
-  periodFromFilters,
   type AiAnswer,
   type AiConversationContext,
 } from '../../lib/aiAsk'
@@ -61,7 +59,6 @@ function loadStoredChat(): StoredChat {
 
 export function AiChatbot({ popupMode = false }: { popupMode?: boolean }) {
   const { records, analytics } = useData()
-  const { filters } = useFilters()
   const storedChat = useRef(loadStoredChat())
   const [open, setOpen] = useState(popupMode)
   const [input, setInput] = useState('')
@@ -117,9 +114,7 @@ export function AiChatbot({ popupMode = false }: { popupMode?: boolean }) {
     const text = question.trim()
     if (!text) return
 
-    const answer = answerQuestion(text, analytics, records, context, {
-      defaultPeriod: periodFromFilters(filters),
-    })
+    const answer = answerQuestion(text, analytics, records, context)
     messageId.current += 1
     setMessages((current) => [
       ...current,

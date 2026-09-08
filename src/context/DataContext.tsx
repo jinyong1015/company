@@ -2,7 +2,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -20,6 +22,7 @@ export interface PendingUpload {
 
 const STORAGE_KEY = 'inspection-analytics-records'
 const META_KEY = 'inspection-analytics-meta'
+const DATA_SYNC_CHANNEL = 'inspection-analytics-data-sync'
 
 interface DataMeta {
   fileName: string | null
@@ -27,6 +30,10 @@ interface DataMeta {
   source: 'seed' | 'upload'
   uploadResult: UploadResult | null
 }
+
+type DataSyncMessage =
+  | { type: 'request-current-data' }
+  | { type: 'sync-current-data'; records: InspectionRecord[]; meta: DataMeta }
 
 interface DataContextValue {
   records: InspectionRecord[]
@@ -121,6 +128,61 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingUpload | null>(null)
+  const recordsRef = useRef(records)
+  const metaRef = useRef(meta)
+  recordsRef.current = records
+  metaRef.current = meta
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return
+
+    const isPopup = window.location.pathname.includes('/ai-chatbot-popup')
+    const channel = new BroadcastChannel(DATA_SYNC_CHANNEL)
+
+    channel.onmessage = (event: MessageEvent<DataSyncMessage>) => {
+      const message = event.data
+      if (message.type === 'request-current-data' && !isPopup) {
+        channel.postMessage({
+          type: 'sync-current-data',
+          records: recordsRef.current,
+          meta: metaRef.current,
+        } satisfies DataSyncMessage)
+        return
+      }
+
+      if (
+        message.type === 'sync-current-data' &&
+        isPopup &&
+        Array.isArray(message.records)
+      ) {
+        setRecords(message.records)
+        setMeta(message.meta)
+      }
+    }
+
+    if (isPopup) {
+      channel.postMessage({ type: 'request-current-data' } satisfies DataSyncMessage)
+    }
+
+    return () => channel.close()
+  }, [])
+
+  useEffect(() => {
+    if (
+      typeof BroadcastChannel === 'undefined' ||
+      window.location.pathname.includes('/ai-chatbot-popup')
+    ) {
+      return
+    }
+
+    const channel = new BroadcastChannel(DATA_SYNC_CHANNEL)
+    channel.postMessage({
+      type: 'sync-current-data',
+      records,
+      meta,
+    } satisfies DataSyncMessage)
+    channel.close()
+  }, [records, meta])
 
   const analytics = useMemo(() => {
     if (!records.length) return emptyAnalytics()

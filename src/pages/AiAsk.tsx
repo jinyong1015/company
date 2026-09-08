@@ -3,10 +3,8 @@ import { PageHeader } from "../components/common/PageHeader";
 import { Panel } from "../components/common/Panel";
 import { AiAnswerBlocks } from "../components/ai/AiAnswerCharts";
 import { useData } from "../context/DataContext";
-import { useFilters } from "../context/FilterContext";
 import {
   answerQuestion,
-  periodFromFilters,
   type AiAnswer,
   type AiConversationContext,
 } from "../lib/aiAsk";
@@ -21,7 +19,6 @@ const samples = [
 
 export function AiAsk() {
   const { records, analytics } = useData();
-  const { filters } = useFilters();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<{ q: string; a: AiAnswer }[]>([]);
   const [context, setContext] = useState<AiConversationContext | null>(null);
@@ -29,9 +26,7 @@ export function AiAsk() {
   const ask = (q: string) => {
     const text = q.trim();
     if (!text) return;
-    const a = answerQuestion(text, analytics, records, context, {
-      defaultPeriod: periodFromFilters(filters),
-    });
+    const a = answerQuestion(text, analytics, records, context);
     setMessages((prev) => [...prev, { q: text, a }]);
     if (a.context) setContext(a.context);
     setInput("");

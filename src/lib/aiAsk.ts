@@ -190,6 +190,19 @@ function lastDayOfMonth(y: number, m: number) {
   return new Date(y, m, 0).getDate()
 }
 
+function periodForAllRecords(records: InspectionRecord[]): AiQueryPeriod | null {
+  const dates = records
+    .map((record) => record.date)
+    .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date))
+    .sort()
+  if (!dates.length) return null
+  return {
+    startDate: dates[0]!,
+    endDate: dates[dates.length - 1]!,
+    label: '전체',
+  }
+}
+
 export function periodFromFilters(
   filters: FilterState,
   now = new Date(),
@@ -1289,108 +1302,44 @@ function buildMultiProductDefectTrend(
   return { data, series, listRows, grain }
 }
 
+/** 명시적인 이전 질문·결과 참조가 있을 때만 대화 문맥을 이어받는다. */
 function isFollowUpAsk(n: string) {
   if (
     includesAny(n, [
       '방금',
-      '방금전',
-      '알려준',
-      '이어서',
-      '추가질문',
+      '직전',
+      '이전',
+      '아까',
+      '앞서',
+      '위에서',
+      '위결과',
       '그리스트',
-      '위리스트',
       '해당리스트',
       '그품번',
-      '위품번',
       '해당품번',
-      '리스트에서',
-      '품번에서',
-      '앞질문',
-      '직전질문',
-      '이어서질문',
-      '이전리스트',
-      '이전답변',
-      '직전리스트',
+      '위품번',
+      '이품번들',
+      '그결과',
+      '해당결과',
+      '나온품번',
+      '위에서나온품번',
       '그질문',
       '위질문',
-      '같은품번',
-      '동일품번',
-      '그걸로',
-      '그거로',
-      '그것도',
-      '도알려',
-      '도보여',
+      '같은조건으로',
+      '동일한조건으로',
+      '다시집계',
+      '다시조회',
+      '기간을바꿔',
+      '기간만변경',
+      '이것만다시',
+      '로변경해서보여',
     ])
   ) {
     return true
   }
-  // "막대그래프로도" / "원그래프로도"  alone when continuing
-  if (
-    includesAny(n, ['그래프로도', '막대로도', '표로도', '리스트로도']) ||
-    (includesAny(n, ['막대', '원형', '원그래프', '파이']) &&
-      includesAny(n, ['도', '다시', '추가로']))
-  ) {
-    return true
-  }
-  return (
-    includesAny(n, ['이전', '앞서', '직전']) &&
-    includesAny(n, ['리스트', '품번', '답변', '결과', '알려', '질문'])
-  )
-}
 
-/**
- * 직전 품번 컨텍스트가 있을 때, "방금" 없이도 후속으로 볼 짧은 질문
- * 예: "그럼 6월은?", "TOP 3만", "1위 원인", "R600027 자세히"
- */
-function isSoftFollowUp(
-  text: string,
-  n: string,
-  prior: AiConversationContext,
-  period: AiQueryPeriod | null,
-): boolean {
-  // 1) 기간만 변경
-  if (period) {
-    if (
-      includesAny(n, [
-        '그럼',
-        '다시',
-        '어때',
-        '같은품번',
-        '동일품번',
-        '월로',
-        '월은',
-        '로다시',
-        '기준으로',
-      ])
-    ) {
-      return true
-    }
-    // "6월은?" / "5~7월로" 처럼 짧은 기간 질의
-    if (text.trim().length <= 24) return true
-  }
-
-  // 2) 리스트 좁히기
-  if (/(?:top|상위)\s*\d+\s*만|\d+\s*(?:개|위)\s*만/i.test(text)) return true
-  if (includesAny(n, ['개만', '위만', '만보여', '만알려', '추려', '좁혀'])) {
-    return true
-  }
-  if (parseQtyMinEa(text, n) != null || parsePpmMin(text, n) != null) return true
-  if (
-    hasExcludeIntent(n) &&
-    findProductNames(n, prior.productNames).length > 0
-  ) {
-    return true
-  }
-
-  // 3) 드릴다운
-  if (parseRankPick(text, n) != null) return true
-  if (includesAny(n, ['원인', '자세히', '상세', '왜'])) return true
-  if (
-    findProductNames(n, prior.productNames).length === 1 &&
-    includesAny(n, ['원인', '자세히', '상세', '왜', '분석', '알려', '보여'])
-  ) {
-    return true
-  }
+  if (n.includes('이번에는') && n.includes('기준으로')) return true
+  if (/기준으로.*다시/.test(n)) return true
 
   return false
 }
@@ -2249,8 +2198,9 @@ function answerOne(
   const limit = topN(text)
   const { groups, grommetOverall } = detectGroups(n)
   const questionPeriod = parsePeriodFromQuestion(text, records, now)
-  const period = questionPeriod ?? defaultPeriod
-  const periodNote = period ? `기간: ${period.label}` : '기간: 올해(연간)'
+  const period =
+    questionPeriod ?? defaultPeriod ?? periodForAllRecords(records)
+  const periodNote = period ? `기간: ${period.label}` : '기간: 전체'
   const scopedAnalytics = period
     ? analyzeRecords(records, baseFilters('all', period))
     : analytics
@@ -2258,7 +2208,7 @@ function answerOne(
   // ── 후속 질문 (직전 품번 리스트 이어받기) ──
   if (
     priorContext?.productNames.length &&
-    (isFollowUpAsk(n) || isSoftFollowUp(text, n, priorContext, questionPeriod))
+    isFollowUpAsk(n)
   ) {
     const follow = tryAnswerFollowUp(
       text,
