@@ -898,14 +898,8 @@ function tryAnswerNamedProductCompare(
   // SEAL/그로멧만으로 findProductNames가 우연히 잡히지 않도록:
   // bareCodes가 2개 이상이거나, named가 2개 이상이어야 함 — 이미 충족
 
-  const metric: 'failRate' | 'qty' | 'scrapCost' = includesAny(n, [
-    '폐기',
-    '비용',
-  ])
-    ? 'scrapCost'
-    : includesAny(n, ['검수량', '검사량']) && !includesAny(n, ['부적합', '불량'])
-      ? 'qty'
-      : 'failRate'
+  const metric: 'failRate' | 'qty' | 'scrapCost' =
+    inferMetricFromText(n) ?? 'failRate'
 
   const metricLabel =
     metric === 'qty'
@@ -1425,8 +1419,35 @@ function buildProductDrillDown(
   return blocks
 }
 
+/** "검수량 순으로 / 검수량이 많은 순서대로" 등 명시적 검수량 정렬 의도 */
+function hasExplicitQtySortIntent(n: string): boolean {
+  if (!includesAny(n, ['검수량', '검사량'])) return false
+  // "검수량 N EA 이상"은 필터이지 정렬이 아님
+  if (includesAny(n, ['이상'])) return false
+  if (
+    includesAny(n, [
+      '순으로',
+      '순서대로',
+      '순위',
+      '많은순',
+      '높은순',
+      '낮은순',
+      '적은순',
+      '재정렬',
+    ])
+  ) {
+    return true
+  }
+  // compact 문자열: "검수량이많은", "검수량많은순서" 등
+  return /검수량이?(?:많은|높은|낮은|적은)|검사량이?(?:많은|높은|낮은|적은)/.test(
+    n,
+  )
+}
+
 function inferMetricFromText(n: string): 'failRate' | 'qty' | 'scrapCost' | null {
   if (includesAny(n, ['폐기', '비용'])) return 'scrapCost'
+  // 후속: "이전 부적합률 TOP5에서 검수량 순으로" — 부적합 언급이 있어도 검수량 정렬 우선
+  if (hasExplicitQtySortIntent(n)) return 'qty'
   // "검수량 10000ea 이상만"은 필터이지 검수량 순 정렬이 아님
   if (
     includesAny(n, ['검수량', '검사량']) &&
