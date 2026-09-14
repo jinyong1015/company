@@ -41,9 +41,11 @@ const COLUMN_ALIASES: Record<
   lot: ['성형 lot', '성형lot', 'lot no', 'lot', '로트', '성형로트'],
   worker: [
     '작업자',
+    '작업자명',
     '생산자',
     '성형작업자',
     '성형 작업자',
+    '성형작업자명',
     '성형작업원',
     'worker',
     'operator',
@@ -82,6 +84,9 @@ const REQUIRED_FIELDS: (keyof typeof COLUMN_ALIASES)[] = [
 
 function normalizeHeader(value: unknown): string {
   return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ')
     .trim()
     .toLowerCase()
     .replace(/\s+/g, ' ')
@@ -91,16 +96,23 @@ function compactHeader(value: string): string {
   return normalizeHeader(value).replace(/[\s_\-./]/g, '')
 }
 
-/** 작업자 = 성형작업자 = 성형 작업자 (검사작업자는 검사원 컬럼) */
+/**
+ * 작업자 = 성형작업자 = 성형 작업자 = 작업자명 …
+ * (검사자/검사작업자는 검사원 컬럼이므로 제외)
+ */
 function canonicalizeHeaderToken(token: string): string {
-  const t = compactHeader(token)
+  let t = compactHeader(token)
   if (!t || t.includes('검사')) return t
+  if (t.endsWith('명')) t = t.slice(0, -1)
   if (
     t === '작업자' ||
     t === '성형작업자' ||
     t === '성형작업원' ||
+    t === '생산자' ||
     t.endsWith('작업자') ||
-    t.endsWith('작업원')
+    t.endsWith('작업원') ||
+    t.includes('작업자') ||
+    t.includes('작업원')
   ) {
     return '작업자'
   }
