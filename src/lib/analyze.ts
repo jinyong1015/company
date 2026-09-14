@@ -1256,6 +1256,14 @@ export interface DefectEquipmentMoldAnalysis {
 
 function defectCountOf(record: InspectionRecord, defectName: string) {
   const defects = record.defects ?? {};
+  /** 빈 문자열 = 전체 불량 (유형별 합계, 없으면 fail) */
+  if (!defectName) {
+    const sum = Object.values(defects).reduce(
+      (s, n) => s + (Number(n) || 0),
+      0,
+    );
+    return sum > 0 ? sum : Number(record.fail) || 0;
+  }
   if (defects[defectName] != null) return Number(defects[defectName]) || 0;
   const hit = Object.keys(defects).find(
     (k) => k.toLowerCase() === defectName.toLowerCase(),
@@ -1277,13 +1285,15 @@ function toShareItems(
 }
 
 /**
- * 품번 상세: 선택한 불량 유형의 설비별·금형별 발생 비중
+ * 품번 상세: 선택한 불량 유형(또는 전체)의 설비별·금형별 발생 비중
+ * defectName이 비어 있으면 전체 불량 기준.
  * (설비 하위에는 해당 설비에서의 금형 비중)
  */
 export function buildDefectEquipmentMoldAnalysis(
   records: InspectionRecord[],
   defectName: string,
 ): DefectEquipmentMoldAnalysis {
+  const label = defectName || "전체";
   const byEquipment = new Map<string, number>();
   const byMold = new Map<string, number>();
   const byEquipmentMold = new Map<string, Map<string, number>>();
@@ -1315,7 +1325,7 @@ export function buildDefectEquipmentMoldAnalysis(
     );
 
   return {
-    defectName,
+    defectName: label,
     total,
     equipments,
     molds: toShareItems(byMold, total),

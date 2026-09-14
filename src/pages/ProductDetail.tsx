@@ -4,8 +4,10 @@ import {
   ArrowLeft,
   CalendarRange,
   ChevronRight,
+  HardHat,
   LayoutDashboard,
   Package,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -43,12 +45,15 @@ import {
   PRODUCT_DETAIL_FROM_LABELS,
   PRODUCT_DETAIL_FROM_PATHS,
   buildWeeklyReportBackHref,
+  buildWorkerAnalysisBackHref,
+  buildInspectorAnalysisBackHref,
   type ProductDetailFromId,
 } from "../lib/productDetailNav";
 import {
   failRatePpm,
   formatPercent,
   formatPpm,
+  formatPpmAsPercent,
   formatWonSuffix,
   statusByPpm,
 } from "../lib/format";
@@ -75,13 +80,19 @@ const BACK_NAV_ICONS: Record<ProductDetailFromId, LucideIcon> = {
   dashboard: LayoutDashboard,
   products: Package,
   quality: Activity,
+  workers: HardHat,
+  inspectors: Users,
 };
 
 function buildBackNav(from: ProductDetailFromId, searchParams: URLSearchParams) {
   const path =
     from === "weekly-report"
       ? buildWeeklyReportBackHref(searchParams)
-      : PRODUCT_DETAIL_FROM_PATHS[from];
+      : from === "workers"
+        ? buildWorkerAnalysisBackHref(searchParams)
+        : from === "inspectors"
+          ? buildInspectorAnalysisBackHref(searchParams)
+          : PRODUCT_DETAIL_FROM_PATHS[from];
 
   return {
     from,
@@ -101,10 +112,12 @@ export function ProductDetail() {
     () => readUrlDateRange(searchParams),
     [searchParams],
   );
+  const urlWorker = (searchParams.get("worker") ?? "").trim();
+  const urlInspector = (searchParams.get("inspector") ?? "").trim();
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
-  // 주간업무 보고 등 URL 기간은 상세 화면에만 임시 반영하고,
+  // 주간업무 보고·성형작업자·검사자 등 URL 기간은 상세 화면에만 임시 반영하고,
   // 이탈 시 진입 전 전역 조회기준으로 복원한다.
   useLayoutEffect(() => {
     if (!urlDateRange) return;
@@ -126,30 +139,37 @@ export function ProductDetail() {
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
   }, [id, searchParams]);
 
-  const effectiveFilters = useMemo<FilterState>(
-    () =>
-      urlDateRange
-        ? {
-            ...filters,
-            period: "custom",
-            startDate: urlDateRange.startDate,
-            endDate: urlDateRange.endDate,
-          }
-        : filters,
-    [filters, urlDateRange],
-  );
+  const effectiveFilters = useMemo<FilterState>(() => {
+    const withPeriod = urlDateRange
+      ? {
+          ...filters,
+          period: "custom" as const,
+          startDate: urlDateRange.startDate,
+          endDate: urlDateRange.endDate,
+        }
+      : filters;
+    if (urlWorker) return { ...withPeriod, workers: [urlWorker] };
+    if (urlInspector) return { ...withPeriod, inspectors: [urlInspector] };
+    return withPeriod;
+  }, [filters, urlDateRange, urlWorker, urlInspector]);
 
   const scoped = useMemo(
     () =>
-      filterRecords(records, effectiveFilters, true).filter(
-        (r) => r.product === name,
-      ),
-    [records, effectiveFilters, name],
+      filterRecords(records, effectiveFilters, true).filter((r) => {
+        if (r.product !== name) return false;
+        if (urlWorker) return r.worker === urlWorker && r.qty > 0;
+        if (urlInspector) return r.inspector === urlInspector && r.qty > 0;
+        return true;
+      }),
+    [records, effectiveFilters, name, urlWorker, urlInspector],
   );
 
   const productAnalytics = useMemo(
-    () => (urlDateRange ? analyzeRecords(records, effectiveFilters) : analytics),
-    [urlDateRange, records, effectiveFilters, analytics],
+    () =>
+      urlDateRange || urlWorker || urlInspector
+        ? analyzeRecords(records, effectiveFilters)
+        : analytics,
+    [urlDateRange, urlWorker, urlInspector, records, effectiveFilters, analytics],
   );
 
   const product =
@@ -161,11 +181,21 @@ export function ProductDetail() {
   const backFrom = parseProductDetailFrom(searchParams.get("from"));
   const backNav = buildBackNav(backFrom, searchParams);
   const fromWeeklyReport = backFrom === "weekly-report";
-  const weeklyStart = searchParams.get("startDate");
-  const weeklyEnd = searchParams.get("endDate");
+  const fromWorkers = backFrom === "workers";
+  const fromInspectors = backFrom === "inspectors";
+  const rangeStart = searchParams.get("startDate");
+  const rangeEnd = searchParams.get("endDate");
   const periodRange =
-    fromWeeklyReport && weeklyStart && weeklyEnd
-      ? { start: weeklyStart, end: weeklyEnd }
+    (fromWeeklyReport || fromWorkers || fromInspectors) &&
+    rangeStart &&
+    rangeEnd
+      ? { start: rangeStart, end: rangeEnd }
+      : null;
+
+  const personScope = urlWorker
+    ? { label: "성형작업자", value: urlWorker }
+    : urlInspector
+      ? { label: "검사자", value: urlInspector }
       : null;
 
   if (!name) {
@@ -179,10 +209,18 @@ export function ProductDetail() {
   if (!product && scoped.length === 0) {
     return (
       <div className="space-y-5">
-        <ProductDetailBackNav backNav={backNav} periodRange={periodRange} />
+        <ProductDetailBackNav
+          backNav={backNav}
+          periodRange={periodRange}
+          personScope={personScope}
+        />
         <PageHeader
           title={name}
-          description="선택한 기간/분석 그룹에 이 품번의 DATA가 없습니다."
+          description={
+            personScope
+              ? `${personScope.label} ${personScope.value} · 선택한 기간에 이 품번 실적이 없습니다.`
+              : "선택한 기간/분석 그룹에 이 품번의 DATA가 없습니다."
+          }
         />
         <Panel>
           <p className="text-sm text-muted">
@@ -202,6 +240,7 @@ export function ProductDetail() {
       backNav={backNav}
       periodRange={periodRange}
       trendRange={trendRange}
+      personScope={personScope}
     />
   );
 }
@@ -209,9 +248,11 @@ export function ProductDetail() {
 function ProductDetailBackNav({
   backNav,
   periodRange,
+  personScope,
 }: {
   backNav: ReturnType<typeof buildBackNav>;
   periodRange?: { start: string; end: string } | null;
+  personScope?: { label: string; value: string } | null;
 }) {
   const Icon = backNav.icon;
 
@@ -238,6 +279,17 @@ function ProductDetailBackNav({
           </span>
         </span>
 
+        {personScope ? (
+          <span className="hidden shrink-0 rounded-xl border border-line bg-canvas px-3 py-2 text-right sm:block">
+            <span className="block text-[10px] font-semibold tracking-wide text-muted uppercase">
+              {personScope.label}
+            </span>
+            <span className="mt-0.5 block max-w-[9rem] truncate text-xs font-semibold text-ink">
+              {personScope.value}
+            </span>
+          </span>
+        ) : null}
+
         {periodRange ? (
           <span className="hidden shrink-0 rounded-xl border border-line bg-canvas px-3 py-2 text-right sm:block">
             <span className="block text-[10px] font-semibold tracking-wide text-muted uppercase">
@@ -255,11 +307,22 @@ function ProductDetailBackNav({
           aria-hidden
         />
       </Link>
-      {periodRange ? (
-        <p className="num mt-2 px-1 text-center text-xs font-medium text-muted sm:hidden">
-          조회기간 {periodRange.start} ~ {periodRange.end}
+      {(personScope || periodRange) && (
+        <p className="mt-2 px-1 text-center text-xs font-medium text-muted sm:hidden">
+          {personScope ? (
+            <span>
+              {personScope.label}{" "}
+              <span className="font-semibold text-ink">{personScope.value}</span>
+            </span>
+          ) : null}
+          {personScope && periodRange ? <span className="mx-1.5">·</span> : null}
+          {periodRange ? (
+            <span className="num">
+              조회기간 {periodRange.start} ~ {periodRange.end}
+            </span>
+          ) : null}
         </p>
-      ) : null}
+      )}
     </nav>
   );
 }
@@ -272,6 +335,7 @@ function ProductDetailBody({
   backNav,
   periodRange,
   trendRange,
+  personScope,
 }: {
   name: string;
   product: ProductRow | null;
@@ -280,6 +344,7 @@ function ProductDetailBody({
   backNav: ReturnType<typeof buildBackNav>;
   periodRange?: { start: string; end: string } | null;
   trendRange: { start: Date; end: Date };
+  personScope?: { label: string; value: string } | null;
 }) {
   const qty = product?.qty ?? scoped.reduce((s, r) => s + r.qty, 0);
   const pass = product?.pass ?? scoped.reduce((s, r) => s + r.pass, 0);
@@ -296,9 +361,8 @@ function ProductDetailBody({
   const status = product?.status ?? statusByPpm(failRate);
   const type = product?.type ?? scoped[0]?.productType ?? "미지정";
 
-  const [selectedDefect, setSelectedDefect] = useState(
-    () => defects[0]?.name ?? "",
-  );
+  /** 빈 문자열 = 전체 불량 (초기 진입 기본값) */
+  const [selectedDefect, setSelectedDefect] = useState("");
   const [trendMetric, setTrendMetric] = useState<"qty" | "scrapCost">("qty");
 
   useEffect(() => {
@@ -306,16 +370,16 @@ function ProductDetailBody({
       setSelectedDefect("");
       return;
     }
-    if (!defects.some((d) => d.name === selectedDefect)) {
-      setSelectedDefect(defects[0]!.name);
+    if (
+      selectedDefect &&
+      !defects.some((d) => d.name === selectedDefect)
+    ) {
+      setSelectedDefect("");
     }
   }, [defects, selectedDefect]);
 
   const defectDrill = useMemo(
-    () =>
-      selectedDefect
-        ? buildDefectEquipmentMoldAnalysis(scoped, selectedDefect)
-        : null,
+    () => buildDefectEquipmentMoldAnalysis(scoped, selectedDefect),
     [scoped, selectedDefect],
   );
 
@@ -363,10 +427,22 @@ function ProductDetailBody({
     }));
 
   const workerUph = analytics.workerProductUph
-    .filter((w) => w.product === name)
-    .sort((a, b) => b.uph - a.uph || a.worker.localeCompare(b.worker, "ko"));
+    .filter(
+      (w) =>
+        w.product === name &&
+        (personScope?.label !== "성형작업자" || w.worker === personScope.value),
+    )
+    .sort(
+      (a, b) =>
+        b.failRate - a.failRate || a.worker.localeCompare(b.worker, "ko"),
+    );
   const inspectorUph = analytics.inspectorProductUph
-    .filter((row) => row.product === name)
+    .filter(
+      (row) =>
+        row.product === name &&
+        (personScope?.label !== "검사자" ||
+          row.inspector === personScope.value),
+    )
     .sort(
       (a, b) =>
         b.uph - a.uph || a.inspector.localeCompare(b.inspector, "ko"),
@@ -374,14 +450,20 @@ function ProductDetailBody({
 
   return (
     <div className="space-y-5">
-      <ProductDetailBackNav backNav={backNav} periodRange={periodRange} />
+      <ProductDetailBackNav
+        backNav={backNav}
+        periodRange={periodRange}
+        personScope={personScope}
+      />
 
       <PageHeader
         title={name}
         description={
-          periodRange
-            ? `${type} · 선택 주차 품번 상세`
-            : `${type} · 선택한 기간/분석 그룹 기준`
+          personScope
+            ? `${type} · ${personScope.label} ${personScope.value} · 선택 기간 실적 기준`
+            : periodRange
+              ? `${type} · 선택 주차 품번 상세`
+              : `${type} · 선택한 기간/분석 그룹 기준`
         }
         actions={<StatusBadge status={status} />}
       />
@@ -598,14 +680,12 @@ function ProductDetailBody({
                 <span className="font-medium text-accent">불량 유형을 선택</span>
                 해 설비·금형별 발생 비중을 확인하세요.
               </p>
-              {selectedDefect ? (
-                <p className="text-xs text-muted">
-                  현재 선택{" "}
-                  <span className="font-semibold text-accent">
-                    {selectedDefect}
-                  </span>
-                </p>
-              ) : null}
+              <p className="text-xs text-muted">
+                현재 선택{" "}
+                <span className="font-semibold text-accent">
+                  {selectedDefect || "전체"}
+                </span>
+              </p>
             </div>
 
             <div
@@ -613,15 +693,32 @@ function ProductDetailBody({
               role="radiogroup"
               aria-label="불량 유형 선택"
             >
-              {defects.map((d) => {
-                const active = d.name === selectedDefect;
+              {(
+                [
+                  {
+                    key: "__all__",
+                    value: "",
+                    label: "전체",
+                    count: defects.reduce((s, d) => s + d.count, 0),
+                    share: 100,
+                  },
+                  ...defects.map((d) => ({
+                    key: d.name,
+                    value: d.name,
+                    label: d.name,
+                    count: d.count,
+                    share: d.share,
+                  })),
+                ] as const
+              ).map((d) => {
+                const active = d.value === selectedDefect;
                 return (
                   <button
-                    key={d.name}
+                    key={d.key}
                     type="button"
                     role="radio"
                     aria-checked={active}
-                    onClick={() => setSelectedDefect(d.name)}
+                    onClick={() => setSelectedDefect(d.value)}
                     className={`group flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition ${
                       active
                         ? "border-accent bg-accent/5 shadow-sm ring-1 ring-accent/30"
@@ -647,7 +744,7 @@ function ProductDetailBody({
                             active ? "text-accent" : "text-ink"
                           }`}
                         >
-                          {d.name}
+                          {d.label}
                         </span>
                         {active ? (
                           <span className="shrink-0 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-medium text-white">
@@ -685,7 +782,7 @@ function ProductDetailBody({
           <p className="text-sm text-muted">이 기간에 불량 상세가 없습니다.</p>
         )}
 
-        {defectDrill && defectDrill.total > 0 ? (
+        {defects.length && defectDrill.total > 0 ? (
           <div className="mt-5 border-t border-line pt-5">
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="rounded-md bg-accent px-2 py-1 text-xs font-semibold text-white">
@@ -788,9 +885,11 @@ function ProductDetailBody({
             </div>
             </div>
           </div>
-        ) : selectedDefect ? (
+        ) : defects.length ? (
           <p className="mt-4 text-sm text-muted">
-            선택한 불량 유형의 설비·금형 DATA가 없습니다.
+            {selectedDefect
+              ? "선택한 불량 유형의 설비·금형 DATA가 없습니다."
+              : "전체 기준 설비·금형 DATA가 없습니다."}
           </p>
         ) : null}
       </Panel>
@@ -830,19 +929,18 @@ function ProductDetailBody({
       </ResponsiveGrid>
 
       <Panel
-        title="작업자별 품번 UPH"
-        description={`${name}를 담당한 작업자 효율 · UPH 높은 순`}
+        title="작업자별 품번 상세"
+        description={`${name}를 담당한 작업자별 검사·불량 현황 · 불량률 높은 순`}
       >
         <div className="overflow-x-auto">
-          <table className="min-w-[900px] w-full text-left text-sm">
+          <table className="min-w-[800px] w-full text-left text-sm">
             <thead>
               <tr className="border-b border-line text-xs text-muted">
                 <th className="px-2 py-2 font-medium">성형 작업자</th>
-                <th className="px-2 py-2 font-medium">검사량</th>
+                <th className="px-2 py-2 font-medium">실적수량</th>
                 <th className="px-2 py-2 font-medium">합격</th>
                 <th className="px-2 py-2 font-medium">부적합</th>
-                <th className="px-2 py-2 font-medium">소요시간(분)</th>
-                <th className="px-2 py-2 font-medium">UPH</th>
+                <th className="px-2 py-2 font-medium">불량률(%)</th>
                 <th className="px-2 py-2 font-medium">불량 내역</th>
               </tr>
             </thead>
@@ -859,16 +957,15 @@ function ProductDetailBody({
                   <td className="num px-2 py-2.5">
                     {row.fail.toLocaleString()}
                   </td>
-                  <td className="num px-2 py-2.5">
-                    {row.minutes.toLocaleString()}
+                  <td className="num px-2 py-2.5 font-semibold">
+                    {formatPpmAsPercent(row.failRate)}
                   </td>
-                  <td className="num px-2 py-2.5 font-semibold">{row.uph}</td>
                   <td className="px-2 py-2.5 text-xs">{row.defectSummary}</td>
                 </tr>
               ))}
               {!workerUph.length && (
                 <tr>
-                  <td colSpan={7} className="px-2 py-4 text-sm text-muted">
+                  <td colSpan={6} className="px-2 py-4 text-sm text-muted">
                     이 기간에 작업자별 DATA가 없습니다.
                   </td>
                 </tr>

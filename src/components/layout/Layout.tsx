@@ -8,6 +8,7 @@ import {
   Coins,
   Factory,
   GitCompare,
+  HardHat,
   LayoutDashboard,
   MoreHorizontal,
   Moon,
@@ -38,6 +39,12 @@ const nav = [
   { to: "/molds", label: "금형 분석", icon: Boxes, group: "분석" },
   { to: "/equipment", label: "설비 분석", icon: Factory, group: "분석" },
   { to: "/costs", label: "비용 분석", icon: Coins, group: "분석" },
+  {
+    to: "/workers",
+    label: "성형작업자 분석",
+    icon: HardHat,
+    group: "인사이트",
+  },
   { to: "/compare", label: "스마트 비교", icon: GitCompare, group: "인사이트" },
   {
     to: "/weekly-report",

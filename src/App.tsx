@@ -7,6 +7,8 @@ import { InspectionData } from './pages/InspectionData'
 import { QualityAnalysis } from './pages/QualityAnalysis'
 import { InspectorAnalysis } from './pages/InspectorAnalysis'
 import { InspectorDetail } from './pages/InspectorDetail'
+import { WorkerAnalysis } from './pages/WorkerAnalysis'
+import { WorkerDetail } from './pages/WorkerDetail'
 import { ProductAnalysis } from './pages/ProductAnalysis'
 import { ProductDetail } from './pages/ProductDetail'
 import { MoldAnalysis } from './pages/MoldAnalysis'
@@ -32,6 +34,8 @@ export default function App() {
               <Route path="quality" element={<QualityAnalysis />} />
               <Route path="inspectors" element={<InspectorAnalysis />} />
               <Route path="inspectors/:id" element={<InspectorDetail />} />
+              <Route path="workers" element={<WorkerAnalysis />} />
+              <Route path="workers/:id" element={<WorkerDetail />} />
               <Route path="products" element={<ProductAnalysis />} />
               <Route path="products/:id" element={<ProductDetail />} />
               <Route path="molds" element={<MoldAnalysis />} />

@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, Users } from 'lucide-react'
+import { ArrowLeft, ChevronRight, HardHat } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -21,7 +21,7 @@ import { filterRecords, buildPeriodTrends, resolvePeriodRange } from '../lib/ana
 import { fromEntityId, toEntityId } from '../lib/entityId'
 import { buildProductDetailHref } from '../lib/productDetailNav'
 import { useMemo, useState } from 'react'
-import { failRatePpm, formatPpm, formatWon } from '../lib/format'
+import { failRatePpm, formatPpmAsPercent, formatWon } from '../lib/format'
 import type { ProductBreakdown } from '../types'
 
 function toDateInput(d: Date) {
@@ -31,11 +31,11 @@ function toDateInput(d: Date) {
   return `${y}-${m}-${day}`
 }
 
-function InspectorDetailBackNav() {
+function WorkerDetailBackNav() {
   return (
-    <nav aria-label="검사자 상세 돌아가기" className="sticky top-16 z-10">
+    <nav aria-label="성형 작업자 상세 돌아가기" className="sticky top-16 z-10">
       <Link
-        to="/inspectors"
+        to="/workers"
         className="group flex items-center gap-3 rounded-2xl border-2 border-accent/50 bg-white p-3 shadow-[0_8px_24px_rgba(59,130,246,0.12)] ring-1 ring-accent/20 transition hover:border-accent hover:bg-accent/[0.03] hover:shadow-[0_12px_28px_rgba(59,130,246,0.18)] sm:gap-4 sm:p-4"
       >
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-white shadow-sm transition group-hover:bg-blue-600 sm:h-12 sm:w-12">
@@ -43,7 +43,7 @@ function InspectorDetailBackNav() {
         </span>
 
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/25 sm:h-12 sm:w-12">
-          <Users size={20} strokeWidth={2.25} aria-hidden />
+          <HardHat size={20} strokeWidth={2.25} aria-hidden />
         </span>
 
         <span className="min-w-0 flex-1">
@@ -51,7 +51,7 @@ function InspectorDetailBackNav() {
             돌아가기
           </span>
           <span className="mt-0.5 block truncate text-base font-bold text-ink transition group-hover:text-accent sm:text-lg">
-            검사자 분석
+            성형 작업자 분석
           </span>
         </span>
 
@@ -100,27 +100,37 @@ function buildProductStats(
     .sort((a, b) => b.qty - a.qty)
 }
 
-export function InspectorDetail() {
+export function WorkerDetail() {
   const { id } = useParams()
   const { analytics, records } = useData()
   const { filters } = useFilters()
-  const name = fromEntityId(id, 'ins')
+  const name = fromEntityId(id, 'wrk')
   const [selectedProduct, setSelectedProduct] = useState('')
   const [productQuery, setProductQuery] = useState('')
 
-  const inspector =
-    analytics.inspectors.find((i) => i.id === id || i.id === toEntityId('ins', name) || i.name === name) ??
+  const worker =
+    analytics.workers.find((w) => w.id === id || w.id === toEntityId('wrk', name) || w.name === name) ??
     null
 
   const scoped = useMemo(
-    () => filterRecords(records, filters, true).filter((r) => r.inspector === name),
+    () => filterRecords(records, filters, true).filter((r) => r.worker === name),
     [records, filters, name],
   )
 
   const productOptions = useMemo(() => {
     if (scoped.length) return buildProductStats(scoped)
-    return inspector?.products ?? []
-  }, [scoped, inspector])
+    return (worker?.products ?? []).map((p) => ({
+      product: p.product,
+      qty: p.qty,
+      fail: p.fail,
+      failRate: p.failRate,
+      scrapCost: p.scrapCost,
+      hours: p.hours,
+      minutes: p.minutes,
+      uph: p.uph,
+      mainDefect: p.mainDefect,
+    }))
+  }, [scoped, worker])
 
   const activeProduct = productOptions.some((p) => p.product === selectedProduct)
     ? selectedProduct
@@ -151,19 +161,19 @@ export function InspectorDetail() {
   if (!name) {
     return (
       <div className="space-y-5">
-        <InspectorDetailBackNav />
-        <PageHeader title="검사자 상세" description="대상을 찾을 수 없습니다." />
+        <WorkerDetailBackNav />
+        <PageHeader title="성형 작업자 상세" description="대상을 찾을 수 없습니다." />
       </div>
     )
   }
 
-  if (!inspector && scoped.length === 0) {
+  if (!worker && scoped.length === 0) {
     return (
       <div className="space-y-5">
-        <InspectorDetailBackNav />
+        <WorkerDetailBackNav />
         <PageHeader
           title={name}
-          description="선택한 기간/분석 그룹에 이 검사자의 DATA가 없습니다."
+          description="선택한 기간/분석 그룹에 이 성형 작업자의 DATA가 없습니다."
         />
         <Panel>
           <p className="text-sm text-muted">기간이나 분석 그룹을 바꿔 다시 확인해 주세요.</p>
@@ -172,10 +182,9 @@ export function InspectorDetail() {
     )
   }
 
-  const row = inspector ?? {
-    id: toEntityId('ins', name),
+  const row = worker ?? {
+    id: toEntityId('wrk', name),
     name,
-    team: scoped[0]?.team || '미지정',
     count: scoped.length,
     qty: scoped.reduce((s, r) => s + r.qty, 0),
     pass: scoped.reduce((s, r) => s + r.pass, 0),
@@ -185,29 +194,23 @@ export function InspectorDetail() {
     minutes: 0,
     uph: 0,
     scrapCost: scoped.reduce((s, r) => s + r.scrapCost, 0),
-    products: productOptions,
+    productCount: productOptions.length,
+    products: [],
   }
 
   const qty = filtered.reduce((s, r) => s + r.qty, 0)
   const fail = filtered.reduce((s, r) => s + r.fail, 0)
-  const hours = filtered.reduce((s, r) => s + r.hours, 0)
   const scrapCost = filtered.reduce((s, r) => s + r.scrapCost, 0)
   const failRate = failRatePpm(fail, qty)
-  const uph = hours > 0 ? Math.round(qty / hours) : 0
   const grainLabel = trendGrain === 'month' ? '월별' : '일별'
-  // 일별: qty·UPH가 모두 0인 날짜는 그래프에서 제외
-  const chartData =
-    trendGrain === 'day' ? byDate.filter((d) => d.qty > 0 || d.uph > 0) : byDate
-  // 일별(이번달·지난달·2개월 미만): 전체/품번 선택 모두, 실제 검사일 포인트 15개 초과 시 합계 라벨 숨김
+  // 일별: qty가 0인 날짜는 그래프에서 제외
+  const chartData = trendGrain === 'day' ? byDate.filter((d) => d.qty > 0) : byDate
+  // 일별(이번달·지난달·2개월 미만): 전체/품번 선택 모두, 실제 포인트 15개 초과 시 합계 라벨 숨김
   const showValueLabels = trendGrain === 'month' || chartData.length <= 15
 
   const qtyAxisWidth = Math.max(
     48,
     Math.min(88, String(Math.max(0, ...chartData.map((d) => d.qty), 0).toLocaleString('ko-KR')).length * 8 + 14),
-  )
-  const uphAxisWidth = Math.max(
-    48,
-    Math.min(88, String(Math.max(0, ...chartData.map((d) => d.uph), 0).toLocaleString('ko-KR')).length * 8 + 14),
   )
   const failRateAxisWidth = Math.max(
     52,
@@ -215,8 +218,9 @@ export function InspectorDetail() {
       96,
       (() => {
         const max = Math.max(0, ...chartData.map((d) => d.failRate), 0)
-        const sample = max >= 1000 ? `${Math.round(max / 1000)}k` : Math.round(max).toLocaleString('ko-KR')
-        return sample.length * 8 + 18
+        const pct = max / 10_000
+        const sample = pct >= 10 ? pct.toFixed(0) : pct.toFixed(2)
+        return `${sample}%`.length * 8 + 18
       })(),
     ),
   )
@@ -236,23 +240,23 @@ export function InspectorDetail() {
   const period = resolvePeriodRange(filters)
   const periodStart = toDateInput(period.start)
   const periodEnd = toDateInput(period.end)
-  const inspectorId = row.id
+  const workerId = row.id
 
   function productDetailHref(productName: string) {
-    return buildProductDetailHref(toEntityId('prd', productName), 'inspectors', {
+    return buildProductDetailHref(toEntityId('prd', productName), 'workers', {
       startDate: periodStart,
       endDate: periodEnd,
-      inspector: name,
-      inspectorId,
+      worker: name,
+      workerId,
     })
   }
 
   return (
     <div className="space-y-5">
-      <InspectorDetailBackNav />
+      <WorkerDetailBackNav />
       <PageHeader
         title={row.name}
-        description={`${row.team} · 선택한 기간/분석 그룹 기준 · ${scopeLabel}`}
+        description={`성형 작업자 · 선택한 기간/분석 그룹 기준 · ${scopeLabel}`}
       />
 
       <Panel
@@ -266,7 +270,7 @@ export function InspectorDetail() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-accent/40 bg-accent/5 px-3 py-2.5">
               <p className="text-sm text-ink">
                 <span className="font-medium text-accent">작업 품번을 선택</span>
-                해 검사량·UPH·부적합률을 확인하세요.
+                해 실적수량·불량률을 확인하세요.
               </p>
               <p className="text-xs text-muted">
                 현재{' '}
@@ -290,7 +294,7 @@ export function InspectorDetail() {
               <label className="text-xs font-medium text-muted">
                 빠른 선택
                 <select
-                  id="inspector-product-select"
+                  id="worker-product-select"
                   value={activeProduct}
                   onChange={(e) => setSelectedProduct(e.target.value)}
                   className="mt-1.5 min-w-[200px] rounded-full border border-line bg-white px-3 py-2 text-sm font-normal text-ink"
@@ -346,7 +350,7 @@ export function InspectorDetail() {
                       품번 <span className="num font-medium text-ink/80">{productOptions.length}</span>
                     </span>
                     <span>
-                      검수 <span className="num font-medium text-ink/80">{totalQty.toLocaleString()}</span>
+                      실적 <span className="num font-medium text-ink/80">{totalQty.toLocaleString()}</span>
                     </span>
                   </span>
                 </span>
@@ -395,13 +399,13 @@ export function InspectorDetail() {
                       </span>
                       <span className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted">
                         <span>
-                          검수 <span className="num font-medium text-ink/80">{p.qty.toLocaleString()}</span>
+                          실적 <span className="num font-medium text-ink/80">{p.qty.toLocaleString()}</span>
                         </span>
                         <span>
-                          부적합 <span className="num font-medium text-ink/80">{formatPpm(p.failRate)}</span>
-                        </span>
-                        <span>
-                          UPH <span className="num font-medium text-ink/80">{p.uph.toLocaleString()}</span>
+                          불량률{' '}
+                          <span className="num font-medium text-ink/80">
+                            {formatPpmAsPercent(p.failRate)}
+                          </span>
                         </span>
                       </span>
                     </span>
@@ -421,9 +425,9 @@ export function InspectorDetail() {
 
       <ResponsiveGrid variant="kpi">
         {[
-          ['검수량', qty.toLocaleString()],
-          ['부적합률', formatPpm(failRate)],
-          ['UPH', String(uph)],
+          ['실적수량', qty.toLocaleString()],
+          ['부적합수량', fail.toLocaleString()],
+          ['불량률(%)', formatPpmAsPercent(failRate)],
           ['폐기비용', formatWon(scrapCost)],
         ].map(([label, value]) => (
           <div key={label} className="card px-4 py-3">
@@ -434,7 +438,7 @@ export function InspectorDetail() {
       </ResponsiveGrid>
 
       <ResponsiveGrid variant="cards">
-        <Panel title={`기간별 검사량 (${grainLabel})`}>
+        <Panel title={`기간별 실적수량 (${grainLabel})`}>
           <div className="h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: showValueLabels ? 28 : 12, right: 28, left: 12, bottom: 4 }}>
@@ -471,54 +475,7 @@ export function InspectorDetail() {
             </ResponsiveContainer>
           </div>
         </Panel>
-        <Panel title={`기간별 UPH (${grainLabel})`}>
-          <div className="h-[240px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: showValueLabels ? 28 : 12, right: 28, left: 12, bottom: 4 }}>
-                <CartesianGrid stroke="#eef1f5" vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11, fill: '#5b6577' }}
-                  axisLine={false}
-                  tickLine={false}
-                  padding={{ left: 28, right: 28 }}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: '#5b6577' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={uphAxisWidth}
-                  tickFormatter={(v) => Number(v).toLocaleString('ko-KR')}
-                />
-                <Tooltip contentStyle={{ border: '1px solid #e2e6ec', borderRadius: 12, boxShadow: 'none', fontSize: 12 }} />
-                <Line
-                  type="monotone"
-                  dataKey="uph"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={{ r: 3.5, fill: '#3b82f6', stroke: '#3b82f6' }}
-                >
-                  {showValueLabels && (
-                    <LabelList
-                      dataKey="uph"
-                      position="top"
-                      offset={8}
-                      fill="#1f2937"
-                      fontSize={11}
-                      fontWeight={600}
-                      formatter={(v: unknown) => {
-                        const n = Number(v)
-                        if (!n) return ''
-                        return n.toLocaleString()
-                      }}
-                    />
-                  )}
-                </Line>
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </Panel>
-        <Panel title={`기간별 부적합률 (${grainLabel})`}>
+        <Panel title={`기간별 불량률 (${grainLabel})`}>
           <div className="h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: showValueLabels ? 28 : 12, right: 40, left: 12, bottom: 4 }}>
@@ -535,15 +492,11 @@ export function InspectorDetail() {
                   axisLine={false}
                   tickLine={false}
                   width={failRateAxisWidth}
-                  tickFormatter={(v) => {
-                    const n = Number(v)
-                    if (n >= 1000) return `${Math.round(n / 1000)}k`
-                    return Math.round(n).toLocaleString('ko-KR')
-                  }}
+                  tickFormatter={(v) => formatPpmAsPercent(Number(v))}
                 />
                 <Tooltip
                   contentStyle={{ border: '1px solid #e2e6ec', borderRadius: 12, boxShadow: 'none', fontSize: 12 }}
-                  formatter={(v: unknown) => [formatPpm(Number(v)), '부적합률']}
+                  formatter={(v: unknown) => [formatPpmAsPercent(Number(v)), '불량률(%)']}
                 />
                 <Line
                   type="monotone"
@@ -563,7 +516,7 @@ export function InspectorDetail() {
                       formatter={(v: unknown) => {
                         const n = Number(v)
                         if (!n) return ''
-                        return formatPpm(n)
+                        return formatPpmAsPercent(n)
                       }}
                     />
                   )}
@@ -576,17 +529,16 @@ export function InspectorDetail() {
 
       <Panel
         title="선택 품번별 지표"
-        description="품번을 클릭하면 해당 기간·검사자 검사 실적 기준 품번 상세로 이동합니다."
+        description="품번을 클릭하면 해당 기간·성형 작업자 실적 기준 품번 상세로 이동합니다."
       >
         <div className="overflow-x-auto">
-          <table className="min-w-[560px] w-full text-left text-sm">
+          <table className="min-w-[480px] w-full text-left text-sm">
             <thead>
               <tr className="border-b border-line text-xs text-muted">
                 <th className="px-2 py-2 font-medium">품번</th>
-                <th className="px-2 py-2 font-medium">검수량</th>
+                <th className="px-2 py-2 font-medium">실적수량</th>
                 <th className="px-2 py-2 font-medium">부적합수량</th>
-                <th className="px-2 py-2 font-medium">부적합률</th>
-                <th className="px-2 py-2 font-medium">UPH</th>
+                <th className="px-2 py-2 font-medium">불량률(%)</th>
               </tr>
             </thead>
             <tbody>
@@ -602,13 +554,14 @@ export function InspectorDetail() {
                   </td>
                   <td className="num px-2 py-2.5">{p.qty.toLocaleString()}</td>
                   <td className="num px-2 py-2.5">{p.fail.toLocaleString()}</td>
-                  <td className="num px-2 py-2.5">{formatPpm(p.failRate)}</td>
-                  <td className="num px-2 py-2.5 font-semibold">{p.uph}</td>
+                  <td className="num px-2 py-2.5 font-semibold">
+                    {formatPpmAsPercent(p.failRate)}
+                  </td>
                 </tr>
               ))}
               {!selectedStats.length && (
                 <tr>
-                  <td colSpan={5} className="px-2 py-6 text-center text-muted">
+                  <td colSpan={4} className="px-2 py-6 text-center text-muted">
                     표시할 품번이 없습니다.
                   </td>
                 </tr>
