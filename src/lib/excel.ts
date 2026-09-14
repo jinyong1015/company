@@ -39,7 +39,16 @@ const COLUMN_ALIASES: Record<
   team: ['소속', '팀', '공장', 'team', 'department'],
   productType: ['제품 유형', '제품유형', '제품타입', 'product_type', 'type'],
   lot: ['성형 lot', '성형lot', 'lot no', 'lot', '로트', '성형로트'],
-  worker: ['작업자', '생산자', 'worker', 'operator'],
+  worker: [
+    '작업자',
+    '생산자',
+    '성형작업자',
+    '성형 작업자',
+    '성형작업원',
+    'worker',
+    'operator',
+    'molding_worker',
+  ],
   equipment: ['설비', '설비명', 'equipment', 'machine'],
   product: [
     '품번',
@@ -82,6 +91,22 @@ function compactHeader(value: string): string {
   return normalizeHeader(value).replace(/[\s_\-./]/g, '')
 }
 
+/** 작업자 = 성형작업자 = 성형 작업자 (검사작업자는 검사원 컬럼) */
+function canonicalizeHeaderToken(token: string): string {
+  const t = compactHeader(token)
+  if (!t || t.includes('검사')) return t
+  if (
+    t === '작업자' ||
+    t === '성형작업자' ||
+    t === '성형작업원' ||
+    t.endsWith('작업자') ||
+    t.endsWith('작업원')
+  ) {
+    return '작업자'
+  }
+  return t
+}
+
 /** 날짜/검사일자, 제품(품번)처럼 표기만 다른 헤더를 같은 컬럼으로 본다. */
 function headerTokens(value: unknown): string[] {
   const normalized = normalizeHeader(value)
@@ -103,7 +128,11 @@ function headerTokens(value: unknown): string[] {
 function headerMatches(header: string, alias: string) {
   const headerTokensList = headerTokens(header)
   const aliasTokens = headerTokens(alias)
-  return headerTokensList.some((token) => aliasTokens.includes(token))
+  if (headerTokensList.some((token) => aliasTokens.includes(token))) return true
+
+  const headerCanon = headerTokensList.map(canonicalizeHeaderToken)
+  const aliasCanon = aliasTokens.map(canonicalizeHeaderToken)
+  return headerCanon.some((token) => aliasCanon.includes(token))
 }
 
 function findHeaderRowIndex(matrix: unknown[][]): number {
