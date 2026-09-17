@@ -22,6 +22,9 @@ export interface PendingUpload {
 
 const STORAGE_KEY = 'inspection-analytics-records'
 const META_KEY = 'inspection-analytics-meta'
+const SEED_VERSION_KEY = 'inspection-analytics-seed-version'
+/** 시드 가데이터 갱신 시 올리고, source=seed 사용자만 자동 교체 */
+const SEED_VERSION = '2026-09-17-demo-v1'
 const DATA_SYNC_CHANNEL = 'inspection-analytics-data-sync'
 
 interface DataMeta {
@@ -120,18 +123,59 @@ function persist(records: InspectionRecord[], meta: DataMeta) {
   }
 }
 
+function readSeedVersion(): string | null {
+  try {
+    return localStorage.getItem(SEED_VERSION_KEY)
+  } catch {
+    return null
+  }
+}
+
+function writeSeedVersion() {
+  try {
+    localStorage.setItem(SEED_VERSION_KEY, SEED_VERSION)
+  } catch {
+    // ignore
+  }
+}
+
+function createSeedMeta(): DataMeta {
+  return {
+    fileName: null,
+    lastUpdated: new Date().toISOString().slice(0, 16).replace('T', ' '),
+    source: 'seed',
+    uploadResult: null,
+  }
+}
+
+function getInitialData(): { records: InspectionRecord[]; meta: DataMeta } {
+  const stored = loadStoredRecords()
+  const meta = loadMeta()
+
+  // 저장본 없음 → 시드 가데이터
+  if (!stored || stored.length === 0) {
+    const nextMeta = createSeedMeta()
+    persist(seedRecords, nextMeta)
+    writeSeedVersion()
+    return { records: seedRecords, meta: nextMeta }
+  }
+
+  // 시드 사용 중이고 시드 버전이 바뀌면 최신 가데이터로 교체 (업로드본은 유지)
+  if (meta.source === 'seed' && readSeedVersion() !== SEED_VERSION) {
+    const nextMeta = createSeedMeta()
+    persist(seedRecords, nextMeta)
+    writeSeedVersion()
+    return { records: seedRecords, meta: nextMeta }
+  }
+
+  return { records: stored, meta }
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const { filters, resetFilters } = useFilters()
-  const [records, setRecords] = useState<InspectionRecord[]>(() => loadStoredRecords() ?? seedRecords)
-  const [meta, setMeta] = useState<DataMeta>(() => {
-    const stored = loadStoredRecords()
-    return stored ? loadMeta() : {
-      fileName: null,
-      lastUpdated: new Date().toISOString().slice(0, 16).replace('T', ' '),
-      source: 'seed',
-      uploadResult: null,
-    }
-  })
+  const [initial] = useState(getInitialData)
+  const [records, setRecords] = useState<InspectionRecord[]>(() => initial.records)
+  const [meta, setMeta] = useState<DataMeta>(() => initial.meta)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingUpload | null>(null)
@@ -270,15 +314,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const resetToSeed = useCallback(() => {
-    const nextMeta: DataMeta = {
-      fileName: null,
-      lastUpdated: new Date().toISOString().slice(0, 16).replace('T', ' '),
-      source: 'seed',
-      uploadResult: null,
-    }
+    const nextMeta = createSeedMeta()
     setRecords(seedRecords)
     setMeta(nextMeta)
     persist(seedRecords, nextMeta)
+    writeSeedVersion()
     setUploadError(null)
     setPending(null)
     resetFilters()
