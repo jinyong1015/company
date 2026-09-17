@@ -33,6 +33,9 @@ export function DataManagement() {
         excluded: result.excluded,
       }
     : { ok: 0, warn: 0, error: 0, excluded: 0 }
+  const displayName =
+    localName ?? meta.fileName ?? (meta.source === 'seed' ? '시드 데이터' : null)
+  const showFileStatus = Boolean(displayName || uploading || pending)
 
   const handleFile = async (file: File) => {
     setLocalName(file.name)
@@ -41,6 +44,11 @@ export function DataManagement() {
     } catch {
       // uploadError is set in context
     }
+  }
+
+  const handleResetToSeed = () => {
+    resetToSeed()
+    setLocalName(null)
   }
 
   const downloadSample = () => {
@@ -57,7 +65,7 @@ export function DataManagement() {
     <div className="space-y-5">
       <PageHeader
         title="데이터 업로드"
-        description="Excel 선택 → 컬럼 확인 → 검증 → 오류 차단(#N/A 포함) / 경고 확인 → 저장 → Dashboard 갱신"
+        description="Excel 선택 → 컬럼 확인 → 검증 → 오류는 분석 제외·오류 DATA로 분리 / 경고 확인 → 저장 → Dashboard 갱신"
         actions={
           <div className="flex flex-wrap gap-2">
             <button
@@ -71,7 +79,7 @@ export function DataManagement() {
             {hasUploadedData && (
               <button
                 type="button"
-                onClick={resetToSeed}
+                onClick={handleResetToSeed}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-canvas"
               >
                 <RotateCcw size={14} />
@@ -113,26 +121,30 @@ export function DataManagement() {
           />
         </div>
 
-        {(localName || uploading || meta.fileName) && (
+        {showFileStatus && (
           <div className="mt-4 flex items-center gap-3 rounded-lg border border-line px-3 py-2.5">
             <FileSpreadsheet size={18} className="text-accent" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{localName ?? meta.fileName ?? '파일'}</p>
+              <p className="truncate text-sm font-medium">{displayName ?? '파일'}</p>
               <p className="text-xs text-muted">
                 {uploading
                   ? '파일 구조 검증 · 컬럼 매핑 · 중복/누락/타입 검사 중…'
                   : pending
                     ? pending.uploadResult.blocked
-                      ? '오류로 업로드 차단됨'
+                      ? '오류 행 포함 · 전체 저장 후 오류 DATA에서 확인'
                       : pending.uploadResult.warn > 0
                         ? '경고 DATA 확인 후 저장하세요'
                         : '검증 완료'
                     : hasUploadedData
                       ? `업로드 완료 · 분석 레코드 ${analytics.summary.recordCount.toLocaleString()}건 반영`
-                      : '대기 중'}
+                      : meta.source === 'seed'
+                        ? `시드 데이터 사용 중 · 분석 레코드 ${analytics.summary.recordCount.toLocaleString()}건`
+                        : '대기 중'}
               </p>
             </div>
-            {!uploading && hasUploadedData && !pending && <CheckCircle2 size={18} className="text-ok" />}
+            {!uploading && !pending && (hasUploadedData || meta.source === 'seed') && (
+              <CheckCircle2 size={18} className="text-ok" />
+            )}
             {!uploading && pending?.uploadResult.blocked && (
               <AlertTriangle size={18} className="text-danger" />
             )}
@@ -162,7 +174,7 @@ export function DataManagement() {
                 onClick={confirmExcludeErrors}
                 className="rounded-lg bg-ink px-4 py-2 text-sm text-white"
               >
-                오류 행 제외하고 반영
+                전체 저장 (오류는 분석 제외)
               </button>
             )}
             <button
@@ -213,11 +225,21 @@ export function DataManagement() {
           {!pending && hasUploadedData && (
             <Panel
               title="분석 반영 완료"
-              description="업로드한 엑셀 기준으로 KPI · 차트 · 상세 분석이 재계산되었습니다. #N/A 행은 오류로 차단되거나 제외됩니다."
+              description="엑셀 전체 행이 저장됩니다. 정상·경고는 검사 DATA, 오류는 오류 DATA에서 확인하며 분석 KPI에서는 오류 행이 제외됩니다."
               actions={
-                <Link to="/" className="text-sm font-medium text-accent hover:underline">
-                  Dashboard 보기
-                </Link>
+                <div className="flex flex-wrap items-center gap-3">
+                  {(meta.uploadResult?.error ?? 0) > 0 ? (
+                    <Link to="/error-data" className="text-sm font-medium text-danger hover:underline">
+                      오류 DATA 보기
+                    </Link>
+                  ) : null}
+                  <Link to="/data" className="text-sm font-medium text-accent hover:underline">
+                    검사 DATA 보기
+                  </Link>
+                  <Link to="/" className="text-sm font-medium text-accent hover:underline">
+                    Dashboard 보기
+                  </Link>
+                </div>
               }
             >
               <div className="grid-kpi text-sm">

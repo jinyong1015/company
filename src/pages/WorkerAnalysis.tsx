@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/common/PageHeader'
-import { Panel } from '../components/common/Panel'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
 import { useData } from '../context/DataContext'
@@ -99,36 +98,36 @@ export function WorkerAnalysis() {
         title="성형 작업자 분석"
         description="성형 작업자 → 품번 순으로 실적과 불량 현황을 확인합니다."
       />
-      <Panel>
-        <SortSearchBar
-          query={query}
-          onQuery={(v) => {
-            patchView({ query: v, page: 1 })
-          }}
-          placeholder="성형 작업자 / 품번 검색"
-          sortKey={sortKey}
-          sortKeys={sortKeys}
-          asc={asc}
-          onSortKey={(key) => patchView({ sortKey: key })}
-          onToggleDir={() => patchView({ asc: !asc })}
-          pageSize={pageSize}
-          onPageSize={(size) => {
-            patchView({ pageSize: size, page: 1 })
-          }}
-          onDownload={() =>
-            downloadExcel(
-              '성형작업자분석.xlsx',
-              rows.map((r) => ({
-                성형작업자: r.name,
-                담당품번수: r.productCount,
-                실적수량: r.qty,
-                부적합수량: r.fail,
-                '불량률(%)': Number(((r.failRate || 0) / 10_000).toFixed(2)),
-                폐기비용: r.scrapCost,
-              })),
-            )
-          }
-        />
+      <SortSearchBar
+        query={query}
+        onQuery={(v) => {
+          patchView({ query: v, page: 1 })
+        }}
+        placeholder="성형 작업자 / 품번 검색"
+        sortKey={sortKey}
+        sortKeys={sortKeys}
+        asc={asc}
+        onSortKey={(key) => patchView({ sortKey: key })}
+        onToggleDir={() => patchView({ asc: !asc })}
+        pageSize={pageSize}
+        onPageSize={(size) => {
+          patchView({ pageSize: size, page: 1 })
+        }}
+        onDownload={() =>
+          downloadExcel(
+            '성형작업자분석.xlsx',
+            rows.map((r) => ({
+              성형작업자: r.name,
+              담당품번수: r.productCount,
+              실적수량: r.qty,
+              부적합수량: r.fail,
+              '불량률(%)': Number(((r.failRate || 0) / 10_000).toFixed(2)),
+              폐기비용: r.scrapCost,
+            })),
+          )
+        }
+        resultTitle="성형 작업자 내역"
+      >
         <div className="overflow-x-auto">
           <table className="min-w-[800px] w-full text-left text-sm">
             <thead>
@@ -205,7 +204,7 @@ export function WorkerAnalysis() {
           </table>
         </div>
         <Pager page={safePage} totalPages={totalPages} total={rows.length} onPage={(p) => patchView({ page: p })} />
-      </Panel>
+      </SortSearchBar>
     </div>
   )
 }

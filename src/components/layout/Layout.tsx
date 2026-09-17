@@ -1,29 +1,25 @@
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   Activity,
-  AlertTriangle,
   Boxes,
   CalendarRange,
   ClipboardList,
   Coins,
   Factory,
+  FileWarning,
   GitCompare,
   HardHat,
   LayoutDashboard,
   MoreHorizontal,
-  Moon,
   Package,
   Plus,
-  Sun,
+  Settings,
   Users,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { GlobalFilter } from "../filters/GlobalFilter";
-import { AnalysisGroupBar } from "../filters/AnalysisGroupBar";
-import { ResponsiveGrid } from "../common/ResponsiveGrid";
-import { useData } from "../../context/DataContext";
+import { GlobalFilterSection } from "../filters/GlobalFilterSection";
+import { useAdmin } from "../../context/AdminContext";
 import { AiChatbot } from "../ai/AiChatbot";
-import { getInitialTheme, saveTheme, type ColorTheme } from "../../lib/theme";
 
 const nav = [
   {
@@ -52,16 +48,16 @@ const nav = [
     icon: CalendarRange,
     group: "인사이트",
   },
+  { to: "/data", label: "검사 DATA", icon: ClipboardList, group: "인사이트" },
   {
-    to: "/anomalies",
-    label: "이상징후",
-    icon: AlertTriangle,
+    to: "/error-data",
+    label: "오류 DATA",
+    icon: FileWarning,
     group: "인사이트",
   },
-  { to: "/data", label: "검사 DATA", icon: ClipboardList, group: "인사이트" },
 ];
 
-const hideGlobalFilters = ["/manage", "/ai", "/weekly-report"];
+const hideGlobalFilters = ["/manage", "/ai", "/weekly-report", "/data", "/error-data"];
 
 const primaryNav = nav.filter((item) => item.group !== "인사이트");
 const insightNav = nav.filter((item) => item.group === "인사이트");
@@ -72,7 +68,7 @@ function isPathActive(pathname: string, to: string) {
     : pathname === to || pathname.startsWith(`${to}/`);
 }
 
-function TopNavigation({ anomalyCount }: { anomalyCount: number }) {
+function TopNavigation() {
   const { pathname } = useLocation();
   const navigationRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -169,11 +165,6 @@ function TopNavigation({ anomalyCount }: { anomalyCount: number }) {
           <Icon size={iconSize} aria-hidden="true" />
         </span>
         <span>{item.label}</span>
-        {item.to === "/anomalies" && anomalyCount > 0 && (
-          <span className="rounded-full bg-danger px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-            {anomalyCount}
-          </span>
-        )}
       </>
     );
   };
@@ -268,17 +259,9 @@ function TopNavigation({ anomalyCount }: { anomalyCount: number }) {
 }
 
 export function Layout() {
-  const { analytics } = useData();
+  const { isAdmin, openSettings } = useAdmin();
   const { pathname } = useLocation();
-  const [theme, setTheme] = useState<ColorTheme>(() => getInitialTheme());
   const showFilters = !hideGlobalFilters.includes(pathname);
-  const anomalyCount = analytics.anomalies.length;
-
-  const toggleTheme = () => {
-    const nextTheme = theme === "light" ? "dark" : "light";
-    setTheme(nextTheme);
-    saveTheme(nextTheme);
-  };
 
   return (
     <div className="min-h-screen">
@@ -302,7 +285,7 @@ export function Layout() {
             </Link>
 
             <div className="min-w-0 flex-1">
-              <TopNavigation anomalyCount={anomalyCount} />
+              <TopNavigation />
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -315,19 +298,20 @@ export function Layout() {
               </Link>
               <button
                 type="button"
-                onClick={toggleTheme}
-                className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-surface px-3.5 text-sm font-medium text-ink shadow-sm transition hover:border-accent/40 hover:bg-accent-soft"
-                aria-label={
-                  theme === "light" ? "다크 모드로 전환" : "라이트 모드로 전환"
-                }
-                title={
-                  theme === "light" ? "다크 모드로 전환" : "라이트 모드로 전환"
-                }
+                onClick={() => openSettings("display")}
+                className="header-settings-btn inline-flex h-11 items-center gap-2 rounded-full border border-line bg-surface px-3.5 text-sm font-medium text-ink shadow-sm transition hover:border-accent/40 hover:bg-accent-soft"
+                aria-label={isAdmin ? "설정 (관리자 모드)" : "설정"}
+                title="설정"
               >
-                {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
-                <span className="hidden sm:inline">
-                  {theme === "light" ? "다크 모드" : "라이트 모드"}
-                </span>
+                <Settings size={16} />
+                <span className="hidden md:inline">설정</span>
+                {isAdmin ? (
+                  <span
+                    className="header-settings-admin-dot"
+                    title="관리자 로그인 중"
+                    aria-hidden="true"
+                  />
+                ) : null}
               </button>
             </div>
           </div>
@@ -335,15 +319,7 @@ export function Layout() {
       </header>
 
       <main className="content-shell space-y-4 px-4 py-5 sm:px-5 sm:py-6 lg:px-8">
-        {showFilters && (
-          <ResponsiveGrid variant="filters">
-            <div className="card px-4 py-3">
-              <p className="mb-2 text-xs font-medium text-muted">분석 그룹</p>
-              <AnalysisGroupBar />
-            </div>
-            <GlobalFilter />
-          </ResponsiveGrid>
-        )}
+        {showFilters && <GlobalFilterSection />}
         <Outlet />
       </main>
       <AiChatbot />

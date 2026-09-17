@@ -36,11 +36,15 @@ interface FilterContextValue {
   setDateRange: (start: string, end: string) => void
   setCustomDateRange: (start: string, end: string) => void
   toggleMulti: (key: MultiKey, value: string) => void
+  setMulti: (key: MultiKey, values: string[]) => void
   clearFilters: () => void
+  /** 상세 조회조건(다중 선택)만 초기화 — 분석 그룹·기간 유지 */
+  resetDetailFilters: () => void
   /** 데이터 재조회·초기화 시 조회기준 전체 초기화 */
   resetFilters: () => void
   replaceFilters: (next: FilterState) => void
   activeFilterCount: number
+  detailFilterCount: number
 }
 
 export type MultiKey =
@@ -218,8 +222,20 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const setMulti = useCallback((key: MultiKey, values: string[]) => {
+    setFilters((prev) => ({ ...prev, [key]: [...values] }))
+  }, [])
+
   const clearFilters = useCallback(() => {
     setFilters((prev) => ({ ...cloneFilterState(initial), analysisGroup: prev.analysisGroup }))
+  }, [])
+
+  const resetDetailFilters = useCallback(() => {
+    setFilters((prev) => {
+      const next = cloneFilterState(prev)
+      for (const key of multiKeys) next[key] = []
+      return next
+    })
   }, [])
 
   const resetFilters = useCallback(() => {
@@ -232,6 +248,8 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     setFilters(cloneFilterState(next))
   }, [])
 
+  const detailFilterCount = multiKeys.reduce((sum, key) => sum + filters[key].length, 0)
+
   const value = useMemo<FilterContextValue>(() => {
     return {
       filters,
@@ -240,10 +258,13 @@ export function FilterProvider({ children }: { children: ReactNode }) {
       setDateRange,
       setCustomDateRange,
       toggleMulti,
+      setMulti,
       clearFilters,
+      resetDetailFilters,
       resetFilters,
       replaceFilters,
-      activeFilterCount: multiKeys.reduce((sum, key) => sum + filters[key].length, 0),
+      activeFilterCount: detailFilterCount,
+      detailFilterCount,
     }
   }, [
     filters,
@@ -252,9 +273,12 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     setDateRange,
     setCustomDateRange,
     toggleMulti,
+    setMulti,
     clearFilters,
+    resetDetailFilters,
     resetFilters,
     replaceFilters,
+    detailFilterCount,
   ])
 
   return <FilterContext.Provider value={value}>{children}</FilterContext.Provider>

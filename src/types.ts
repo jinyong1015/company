@@ -217,6 +217,8 @@ export interface InspectionRecord {
   hours: number
   rowClass: 'ok' | 'error' | 'warn' | 'excluded'
   issues: string[]
+  /** 매핑되지 않은 엑셀 원본 열 (비고, 테이블, 순번 등) */
+  extras?: Record<string, string>
 }
 
 export interface InsightItem {

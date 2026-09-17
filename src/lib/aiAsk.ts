@@ -106,8 +106,8 @@ export type AiAnswer = {
 /**
  * 사용자 표현 → 분석 그룹
  * - 1공장 SEAL = 본사(SEAL)
- * - 1공장 GROMMET = 본사(유압+그로멧)
- * - 1공장 / 본사 (라인 미지정) = 본사(SEAL) + 본사(유압+그로멧)
+ * - 1공장 GROMMET = 본사(GROMMET)
+ * - 1공장 / 본사 (라인 미지정) = 본사(SEAL) + 본사(GROMMET)
  * - 2공장 = 2공장
  */
 const GROUP_ALIASES: {
@@ -129,15 +129,18 @@ const GROUP_ALIASES: {
   },
   {
     id: 'hydraulic',
-    label: '본사(유압+그로멧)',
+    label: '본사(GROMMET)',
     words: [
       '1공장grommet',
       '1공장그로멧',
       '1공장그로메트',
       '1공장유압',
+      '본사(grommet)',
+      '본사grommet',
       '본사(유압',
       '본사유압',
       '본사(그로멧',
+      '본사(GROMMET)',
       'grommet',
       '그로멧',
       '그로메트',
@@ -614,7 +617,7 @@ function detectGroups(n: string): {
     }
     if (hasSealWord && hasHq) hitIds.add('seal')
 
-    // 1공장 GROMMET / 본사(유압+그로멧)
+    // 1공장 GROMMET / 본사(GROMMET)
     if (
       excludeHint !== 'grommet' &&
       excludeHint !== 'hydraulic' &&
@@ -634,7 +637,7 @@ function detectGroups(n: string): {
       hitIds.add('hydraulic')
     }
 
-    // "1공장" / "본사"만 (라인 미지정) → 본사 전체(SEAL + 유압+그로멧)
+    // "1공장" / "본사"만 (라인 미지정) → 본사 전체(SEAL + GROMMET)
     // "1공장, 2공장" / "본사, 2공장"에서 SEAL·본사 누락 방지
     if (hqUnspecified && (hasBare1Plant || hasBareHqWord)) {
       if (excludeHint !== 'seal') hitIds.add('seal')
@@ -2331,15 +2334,15 @@ function answerOne(
     return [
       textBlock(
         wantTotalLine
-          ? '본사(SEAL)·본사(유압+그로멧)·2공장은 막대, TOTAL은 선으로 표시한 월별(1~12월) 추이입니다.'
-          : '본사(SEAL)·본사(유압+그로멧)·2공장 막대로 표시한 월별(1~12월) 추이입니다.',
+          ? '본사(SEAL)·본사(GROMMET)·2공장은 막대, TOTAL은 선으로 표시한 월별(1~12월) 추이입니다.'
+          : '본사(SEAL)·본사(GROMMET)·2공장 막대로 표시한 월별(1~12월) 추이입니다.',
       ),
       ...metrics.map((m) => ({
         type: 'composed' as const,
         title: m.title,
         description: wantTotalLine
-          ? '막대: 본사(SEAL) / 본사(유압+그로멧) / 2공장 · 선: TOTAL'
-          : '막대: 본사(SEAL) / 본사(유압+그로멧) / 2공장',
+          ? '막대: 본사(SEAL) / 본사(GROMMET) / 2공장 · 선: TOTAL'
+          : '막대: 본사(SEAL) / 본사(GROMMET) / 2공장',
         data: buildGroupedMonthly(scopedAnalytics, m.key, m.million),
         xKey: 'date',
         bars,

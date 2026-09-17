@@ -5,7 +5,7 @@ export type AnalysisGroupId = 'all' | 'seal' | 'hydraulic' | 'plant2'
 export const ANALYSIS_GROUPS: { id: AnalysisGroupId; label: string }[] = [
   { id: 'all', label: '전체' },
   { id: 'seal', label: '본사(SEAL)' }, // 동의어: 1공장 SEAL
-  { id: 'hydraulic', label: '본사(유압+그로멧)' }, // 동의어: 1공장 GROMMET
+  { id: 'hydraulic', label: '본사(GROMMET)' }, // 동의어: 1공장 GROMMET, 유압+그로멧
   { id: 'plant2', label: '2공장' },
 ]
 
@@ -44,6 +44,19 @@ function isHq(team: string) {
 function isPlant2(team: string) {
   return normalizeTeam(team).includes('2공장')
 }
+
+/** 검사자 TOP10 등 — 본사 / 2공장 구분 (그 외 소속은 null) */
+export function plantSiteOf(team: string): '본사' | '2공장' | null {
+  if (isPlant2(team)) return '2공장'
+  if (isHq(team)) return '본사'
+  return null
+}
+
+export const PLANT_SITE_TABS: { id: '' | '본사' | '2공장'; label: string }[] = [
+  { id: '', label: '전체' },
+  { id: '본사', label: '본사' },
+  { id: '2공장', label: '2공장' },
+]
 
 function isSealType(type: string) {
   const t = type.toLowerCase()

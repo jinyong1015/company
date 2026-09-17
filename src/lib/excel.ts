@@ -615,6 +615,14 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     const hours = parseDurationHours(durationRaw, start, end)
     const failRate = failRatePpm(safeFail, safeQty)
 
+    const extras: Record<string, string> = {}
+    for (const h of unmappedHeaders) {
+      const raw = row[h]
+      if (raw === null || raw === undefined || raw === '') continue
+      const text = str(raw)
+      if (text) extras[h] = text
+    }
+
     records.push({
       id: `row-${index + 1}`,
       date: date || '1970-01-01',
@@ -640,6 +648,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
       hours,
       rowClass,
       issues,
+      extras: Object.keys(extras).length ? extras : undefined,
     })
   })
 

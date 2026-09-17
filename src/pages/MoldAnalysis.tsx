@@ -1,9 +1,7 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/common/PageHeader'
-import { Panel } from '../components/common/Panel'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
-import { StatusBadge } from '../components/common/StatusBadge'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
 import type { MoldRow } from '../types'
@@ -49,38 +47,38 @@ export function MoldAnalysis() {
   return (
     <div className="space-y-5">
       <PageHeader title="금형 분석" description="금형별 품질 상태를 부적합률 기준으로 확인합니다." />
-      <Panel>
-        <SortSearchBar
-          query={query}
-          onQuery={(v) => {
-            setQuery(v)
-            setPage(1)
-          }}
-          placeholder="금형 / 품번 검색"
-          sortKey={sortKey}
-          sortKeys={sortKeys}
-          asc={asc}
-          onSortKey={setSortKey}
-          onToggleDir={() => setAsc((v) => !v)}
-          pageSize={pageSize}
-          onPageSize={(size) => {
-            setPageSize(size)
-            setPage(1)
-          }}
-          onDownload={() =>
-            downloadExcel(
-              '금형분석.xlsx',
-              rows.map((r) => ({
-                금형번호: r.moldNo,
-                품번: r.product,
-                검수량: r.qty,
-                부적합수량: r.fail,
-                부적합률: r.failRate,
-                폐기비용: r.scrapCost,
-              })),
-            )
-          }
-        />
+      <SortSearchBar
+        query={query}
+        onQuery={(v) => {
+          setQuery(v)
+          setPage(1)
+        }}
+        placeholder="금형 / 품번 검색"
+        sortKey={sortKey}
+        sortKeys={sortKeys}
+        asc={asc}
+        onSortKey={setSortKey}
+        onToggleDir={() => setAsc((v) => !v)}
+        pageSize={pageSize}
+        onPageSize={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+        onDownload={() =>
+          downloadExcel(
+            '금형분석.xlsx',
+            rows.map((r) => ({
+              금형번호: r.moldNo,
+              품번: r.product,
+              검수량: r.qty,
+              부적합수량: r.fail,
+              부적합률: r.failRate,
+              폐기비용: r.scrapCost,
+            })),
+          )
+        }
+        resultTitle="금형 내역"
+      >
         <div className="overflow-x-auto">
           <table className="min-w-[980px] w-full text-left text-sm">
             <thead>
@@ -93,7 +91,6 @@ export function MoldAnalysis() {
                 <th className="px-2 py-2 font-medium">주요 불량</th>
                 <th className="px-2 py-2 font-medium">폐기비용</th>
                 <th className="px-2 py-2 font-medium">최근 변화</th>
-                <th className="px-2 py-2 font-medium">상태</th>
               </tr>
             </thead>
             <tbody>
@@ -109,16 +106,13 @@ export function MoldAnalysis() {
                   <td className={`num px-2 py-3 ${row.changeRate > 0 ? 'text-danger' : 'text-ok'}`}>
                     {row.recentChange}
                   </td>
-                  <td className="px-2 py-3">
-                    <StatusBadge status={row.status} />
-                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <Pager page={page} totalPages={totalPages} total={rows.length} onPage={setPage} />
-      </Panel>
+      </SortSearchBar>
     </div>
   )
 }

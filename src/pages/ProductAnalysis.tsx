@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/common/PageHeader'
-import { Panel } from '../components/common/Panel'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
-import { StatusBadge } from '../components/common/StatusBadge'
+import {
+  QtyTop10Chart,
+  type QtyTopItem,
+  type QtyTopView,
+} from '../components/charts/QtyTop10Chart'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
 import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
@@ -22,6 +25,8 @@ type ProductAnalysisViewState = {
   typeFilter: string
   page: number
   pageSize: number
+  topView: QtyTopView
+  topType: string
 }
 
 const defaultViewState: ProductAnalysisViewState = {
@@ -31,6 +36,8 @@ const defaultViewState: ProductAnalysisViewState = {
   typeFilter: ALL_TYPES,
   page: 1,
   pageSize: 10,
+  topView: 'rank',
+  topType: ALL_TYPES,
 }
 
 function readViewState(): ProductAnalysisViewState {
@@ -47,6 +54,8 @@ function readViewState(): ProductAnalysisViewState {
       typeof stored.pageSize === 'number' && stored.pageSize > 0
         ? stored.pageSize
         : defaultViewState.pageSize,
+    topView: stored.topView === 'bar' ? 'bar' : 'rank',
+    topType: typeof stored.topType === 'string' ? stored.topType : defaultViewState.topType,
   }
 }
 
@@ -62,10 +71,17 @@ const sortKeys = [
   { id: 'changeRate', label: '증가율' },
 ]
 
+function toneForType(type: string): 'all' | 'seal' | 'grommet' {
+  const t = type.toLowerCase()
+  if (t.includes('seal') || t.includes('실링') || t.includes('씰')) return 'seal'
+  if (t.includes('grommet') || t.includes('그로멧') || t.includes('유압')) return 'grommet'
+  return 'all'
+}
+
 export function ProductAnalysis() {
   const { analytics } = useData()
   const [view, setView] = useState<ProductAnalysisViewState>(readViewState)
-  const { query, sortKey, asc, typeFilter, page, pageSize } = view
+  const { query, sortKey, asc, typeFilter, page, pageSize, topView, topType } = view
 
   useEffect(() => {
     savePageViewState(VIEW_STATE_KEY, view)
@@ -87,6 +103,32 @@ export function ProductAnalysis() {
   }, [analytics.products])
 
   const activeType = typeOptions.some((t) => t.type === typeFilter) ? typeFilter : ALL_TYPES
+  const activeTopType = typeOptions.some((t) => t.type === topType) ? topType : ALL_TYPES
+
+  const topItems = useMemo((): QtyTopItem[] => {
+    const list = activeTopType
+      ? analytics.products.filter((p) => (p.type || '미지정') === activeTopType)
+      : analytics.products
+    return list.map((p) => ({
+      id: p.id,
+      name: p.name,
+      meta: p.type || '미지정',
+      qty: p.qty,
+      href: buildProductDetailHref(p.id, 'products'),
+    }))
+  }, [analytics.products, activeTopType])
+
+  const topTabCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      [ALL_TYPES]: analytics.products.filter((p) => p.qty > 0).length,
+    }
+    for (const t of typeOptions) {
+      counts[t.type] = analytics.products.filter(
+        (p) => (p.type || '미지정') === t.type && p.qty > 0,
+      ).length
+    }
+    return counts
+  }, [analytics.products, typeOptions])
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -121,7 +163,74 @@ export function ProductAnalysis() {
         title="품번 분석"
         description="제품유형 → 품번 → 불량/금형/설비/검사자 순으로 품질을 확인합니다."
       />
-      <Panel>
+
+      <QtyTop10Chart
+        items={topItems}
+        title="검사 수량 품번 TOP 10"
+        subtitle="품번별 검수량 기준 상위 10개"
+        badgeLabel={activeTopType || '전체'}
+        tone={toneForType(activeTopType)}
+        view={topView}
+        onViewChange={(v) => patchView({ topView: v })}
+        emptyMessage="선택한 제품유형에 해당하는 검수량 데이터가 없습니다."
+        typeTabs={
+          <div className="qty-type-tabs" role="tablist" aria-label="검수량 TOP 제품유형">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!activeTopType}
+              className="qty-type-tab"
+              data-active={!activeTopType}
+              onClick={() => patchView({ topType: ALL_TYPES })}
+            >
+              전체
+              <span className="qty-type-tab-count">{topTabCounts[ALL_TYPES] ?? 0}</span>
+            </button>
+            {typeOptions.map((t) => (
+              <button
+                key={t.type}
+                type="button"
+                role="tab"
+                aria-selected={activeTopType === t.type}
+                className="qty-type-tab"
+                data-active={activeTopType === t.type}
+                onClick={() => patchView({ topType: t.type })}
+              >
+                {t.type}
+                <span className="qty-type-tab-count">{topTabCounts[t.type] ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        }
+      />
+
+      <SortSearchBar
+        query={query}
+        onQuery={(v) => patchView({ query: v, page: 1 })}
+        placeholder={activeType ? '품번 검색' : '품번 / 제품유형 검색'}
+        sortKey={sortKey}
+        sortKeys={sortKeys}
+        asc={asc}
+        onSortKey={(v) => patchView({ sortKey: v })}
+        onToggleDir={() => patchView({ asc: !asc })}
+        pageSize={pageSize}
+        onPageSize={(size) => patchView({ pageSize: size, page: 1 })}
+        onDownload={() =>
+          downloadExcel(
+            '품번분석.xlsx',
+            rows.map((r) => ({
+              제품유형: r.type,
+              품번: r.name,
+              검수량: r.qty,
+              부적합수량: r.fail,
+              부적합률: r.failRate,
+              폐기비용: r.scrapCost,
+              UPH: r.uph,
+            })),
+          )
+        }
+        resultTitle="품번 내역"
+      >
         <div className="mb-4 space-y-3">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -133,26 +242,12 @@ export function ProductAnalysis() {
                     <span className="text-muted"> · {rows.length.toLocaleString()}개 품번</span>
                   </>
                 ) : (
-                  <span className="text-muted">전체 유형 · {analytics.products.length.toLocaleString()}개 품번</span>
+                  <span className="text-muted">
+                    전체 유형 · {analytics.products.length.toLocaleString()}개 품번
+                  </span>
                 )}
               </p>
             </div>
-            <label className="flex flex-col gap-1.5 text-xs font-medium text-muted">
-              유형 선택
-              <select
-                value={activeType}
-                onChange={(e) => selectType(e.target.value)}
-                className="min-w-[180px] rounded-full border border-line bg-white px-3 py-2 text-sm font-normal text-ink"
-                aria-label="제품유형 선택"
-              >
-                <option value={ALL_TYPES}>전체 ({analytics.products.length})</option>
-                {typeOptions.map((t) => (
-                  <option key={t.type} value={t.type}>
-                    {t.type} ({t.count})
-                  </option>
-                ))}
-              </select>
-            </label>
           </div>
 
           <div
@@ -172,7 +267,9 @@ export function ProductAnalysis() {
               }`}
             >
               전체
-              <span className={`ml-1.5 num text-xs ${activeType === ALL_TYPES ? 'text-white/80' : 'text-muted'}`}>
+              <span
+                className={`ml-1.5 num text-xs ${activeType === ALL_TYPES ? 'text-white/80' : 'text-muted'}`}
+              >
                 {analytics.products.length}
               </span>
             </button>
@@ -201,32 +298,6 @@ export function ProductAnalysis() {
           </div>
         </div>
 
-        <SortSearchBar
-          query={query}
-          onQuery={(v) => patchView({ query: v, page: 1 })}
-          placeholder={activeType ? '품번 검색' : '품번 / 제품유형 검색'}
-          sortKey={sortKey}
-          sortKeys={sortKeys}
-          asc={asc}
-          onSortKey={(v) => patchView({ sortKey: v })}
-          onToggleDir={() => patchView({ asc: !asc })}
-          pageSize={pageSize}
-          onPageSize={(size) => patchView({ pageSize: size, page: 1 })}
-          onDownload={() =>
-            downloadExcel(
-              '품번분석.xlsx',
-              rows.map((r) => ({
-                제품유형: r.type,
-                품번: r.name,
-                검수량: r.qty,
-                부적합수량: r.fail,
-                부적합률: r.failRate,
-                폐기비용: r.scrapCost,
-                UPH: r.uph,
-              })),
-            )
-          }
-        />
         <div className="overflow-x-auto">
           <table className="min-w-[980px] w-full text-left text-sm">
             <thead>
@@ -238,14 +309,13 @@ export function ProductAnalysis() {
                 <th className="px-2 py-2 font-medium">부적합률</th>
                 <th className="px-2 py-2 font-medium">주요 불량</th>
                 <th className="px-2 py-2 font-medium">폐기비용</th>
-                <th className="px-2 py-2 font-medium">상태</th>
               </tr>
             </thead>
             <tbody>
               {pageRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={showTypeColumn ? 8 : 7}
+                    colSpan={showTypeColumn ? 7 : 6}
                     className="px-2 py-10 text-center text-sm text-muted"
                   >
                     {activeType
@@ -270,9 +340,6 @@ export function ProductAnalysis() {
                     <td className="num px-2 py-3">{formatPpm(row.failRate)}</td>
                     <td className="px-2 py-3">{row.mainDefect}</td>
                     <td className="num px-2 py-3">{formatWonSuffix(row.scrapCost)}</td>
-                    <td className="px-2 py-3">
-                      <StatusBadge status={row.status} />
-                    </td>
                   </tr>
                 ))
               )}
@@ -285,7 +352,7 @@ export function ProductAnalysis() {
           total={rows.length}
           onPage={(p) => patchView({ page: p })}
         />
-      </Panel>
+      </SortSearchBar>
     </div>
   )
 }

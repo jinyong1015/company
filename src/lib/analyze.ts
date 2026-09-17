@@ -171,6 +171,16 @@ function applyMultiFilters(records: InspectionRecord[], filters: FilterState) {
   );
 }
 
+/** 검사 DATA: 정상·경고만. 전역/상세 필터 미적용(업로드 원본 − 오류). */
+export function filterInspectionDataRecords(records: InspectionRecord[]) {
+  return records.filter((r) => r.rowClass === "ok" || r.rowClass === "warn");
+}
+
+/** 오류 DATA 조회: 오류 행만 */
+export function filterErrorDataRecords(records: InspectionRecord[]) {
+  return records.filter((r) => r.rowClass === "error");
+}
+
 function deltaTone(
   current: number,
   previous: number,
@@ -967,7 +977,7 @@ function buildInsights(
         `영향 범위: ${anomalies[0].scope}. 관련 제품/금형/설비를 확인하십시오.`,
       ],
       action: "원인 분석",
-      to: "/anomalies",
+      to: "/quality",
     });
   }
 
@@ -1123,7 +1133,7 @@ export function analyzeRecords(
       totalFail: sum(source, "fail"),
       failRate: failRateOf(source),
       totalCost: sum(source, "scrapCost"),
-      excludedCount: allRecords.filter((r) => r.rowClass === "excluded").length,
+      excludedCount: allRecords.filter((r) => !isAnalyzable(r)).length,
     },
   };
 }

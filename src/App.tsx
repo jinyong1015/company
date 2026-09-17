@@ -1,7 +1,10 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { FilterProvider } from './context/FilterContext'
 import { DataProvider } from './context/DataContext'
+import { AdminProvider } from './context/AdminContext'
+import { ToastProvider } from './context/ToastContext'
 import { Layout } from './components/layout/Layout'
+import { SettingsModal } from './components/admin/SettingsModal'
 import { Dashboard } from './pages/Dashboard'
 import { InspectionData } from './pages/InspectionData'
 import { QualityAnalysis } from './pages/QualityAnalysis'
@@ -14,9 +17,9 @@ import { ProductDetail } from './pages/ProductDetail'
 import { MoldAnalysis } from './pages/MoldAnalysis'
 import { EquipmentAnalysis } from './pages/EquipmentAnalysis'
 import { CostAnalysis } from './pages/CostAnalysis'
-import { AnomalyAnalysis } from './pages/AnomalyAnalysis'
 import { DataManagement } from './pages/DataManagement'
 import { DataQuality } from './pages/DataQuality'
+import { ErrorData } from './pages/ErrorData'
 import { SmartCompare } from './pages/SmartCompare'
 import { AiAsk } from './pages/AiAsk'
 import { WeeklyReport } from './pages/WeeklyReport'
@@ -27,30 +30,35 @@ export default function App() {
     <BrowserRouter>
       <FilterProvider>
         <DataProvider>
-          <Routes>
-            <Route path="ai-chatbot-popup" element={<AiChatbot popupMode />} />
-            <Route element={<Layout />}>
-              <Route index element={<Dashboard />} />
-              <Route path="quality" element={<QualityAnalysis />} />
-              <Route path="inspectors" element={<InspectorAnalysis />} />
-              <Route path="inspectors/:id" element={<InspectorDetail />} />
-              <Route path="workers" element={<WorkerAnalysis />} />
-              <Route path="workers/:id" element={<WorkerDetail />} />
-              <Route path="products" element={<ProductAnalysis />} />
-              <Route path="products/:id" element={<ProductDetail />} />
-              <Route path="molds" element={<MoldAnalysis />} />
-              <Route path="equipment" element={<EquipmentAnalysis />} />
-              <Route path="costs" element={<CostAnalysis />} />
-              <Route path="compare" element={<SmartCompare />} />
-              <Route path="data" element={<InspectionData />} />
-              <Route path="manage" element={<DataManagement />} />
-              <Route path="quality-data" element={<DataQuality />} />
-              <Route path="anomalies" element={<AnomalyAnalysis />} />
-              <Route path="weekly-report" element={<WeeklyReport />} />
-              <Route path="ai" element={<AiAsk />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Route>
-          </Routes>
+          <AdminProvider>
+            <ToastProvider>
+              <Routes>
+                <Route path="ai-chatbot-popup" element={<AiChatbot popupMode />} />
+                <Route element={<Layout />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="quality" element={<QualityAnalysis />} />
+                  <Route path="inspectors" element={<InspectorAnalysis />} />
+                  <Route path="inspectors/:id" element={<InspectorDetail />} />
+                  <Route path="workers" element={<WorkerAnalysis />} />
+                  <Route path="workers/:id" element={<WorkerDetail />} />
+                  <Route path="products" element={<ProductAnalysis />} />
+                  <Route path="products/:id" element={<ProductDetail />} />
+                  <Route path="molds" element={<MoldAnalysis />} />
+                  <Route path="equipment" element={<EquipmentAnalysis />} />
+                  <Route path="costs" element={<CostAnalysis />} />
+                  <Route path="compare" element={<SmartCompare />} />
+                  <Route path="data" element={<InspectionData />} />
+                  <Route path="error-data" element={<ErrorData />} />
+                  <Route path="manage" element={<DataManagement />} />
+                  <Route path="quality-data" element={<DataQuality />} />
+                  <Route path="weekly-report" element={<WeeklyReport />} />
+                  <Route path="ai" element={<AiAsk />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Route>
+              </Routes>
+              <SettingsModal />
+            </ToastProvider>
+          </AdminProvider>
         </DataProvider>
       </FilterProvider>
     </BrowserRouter>

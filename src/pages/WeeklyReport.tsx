@@ -55,6 +55,18 @@ function defaultMonthKey(records: { date: string }[], anchor: Date) {
   return `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, '0')}`
 }
 
+function monthHasAnalyzableData(
+  records: InspectionRecord[],
+  monthKey: string,
+) {
+  return records.some(
+    (r) =>
+      r.rowClass !== 'excluded' &&
+      r.rowClass !== 'error' &&
+      r.date.startsWith(monthKey),
+  )
+}
+
 function isValidDateRange(start: string, end: string) {
   return Boolean(start && end && start <= end)
 }
@@ -88,6 +100,19 @@ function resolveWeeklyReportPeriod(
     ...base,
     ...(fromStorage ?? {}),
     ...(fromUrl ?? {}),
+  }
+
+  // 저장된/URL 월에 실제 DATA가 없으면 데이터 기준 최신 월로 맞춤
+  // (예: 9월만 업로드했는데 이전 선택 8월이 하이라이트되던 문제)
+  if (
+    records.length > 0 &&
+    !monthHasAnalyzableData(records, merged.selectedMonthKey)
+  ) {
+    merged.selectedMonthKey = defaultMonth
+    merged.week = defaultWeek
+    merged.periodMode = 'week'
+    merged.rangeStart = defaultRange.startDate
+    merged.rangeEnd = defaultRange.endDate
   }
 
   const { year, month } = parseMonthKey(merged.selectedMonthKey)
@@ -217,6 +242,15 @@ export function WeeklyReport() {
     },
     [records],
   )
+
+  // 데이터 재업로드 등으로 선택 월에 실적이 없어지면 최신 데이터 월로 이동
+  useEffect(() => {
+    if (!records.length) return
+    if (monthHasAnalyzableData(records, selectedMonthKey)) return
+    const nextMonth = defaultMonthKey(records, new Date())
+    if (nextMonth === selectedMonthKey) return
+    handleMonthSelect(nextMonth)
+  }, [records, selectedMonthKey, handleMonthSelect])
 
   const handleWeekSelect = useCallback(
     (weekOfMonth: number) => {

@@ -29,6 +29,8 @@ interface DataMeta {
   lastUpdated: string
   source: 'seed' | 'upload'
   uploadResult: UploadResult | null
+  /** localStorage 용량 부족으로 디스크 저장이 생략된 경우 */
+  storageLimited?: boolean
 }
 
 type DataSyncMessage =
@@ -48,6 +50,7 @@ interface DataContextValue {
   confirmExcludeErrors: () => void
   discardPending: () => void
   resetToSeed: () => void
+  updateRecord: (next: InspectionRecord) => void
 }
 
 const DataContext = createContext<DataContextValue | null>(null)
@@ -104,11 +107,15 @@ function persist(records: InspectionRecord[], meta: DataMeta) {
     localStorage.setItem(META_KEY, JSON.stringify(meta))
     localStorage.setItem(STORAGE_KEY, JSON.stringify(records))
   } catch {
+    // 대용량 엑셀은 브라우저 저장 한도를 넘을 수 있음.
+    // 기존 저장본을 지우지 않고 메모리 데이터는 유지한다.
     try {
-      localStorage.setItem(META_KEY, JSON.stringify(meta))
-      localStorage.removeItem(STORAGE_KEY)
+      localStorage.setItem(
+        META_KEY,
+        JSON.stringify({ ...meta, storageLimited: true }),
+      )
     } catch {
-      // 대용량 엑셀은 브라우저 저장 용량을 초과할 수 있음. 메모리에는 유지.
+      // ignore
     }
   }
 }
@@ -222,7 +229,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       if (uploadResult.blocked) {
         setUploadError(
-          `오류 DATA ${uploadResult.error.toLocaleString()}건이 있어 업로드가 차단되었습니다. 원본을 수정하거나 오류 행을 제외하고 반영하세요.`,
+          `오류 DATA ${uploadResult.error.toLocaleString()}건이 있습니다. 전체 행을 저장하면 정상·경고는 검사 DATA, 오류는 오류 DATA에서 확인할 수 있으며 분석에서는 오류가 제외됩니다.`,
         )
         return
       }
@@ -250,21 +257,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const confirmExcludeErrors = useCallback(() => {
     if (!pending) return
-    const kept = pending.records.filter((r) => r.rowClass !== 'error')
-    if (!kept.length) {
-      setUploadError('오류를 제외하면 반영할 데이터가 없습니다.')
-      return
-    }
-    const uploadResult: UploadResult = {
+    // 엑셀 전체 행을 저장. 오류 행은 분석(isAnalyzable)에서만 제외되고 검사/오류 DATA에 남는다.
+    commitRecords(pending.records, pending.fileName, {
       ...pending.uploadResult,
-      total: kept.length,
-      error: 0,
       blocked: false,
-      valid: kept.filter((r) => r.rowClass === 'ok').length,
-      warn: kept.filter((r) => r.rowClass === 'warn').length,
-      excluded: kept.filter((r) => r.rowClass === 'excluded').length,
-    }
-    commitRecords(kept, pending.fileName, uploadResult)
+    })
   }, [pending, commitRecords])
 
   const discardPending = useCallback(() => {
@@ -287,6 +284,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
     resetFilters()
   }, [resetFilters])
 
+  const updateRecord = useCallback((next: InspectionRecord) => {
+    setRecords((prev) => {
+      const updated = prev.map((r) => (r.id === next.id ? next : r))
+      setMeta((prevMeta) => {
+        const nextMeta: DataMeta = {
+          ...prevMeta,
+          lastUpdated: new Date().toISOString().slice(0, 16).replace('T', ' '),
+        }
+        persist(updated, nextMeta)
+        return nextMeta
+      })
+      return updated
+    })
+  }, [])
+
   const value = useMemo<DataContextValue>(
     () => ({
       records,
@@ -301,6 +313,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       confirmExcludeErrors,
       discardPending,
       resetToSeed,
+      updateRecord,
     }),
     [
       records,
@@ -314,6 +327,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       confirmExcludeErrors,
       discardPending,
       resetToSeed,
+      updateRecord,
     ],
   )
 

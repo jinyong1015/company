@@ -1,6 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
 import { PageHeader } from '../components/common/PageHeader'
-import { Panel } from '../components/common/Panel'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
 import { useData } from '../context/DataContext'
@@ -52,37 +51,37 @@ export function EquipmentAnalysis() {
   return (
     <div className="space-y-5">
       <PageHeader title="설비 분석" description="설비 → 품번 순으로 검사량과 품질을 확인합니다." />
-      <Panel>
-        <SortSearchBar
-          query={query}
-          onQuery={(v) => {
-            setQuery(v)
-            setPage(1)
-          }}
-          placeholder="설비 / 품번 검색"
-          sortKey={sortKey}
-          sortKeys={sortKeys}
-          asc={asc}
-          onSortKey={setSortKey}
-          onToggleDir={() => setAsc((v) => !v)}
-          pageSize={pageSize}
-          onPageSize={(size) => {
-            setPageSize(size)
-            setPage(1)
-          }}
-          onDownload={() =>
-            downloadExcel(
-              '설비분석.xlsx',
-              rows.map((r) => ({
-                설비: r.name,
-                검수량: r.qty,
-                부적합수량: r.fail,
-                부적합률: r.failRate,
-                UPH: r.uph,
-              })),
-            )
-          }
-        />
+      <SortSearchBar
+        query={query}
+        onQuery={(v) => {
+          setQuery(v)
+          setPage(1)
+        }}
+        placeholder="설비 / 품번 검색"
+        sortKey={sortKey}
+        sortKeys={sortKeys}
+        asc={asc}
+        onSortKey={setSortKey}
+        onToggleDir={() => setAsc((v) => !v)}
+        pageSize={pageSize}
+        onPageSize={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+        onDownload={() =>
+          downloadExcel(
+            '설비분석.xlsx',
+            rows.map((r) => ({
+              설비: r.name,
+              검수량: r.qty,
+              부적합수량: r.fail,
+              부적합률: r.failRate,
+              UPH: r.uph,
+            })),
+          )
+        }
+        resultTitle="설비 내역"
+      >
         <div className="overflow-x-auto">
           <table className="min-w-[860px] w-full text-left text-sm">
             <thead>
@@ -142,7 +141,7 @@ export function EquipmentAnalysis() {
           </table>
         </div>
         <Pager page={page} totalPages={totalPages} total={rows.length} onPage={setPage} />
-      </Panel>
+      </SortSearchBar>
     </div>
   )
 }

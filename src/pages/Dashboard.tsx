@@ -1,15 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Bar,
   CartesianGrid,
-  Cell,
   ComposedChart,
   LabelList,
   Legend,
   Line,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -19,16 +16,24 @@ import { KpiCard } from "../components/kpi/KpiCard";
 import { Panel } from "../components/common/Panel";
 import { PageHeader } from "../components/common/PageHeader";
 import { ResponsiveGrid } from "../components/common/ResponsiveGrid";
-import { StatusBadge } from "../components/common/StatusBadge";
 import { useData } from "../context/DataContext";
-import { groupLabel, analysisGroupColor } from "../lib/groups";
+import {
+  groupLabel,
+  analysisGroupColor,
+  ANALYSIS_GROUP_TOTAL_LINE_COLOR,
+  type AnalysisGroupId,
+} from "../lib/groups";
 import { useFilters } from "../context/FilterContext";
 import { downloadExcel } from "../lib/download";
 import { buildProductDetailHref } from "../lib/productDetailNav";
-import { DEFECT_TYPE_COLORS } from "../lib/defectColors";
-import { formatPpm, formatWon } from "../lib/format";
-import type { DailyTrend, DefectType, GroupTrendSeries } from "../types";
-import { FileSpreadsheet } from "lucide-react";
+import { formatPercent, formatPpm, formatWon } from "../lib/format";
+import type {
+  DailyTrend,
+  GroupSummary,
+  GroupTrendSeries,
+  ProductRow,
+} from "../types";
+import { AlertTriangle, FileSpreadsheet, Trophy } from "lucide-react";
 
 const trendMetrics = [
   { id: "qty", label: "검수량" },
@@ -39,292 +44,391 @@ const trendMetrics = [
 
 type TrendMetricId = (typeof trendMetrics)[number]["id"];
 
-const LINE_COLOR = "#f97316";
+const LINE_COLOR = ANALYSIS_GROUP_TOTAL_LINE_COLOR;
 const LABEL_COLOR = "#ef4444";
 
-const DEFECT_PIE_COLORS = DEFECT_TYPE_COLORS;
-const PIE_LABEL_RADIAN = Math.PI / 180;
-/** 7% 미만: 바깥 / 7% 이상: 조각 안 */
-const PIE_INNER_LABEL_MIN_SHARE = 7;
-const PIE_OUTER_RADIUS = 148;
-const PIE_INNER_RADIUS = 72;
-const PIE_OUTER_LABEL_GAP = 28;
-/** 범례를 오른쪽에 두기 위해 원형 그래프를 왼쪽으로 치우침 */
-const PIE_CX_RATIO = 0.42;
-/** Pie와 바깥 라벨이 같은 각도를 쓰도록 맞춤 (Recharts computePieSectors) */
-const PIE_PADDING_ANGLE = 2;
-const PIE_START_ANGLE = 0;
-const PIE_END_ANGLE = 360;
+function qtySharePct(qty: number, totalQty: number) {
+  if (totalQty <= 0 || qty <= 0) return 0;
+  return Math.round((qty / totalQty) * 1000) / 10;
+}
 
-function DefectPieInnerLabel(props: {
-  cx?: number;
-  cy?: number;
-  midAngle?: number;
-  innerRadius?: number;
-  outerRadius?: number;
-  name?: string;
-  payload?: { share?: number };
+function GroupComparisonTable({
+  summaries,
+  selectedGroupId,
+  onSelectGroup,
+}: {
+  summaries: GroupSummary[];
+  selectedGroupId: AnalysisGroupId;
+  onSelectGroup: (id: AnalysisGroupId) => void;
 }) {
-  const { cx, cy, midAngle, innerRadius, outerRadius, name, payload } = props;
-  if (
-    cx == null ||
-    cy == null ||
-    midAngle == null ||
-    innerRadius == null ||
-    outerRadius == null
-  ) {
-    return null;
-  }
-  const share = Number(payload?.share ?? 0);
-  if (share < PIE_INNER_LABEL_MIN_SHARE) return null;
-
-  const radius = innerRadius + (outerRadius - innerRadius) * 0.55;
-  const x = cx + radius * Math.cos(-midAngle * PIE_LABEL_RADIAN);
-  const y = cy + radius * Math.sin(-midAngle * PIE_LABEL_RADIAN);
-  return (
-    <text
-      x={x}
-      y={y}
-      fill="#fff"
-      textAnchor="middle"
-      dominantBaseline="central"
-      style={{ fontSize: 12, fontWeight: 600, pointerEvents: "none" }}
-    >
-      <tspan x={x} dy="-0.55em">
-        {name}
-      </tspan>
-      <tspan x={x} dy="1.25em">
-        {share}%
-      </tspan>
-    </text>
-  );
-}
-
-function spreadLabelYs<T extends { y: number }>(
-  items: T[],
-  minY: number,
-  maxY: number,
-  gap: number,
-): T[] {
-  const sorted = [...items].sort((a, b) => a.y - b.y);
-  for (let i = 1; i < sorted.length; i += 1) {
-    if (sorted[i].y - sorted[i - 1].y < gap) {
-      sorted[i].y = sorted[i - 1].y + gap;
-    }
-  }
-  if (sorted.length && sorted[sorted.length - 1].y > maxY) {
-    sorted[sorted.length - 1].y = maxY;
-    for (let i = sorted.length - 2; i >= 0; i -= 1) {
-      if (sorted[i + 1].y - sorted[i].y < gap) {
-        sorted[i].y = sorted[i + 1].y - gap;
-      }
-    }
-  }
-  if (sorted.length && sorted[0].y < minY) {
-    sorted[0].y = minY;
-    for (let i = 1; i < sorted.length; i += 1) {
-      if (sorted[i].y - sorted[i - 1].y < gap) {
-        sorted[i].y = sorted[i - 1].y + gap;
-      }
-    }
-  }
-  return sorted;
-}
-
-/** Recharts Pie.computePieSectors 와 동일한 midAngle 계산 */
-function buildPieSectorMidAngles(items: DefectType[]) {
-  const total = items.reduce((s, d) => s + d.count, 0) || 1;
-  const notZeroItemCount = items.filter((d) => d.count !== 0).length;
-  const absDeltaAngle = Math.min(Math.abs(PIE_END_ANGLE - PIE_START_ANGLE), 360);
-  const sign = Math.sign(PIE_END_ANGLE - PIE_START_ANGLE) || 1;
-  const paddingAngle = items.length <= 1 ? 0 : PIE_PADDING_ANGLE;
-  const totalPaddingAngle =
-    (absDeltaAngle >= 360 ? notZeroItemCount : Math.max(0, notZeroItemCount - 1)) *
-    paddingAngle;
-  const realTotalAngle = absDeltaAngle - totalPaddingAngle;
-
-  const midAngles: number[] = [];
-  let prevEndAngle = PIE_START_ANGLE;
-
-  for (let i = 0; i < items.length; i += 1) {
-    const val = items[i].count;
-    const percent = val / total;
-    const tempStartAngle =
-      i === 0
-        ? PIE_START_ANGLE
-        : prevEndAngle + sign * paddingAngle * (val !== 0 ? 1 : 0);
-    const tempEndAngle =
-      tempStartAngle + sign * (val !== 0 ? percent * realTotalAngle : 0);
-    midAngles.push((tempStartAngle + tempEndAngle) / 2);
-    prevEndAngle = tempEndAngle;
-  }
-
-  return midAngles;
-}
-
-function buildOutsideLabelLayout(
-  items: DefectType[],
-  width: number,
-  height: number,
-  outerRadius: number,
-) {
-  if (!width || !height) return [];
-
-  const cx = width * PIE_CX_RATIO;
-  const cy = height / 2;
-  const midAngles = buildPieSectorMidAngles(items);
-
-  const candidates = items
-    .map((d, index) => {
-      if (d.share <= 0 || d.share >= PIE_INNER_LABEL_MIN_SHARE) return null;
-      const midAngle = midAngles[index] ?? 0;
-      const cos = Math.cos(-midAngle * PIE_LABEL_RADIAN);
-      const sin = Math.sin(-midAngle * PIE_LABEL_RADIAN);
-      return {
-        key: `${d.name}-${index}`,
-        name: d.name,
-        share: d.share,
-        midAngle,
-        cos,
-        sin,
-        side: (cos >= 0 ? "right" : "left") as "right" | "left",
-        // 조각 바깥 가장자리 중앙에 붙도록
-        anchorX: cx + outerRadius * cos,
-        anchorY: cy + outerRadius * sin,
-        x: cx + (outerRadius + 52) * (cos >= 0 ? 1 : -1),
-        y: cy + (outerRadius + 18) * sin,
-      };
-    })
-    .filter((v): v is NonNullable<typeof v> => !!v);
-
-  const right = spreadLabelYs(
-    candidates.filter((c) => c.side === "right"),
-    20,
-    height - 20,
-    PIE_OUTER_LABEL_GAP,
-  );
-  const left = spreadLabelYs(
-    candidates.filter((c) => c.side === "left"),
-    20,
-    height - 20,
-    PIE_OUTER_LABEL_GAP,
-  );
-
-  return [...left, ...right];
-}
-
-function DefectTypePieChart({ data }: { data: DefectType[] }) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-
-  useEffect(() => {
-    const el = hostRef.current;
-    if (!el) return;
-    const update = () => {
-      const rect = el.getBoundingClientRect();
-      setSize({ width: rect.width, height: rect.height });
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const outsideLabels = useMemo(
-    () =>
-      buildOutsideLabelLayout(data, size.width, size.height, PIE_OUTER_RADIUS),
-    [data, size.width, size.height],
+  const total = summaries.find((g) => g.id === "all");
+  const subgroups = summaries.filter((g) => g.id !== "all");
+  const totalQty = total?.qty ?? 0;
+  const maxFailRate = Math.max(0, ...subgroups.map((g) => g.failRate));
+  const worstFailIds = new Set(
+    subgroups
+      .filter((g) => g.failRate > 0 && g.failRate === maxFailRate)
+      .map((g) => g.id),
   );
 
   return (
-    <div ref={hostRef} className="relative h-full w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-          <Pie
-            data={data}
-            dataKey="count"
-            nameKey="name"
-            cx={`${PIE_CX_RATIO * 100}%`}
-            cy="50%"
-            startAngle={PIE_START_ANGLE}
-            endAngle={PIE_END_ANGLE}
-            innerRadius={PIE_INNER_RADIUS}
-            outerRadius={PIE_OUTER_RADIUS}
-            paddingAngle={PIE_PADDING_ANGLE}
-            stroke="#fff"
-            strokeWidth={2}
-            label={DefectPieInnerLabel}
-            labelLine={false}
-          >
-            {data.map((d, i) => (
-              <Cell
-                key={`${d.name}-${i}`}
-                fill={DEFECT_PIE_COLORS[i % DEFECT_PIE_COLORS.length]}
-              />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={{
-              border: "1px solid #e2e6ec",
-              borderRadius: 12,
-              boxShadow: "none",
-              fontSize: 12,
-            }}
-            formatter={(value, name, item) => {
-              const share = Number(item?.payload?.share ?? 0);
-              return [
-                `${Number(value ?? 0).toLocaleString()}건 (${share}%)`,
-                String(name),
-              ];
-            }}
-          />
-        </PieChart>
-      </ResponsiveContainer>
-
-      {size.width > 0 ? (
-        <svg
-          className="pointer-events-none absolute inset-0"
-          width={size.width}
-          height={size.height}
+    <div className="space-y-4">
+      <div>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted">검수량 비중</p>
+          <p className="num text-xs text-muted">
+            합계 {totalQty.toLocaleString()}
+          </p>
+        </div>
+        <div
+          className="flex h-2.5 overflow-hidden rounded-full bg-canvas"
+          role="img"
+          aria-label="분석 그룹별 검수량 비중"
         >
-          {outsideLabels.map((p) => {
-            // 조각 중앙 → 짧은 방사 연장 → 라벨 높이까지 꺾어 가로로 연결
-            const radialX = p.anchorX + p.cos * 10;
-            const radialY = p.anchorY + p.sin * 10;
-            const elbowX = p.x - (p.side === "right" ? 6 : -6);
-            const labelX = p.x + (p.side === "right" ? 4 : -4);
+          {subgroups.map((g) => {
+            const share = qtySharePct(g.qty, totalQty);
+            if (share <= 0) return null;
             return (
-              <g key={p.key}>
-                <path
-                  d={`M${p.anchorX},${p.anchorY}L${radialX},${radialY}L${elbowX},${p.y}L${p.x},${p.y}`}
-                  stroke="#94a3b8"
-                  strokeWidth={1.25}
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <circle cx={p.anchorX} cy={p.anchorY} r={2.25} fill="#64748b" />
-                <text
-                  x={labelX}
-                  y={p.y}
-                  fill="#334155"
-                  textAnchor={p.side === "right" ? "start" : "end"}
-                  dominantBaseline="central"
-                  style={{ fontSize: 11, fontWeight: 600 }}
-                >
-                  <tspan x={labelX} dy="-0.45em">
-                    {p.name}
-                  </tspan>
-                  <tspan x={labelX} dy="1.15em">
-                    {p.share}%
-                  </tspan>
-                </text>
-              </g>
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => onSelectGroup(g.id as AnalysisGroupId)}
+                className="h-full transition-[width,opacity] duration-300 hover:opacity-90"
+                style={{
+                  width: `${share}%`,
+                  backgroundColor: analysisGroupColor(g.id),
+                  opacity:
+                    selectedGroupId === "all" || selectedGroupId === g.id
+                      ? 1
+                      : 0.35,
+                }}
+                title={`${g.label} ${share}% · 클릭하여 전환`}
+                aria-label={`${g.label} ${share}%`}
+              />
             );
           })}
-        </svg>
-      ) : null}
+        </div>
+        <ul className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted">
+          {subgroups.map((g) => {
+            const share = qtySharePct(g.qty, totalQty);
+            const active =
+              selectedGroupId === "all" || selectedGroupId === g.id;
+            return (
+              <li key={g.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelectGroup(g.id as AnalysisGroupId)}
+                  className={`inline-flex items-center gap-1.5 transition-opacity hover:text-ink ${
+                    active ? "text-ink" : "opacity-50"
+                  }`}
+                >
+                  <span
+                    className="inline-block h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: analysisGroupColor(g.id) }}
+                  />
+                  <span>{g.label}</span>
+                  <span className="num">{share}%</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-[760px] w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-line text-xs text-muted">
+              <th className="px-2 py-2 font-medium">그룹</th>
+              <th className="px-2 py-2 text-right font-medium">검수량</th>
+              <th className="min-w-[140px] px-2 py-2 font-medium">부적합률</th>
+              <th className="px-2 py-2 text-right font-medium">부적합수량</th>
+              <th className="px-2 py-2 text-right font-medium">폐기비용</th>
+            </tr>
+          </thead>
+          <tbody>
+            {summaries.map((g) => {
+              const isTotal = g.id === "all";
+              const isSelected = selectedGroupId === g.id;
+              const color = isTotal
+                ? LINE_COLOR
+                : analysisGroupColor(g.id);
+              const share = isTotal ? 100 : qtySharePct(g.qty, totalQty);
+              const failBarPct =
+                !isTotal && maxFailRate > 0
+                  ? Math.min(100, (g.failRate / maxFailRate) * 100)
+                  : 0;
+              const isWorst = worstFailIds.has(g.id);
+
+              return (
+                <tr
+                  key={g.id}
+                  className={`border-b border-line/70 transition-colors ${
+                    isSelected
+                      ? "bg-accent-soft/70"
+                      : "hover:bg-canvas/80"
+                  } ${isTotal ? "font-medium" : ""}`}
+                >
+                  <td className="px-2 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onSelectGroup(g.id as AnalysisGroupId)
+                      }
+                      className="flex w-full min-w-0 items-center gap-2 text-left"
+                      aria-pressed={isSelected}
+                      title={`${g.label} 분석 그룹으로 전환`}
+                    >
+                      <span
+                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: color }}
+                      />
+                      <span className="truncate">{g.label}</span>
+                      {isSelected ? (
+                        <span className="shrink-0 rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent">
+                          선택
+                        </span>
+                      ) : null}
+                      {isWorst ? (
+                        <span className="shrink-0 rounded-full bg-danger-soft px-1.5 py-0.5 text-[10px] font-medium text-danger">
+                          부적합률↑
+                        </span>
+                      ) : null}
+                    </button>
+                  </td>
+                  <td className="px-2 py-2.5 text-right">
+                    <div className="num">{g.qty.toLocaleString()}</div>
+                    {!isTotal ? (
+                      <div className="mt-1 flex items-center justify-end gap-2">
+                        <div className="h-1 w-16 overflow-hidden rounded-full bg-canvas">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${share}%`,
+                              backgroundColor: color,
+                            }}
+                          />
+                        </div>
+                        <span className="num w-9 text-[11px] text-muted">
+                          {share}%
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="mt-0.5 text-[11px] font-normal text-muted">
+                        기준 합계
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-2 py-2.5">
+                    <div
+                      className={`num text-right ${isWorst ? "font-semibold text-danger" : ""}`}
+                    >
+                      {formatPpm(g.failRate)}
+                    </div>
+                    {!isTotal ? (
+                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-canvas">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${failBarPct}%`,
+                            backgroundColor: isWorst ? "#ef4444" : color,
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </td>
+                  <td className="num px-2 py-2.5 text-right">
+                    {g.fail.toLocaleString()}
+                  </td>
+                  <td className="num px-2 py-2.5 text-right">
+                    {formatWon(g.scrapCost)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
+  );
+}
+
+const productSortOptions = [
+  { id: "fail", label: "부적합수량" },
+  { id: "failRate", label: "부적합률" },
+  { id: "qty", label: "검수량" },
+  { id: "scrapCost", label: "폐기비용" },
+] as const;
+
+type ProductSortId = (typeof productSortOptions)[number]["id"];
+
+function rankTone(rank: number): "gold" | "silver" | "bronze" | "muted" {
+  if (rank === 1) return "gold";
+  if (rank === 2) return "silver";
+  if (rank === 3) return "bronze";
+  return "muted";
+}
+
+function barFill(rank: number): string {
+  if (rank === 1) return "#c2410c";
+  if (rank === 2) return "#ea580c";
+  if (rank === 3) return "#f97316";
+  return "#fdba74";
+}
+
+function formatProductSortValue(sort: ProductSortId, value: number) {
+  if (sort === "failRate") return formatPpm(value);
+  if (sort === "scrapCost") return formatWon(value);
+  return value.toLocaleString("ko-KR");
+}
+
+function ProductDefectTop10({
+  products,
+  sort,
+  onSortChange,
+}: {
+  products: ProductRow[];
+  sort: ProductSortId;
+  onSortChange: (sort: ProductSortId) => void;
+}) {
+  const [hoverId, setHoverId] = useState<string | null>(null);
+
+  const { rows, sortLabel } = useMemo(() => {
+    const ranked = [...products]
+      .sort((a, b) => b[sort] - a[sort])
+      .slice(0, 10);
+    const total = products.reduce((s, p) => s + p[sort], 0);
+    const max = ranked[0]?.[sort] ?? 0;
+    return {
+      sortLabel: productSortOptions.find((o) => o.id === sort)?.label ?? "",
+      rows: ranked.map((p, idx) => ({
+        product: p,
+        rank: idx + 1,
+        value: p[sort],
+        barPercent: max > 0 ? (p[sort] / max) * 100 : 0,
+        sharePercent: total > 0 ? (p[sort] / total) * 100 : 0,
+        href: buildProductDetailHref(p.id, "dashboard"),
+      })),
+    };
+  }, [products, sort]);
+
+  const hovered = rows.find((r) => r.product.id === hoverId) ?? null;
+
+  return (
+    <Panel
+      title="품번 기준 불량 TOP 10"
+      description={`선택 기간 · ${sortLabel} 상위 10개 품번`}
+      actions={
+        <div className="flex flex-wrap items-center gap-1.5">
+          {productSortOptions.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => onSortChange(opt.id)}
+              className="filter-pill"
+              data-active={sort === opt.id ? "true" : undefined}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {rows.length === 0 ? (
+        <div className="flex min-h-[200px] items-center justify-center text-sm text-muted">
+          표시할 품번 불량 데이터가 없습니다.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3.5">
+          <div
+            className="op-prod-top-list"
+            onMouseLeave={() => setHoverId(null)}
+          >
+            {rows.map((row) => (
+              <div
+                key={row.product.id}
+                className="op-prod-top-item"
+                data-top={row.rank <= 3 ? "true" : undefined}
+                onMouseEnter={() => setHoverId(row.product.id)}
+              >
+                <Link
+                  to={row.href}
+                  className="op-prod-top-row"
+                  data-rank={row.rank}
+                  title={`${row.product.name} 상세 보기`}
+                >
+                  <span
+                    className="op-prod-top-rank"
+                    data-tone={rankTone(row.rank)}
+                  >
+                    {row.rank}
+                  </span>
+                  <div className="op-prod-top-main">
+                    <div className="op-prod-top-row-head">
+                      <strong className="op-prod-top-name">
+                        {row.product.name}
+                      </strong>
+                      {row.product.mainDefect ? (
+                        <span className="op-prod-top-factory">
+                          {row.product.mainDefect}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="op-prod-top-track" aria-hidden>
+                      <div
+                        className="op-prod-top-fill"
+                        style={{
+                          width: `${Math.max(row.barPercent, 3)}%`,
+                          background: barFill(row.rank),
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div className="op-prod-top-metrics">
+                    <span className="op-prod-top-qty num">
+                      <AlertTriangle size={13} aria-hidden />
+                      {formatProductSortValue(sort, row.value)}
+                    </span>
+                    <span className="op-prod-top-share num">
+                      {formatPercent(row.sharePercent)}
+                    </span>
+                  </div>
+                </Link>
+
+                {hovered?.product.id === row.product.id ? (
+                  <div className="op-prod-top-tooltip" role="tooltip">
+                    <p>
+                      <strong>{row.rank}위</strong> · {row.product.name}
+                    </p>
+                    <p>
+                      {sortLabel}: {formatProductSortValue(sort, row.value)}
+                    </p>
+                    <p>
+                      부적합 {row.product.fail.toLocaleString("ko-KR")} ·{" "}
+                      {formatPpm(row.product.failRate)}
+                    </p>
+                    <p>
+                      검수 {row.product.qty.toLocaleString("ko-KR")} · 폐기{" "}
+                      {formatWon(row.product.scrapCost)}
+                    </p>
+                    {row.product.mainDefect ? (
+                      <p>주불량: {row.product.mainDefect}</p>
+                    ) : null}
+                    <p className="op-prod-top-tooltip-hint">
+                      클릭하여 상세 보기
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          <p className="op-prod-top-hint inline-flex items-center gap-1.5">
+            <Trophy size={13} aria-hidden />
+            막대는 1위 대비 비율 · 우측은 전체 대비 비중
+          </p>
+        </div>
+      )}
+    </Panel>
   );
 }
 
@@ -500,24 +604,17 @@ function QualityTrendChart({
 
 export function Dashboard() {
   const { analytics, hasUploadedData, meta } = useData();
-  const { filters } = useFilters();
+  const { filters, setAnalysisGroup } = useFilters();
   const {
     kpis,
     products,
     dailyTrends,
-    defectTypes,
     groupSummaries,
     trendGrain,
     groupTrends,
   } = analytics;
   const [metric, setMetric] = useState<TrendMetricId>("qty");
-  const [productSort, setProductSort] = useState<
-    "fail" | "failRate" | "qty" | "scrapCost"
-  >("fail");
-
-  const productTop = [...products]
-    .sort((a, b) => b[productSort] - a[productSort])
-    .slice(0, 10);
+  const [productSort, setProductSort] = useState<ProductSortId>("fail");
 
   const metricLabel = trendMetrics.find((m) => m.id === metric)?.label ?? "";
   const showGrouped = filters.analysisGroup === "all";
@@ -580,33 +677,15 @@ export function Dashboard() {
         ))}
       </ResponsiveGrid>
 
-      <Panel title="분석 그룹 비교" description="오류 제외 유효 DATA">
-        <div className="overflow-x-auto">
-          <table className="min-w-[720px] w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-line text-xs text-muted">
-                <th className="px-2 py-2 font-medium">그룹</th>
-                <th className="px-2 py-2 font-medium">검수량</th>
-                <th className="px-2 py-2 font-medium">부적합률</th>
-                <th className="px-2 py-2 font-medium">부적합수량</th>
-                <th className="px-2 py-2 font-medium">폐기비용</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groupSummaries.map((g) => (
-                <tr key={g.id} className="border-b border-line/70">
-                  <td className="px-2 py-2.5 font-medium">{g.label}</td>
-                  <td className="num px-2 py-2.5">{g.qty.toLocaleString()}</td>
-                  <td className="num px-2 py-2.5">{formatPpm(g.failRate)}</td>
-                  <td className="num px-2 py-2.5">{g.fail.toLocaleString()}</td>
-                  <td className="num px-2 py-2.5">
-                    {formatWon(g.scrapCost)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <Panel
+        title="분석 그룹 비교"
+        description="오류 제외 유효 DATA · 행을 누르면 해당 그룹으로 전환"
+      >
+        <GroupComparisonTable
+          summaries={groupSummaries}
+          selectedGroupId={filters.analysisGroup}
+          onSelectGroup={setAnalysisGroup}
+        />
       </Panel>
 
       <Panel
@@ -647,80 +726,11 @@ export function Dashboard() {
         />
       </Panel>
 
-      <ResponsiveGrid variant="split">
-        <Panel title="불량 유형 TOP 10" description="선택 기간 기준 점유율">
-          <div className="flex h-auto min-h-[320px] flex-col gap-3 sm:h-[520px] sm:flex-row">
-            {defectTypes.length === 0 ? (
-              <div className="flex h-full flex-1 items-center justify-center text-sm text-muted">
-                표시할 불량 유형 데이터가 없습니다.
-              </div>
-            ) : (
-              <>
-                <div className="min-h-[280px] min-w-0 flex-1 sm:min-h-0">
-                  <DefectTypePieChart data={defectTypes} />
-                </div>
-                <ul className="flex w-full shrink-0 flex-col justify-center space-y-1.5 self-stretch text-sm sm:w-[148px]">
-                  {defectTypes.map((d, i) => (
-                    <li
-                      key={`${d.name}-${i}`}
-                      className="flex items-center justify-between gap-2"
-                    >
-                      <span className="inline-flex min-w-0 items-center gap-2">
-                        <span
-                          className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                          style={{
-                            backgroundColor:
-                              DEFECT_PIE_COLORS[i % DEFECT_PIE_COLORS.length],
-                          }}
-                        />
-                        <span className="truncate">{d.name}</span>
-                      </span>
-                      <span className="num shrink-0 text-muted">{d.share}%</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
-        </Panel>
-
-        <Panel
-          title="품번 기준 불량 TOP 10"
-          actions={
-            <select
-              value={productSort}
-              onChange={(e) =>
-                setProductSort(e.target.value as typeof productSort)
-              }
-              className="rounded-lg border border-line px-2 py-1 text-xs"
-            >
-              <option value="fail">부적합수량</option>
-              <option value="failRate">부적합률</option>
-              <option value="qty">검수량</option>
-              <option value="scrapCost">폐기비용</option>
-            </select>
-          }
-        >
-          <div className="space-y-2">
-            {productTop.map((p) => (
-              <Link
-                key={p.id}
-                to={buildProductDetailHref(p.id, "dashboard")}
-                className="flex items-center justify-between rounded-xl bg-canvas/70 px-3 py-2.5 hover:bg-accent-soft"
-              >
-                <div>
-                  <p className="text-sm font-medium">{p.name}</p>
-                  <p className="num text-xs text-muted">
-                    부적합 {p.fail.toLocaleString()} · {formatPpm(p.failRate)} ·{" "}
-                    {p.mainDefect}
-                  </p>
-                </div>
-                <StatusBadge status={p.status} />
-              </Link>
-            ))}
-          </div>
-        </Panel>
-      </ResponsiveGrid>
+      <ProductDefectTop10
+        products={products}
+        sort={productSort}
+        onSortChange={setProductSort}
+      />
     </div>
   );
 }

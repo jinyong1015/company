@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import { PageHeader } from '../components/common/PageHeader'
-import { Panel } from '../components/common/Panel'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
 import { useData } from '../context/DataContext'
@@ -91,8 +90,34 @@ export function CostAnalysis() {
   return (
     <div className="space-y-5">
       <PageHeader title="비용 분석" description="폐기비용을 품번·불량·금형·설비·검사자 기준으로 비교합니다." />
-      <Panel>
-        <div className="mb-3 flex flex-wrap gap-1">
+      <SortSearchBar
+        query={query}
+        onQuery={(v) => {
+          setQuery(v)
+          setPage(1)
+        }}
+        placeholder="대상명 검색"
+        sortKey={sortKey}
+        sortKeys={[
+          { id: 'name', label: '대상명' },
+          { id: 'scrapCost', label: '폐기비용' },
+          { id: 'qty', label: '검수량' },
+          { id: 'fail', label: '부적합수량' },
+          { id: 'failRate', label: '부적합률' },
+          { id: 'changeRate', label: '증가율' },
+        ]}
+        asc={asc}
+        onSortKey={setSortKey}
+        onToggleDir={() => setAsc((v) => !v)}
+        pageSize={pageSize}
+        onPageSize={(size) => {
+          setPageSize(size)
+          setPage(1)
+        }}
+        onDownload={() => downloadExcel('비용분석.xlsx', rows)}
+        resultTitle="비용 내역"
+      >
+        <div className="query-result-dim-tabs">
           {(
             [
               ['product', '품번'],
@@ -110,38 +135,13 @@ export function CostAnalysis() {
                 setDim(id)
                 setPage(1)
               }}
-              className={`rounded-md px-2.5 py-1 text-xs ${dim === id ? 'bg-ink text-white' : 'bg-canvas text-muted'}`}
+              className="query-result-dim-tab"
+              data-active={dim === id}
             >
               {label}
             </button>
           ))}
         </div>
-        <SortSearchBar
-          query={query}
-          onQuery={(v) => {
-            setQuery(v)
-            setPage(1)
-          }}
-          placeholder="대상명 검색"
-          sortKey={sortKey}
-          sortKeys={[
-            { id: 'name', label: '대상명' },
-            { id: 'scrapCost', label: '폐기비용' },
-            { id: 'qty', label: '검수량' },
-            { id: 'fail', label: '부적합수량' },
-            { id: 'failRate', label: '부적합률' },
-            { id: 'changeRate', label: '증가율' },
-          ]}
-          asc={asc}
-          onSortKey={setSortKey}
-          onToggleDir={() => setAsc((v) => !v)}
-          pageSize={pageSize}
-          onPageSize={(size) => {
-            setPageSize(size)
-            setPage(1)
-          }}
-          onDownload={() => downloadExcel('비용분석.xlsx', rows)}
-        />
         <div className="overflow-x-auto">
           <table className="min-w-[720px] w-full text-left text-sm">
             <thead>
@@ -167,7 +167,7 @@ export function CostAnalysis() {
           </table>
         </div>
         <Pager page={page} totalPages={totalPages} total={rows.length} onPage={setPage} />
-      </Panel>
+      </SortSearchBar>
     </div>
   )
 }

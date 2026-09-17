@@ -3,15 +3,14 @@ import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/common/PageHeader'
 import { Pager } from '../components/common/Pager'
 import { SortSearchBar } from '../components/common/SortSearchBar'
-import { ChangeHistoryModal } from '../components/admin/ChangeHistoryModal'
 import { EditInspectionRecordModal } from '../components/admin/EditInspectionRecordModal'
 import { useAdmin } from '../context/AdminContext'
 import { useData } from '../context/DataContext'
 import { useToast } from '../context/ToastContext'
-import { filterInspectionDataRecords } from '../lib/analyze'
+import { filterErrorDataRecords } from '../lib/analyze'
 import { downloadExcel } from '../lib/download'
 import type { InspectionRecord } from '../types'
-import { History, Pencil, X } from 'lucide-react'
+import { Pencil, X } from 'lucide-react'
 import { formatPpm, formatWon } from '../lib/format'
 
 type SortKey = keyof InspectionRecord
@@ -69,7 +68,7 @@ function cellValue(r: InspectionRecord, key: SortKey): string {
   return String(v ?? '')
 }
 
-export function InspectionData() {
+export function ErrorData() {
   const { records, hasUploadedData, meta } = useData()
   const { isAdmin, openLogin } = useAdmin()
   const { pushToast } = useToast()
@@ -79,35 +78,33 @@ export function InspectionData() {
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<InspectionRecord | null>(null)
   const [editing, setEditing] = useState<InspectionRecord | null>(null)
-  const [historyOpen, setHistoryOpen] = useState(false)
   const [pageSize, setPageSize] = useState(50)
 
-  // 검사 DATA: 업로드 전체 − 오류 (전역 필터 미적용)
-  const scoped = useMemo(() => filterInspectionDataRecords(records), [records])
-  const errorCount = useMemo(
-    () => records.filter((r) => r.rowClass === 'error').length,
+  const errorRecords = useMemo(() => filterErrorDataRecords(records), [records])
+  const inspectionCount = useMemo(
+    () => records.filter((r) => r.rowClass === 'ok' || r.rowClass === 'warn').length,
     [records],
   )
 
   const extraKeys = useMemo(() => {
     const keys = new Set<string>()
-    for (const r of scoped) {
+    for (const r of errorRecords) {
       Object.keys(r.extras ?? {}).forEach((k) => keys.add(k))
     }
     return [...keys]
-  }, [scoped])
+  }, [errorRecords])
 
   const defectKeys = useMemo(() => {
     const keys = new Set<string>()
-    for (const r of scoped) {
+    for (const r of errorRecords) {
       Object.keys(r.defects ?? {}).forEach((k) => keys.add(k))
     }
     return [...keys].sort((a, b) => a.localeCompare(b, 'ko'))
-  }, [scoped])
+  }, [errorRecords])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    const list = scoped.filter((r) => {
+    const list = errorRecords.filter((r) => {
       if (!q) return true
       return [
         r.product,
@@ -139,11 +136,12 @@ export function InspectionData() {
         ? String(av).localeCompare(String(bv), 'ko')
         : String(bv).localeCompare(String(av), 'ko')
     })
-  }, [scoped, query, sortKey, asc])
+  }, [errorRecords, query, sortKey, asc])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const safePage = Math.min(page, totalPages)
   const rows = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+  const colCount = BASE_COLUMNS.length + extraKeys.length + defectKeys.length + 2
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setAsc((v) => !v)
@@ -155,7 +153,7 @@ export function InspectionData() {
 
   const requestEdit = (record: InspectionRecord) => {
     if (!isAdmin) {
-      pushToast('검사 DATA 수정은 관리자 모드에서만 가능합니다.', 'info')
+      pushToast('오류 DATA 수정은 관리자 모드에서만 가능합니다.', 'info')
       openLogin()
       return
     }
@@ -163,44 +161,25 @@ export function InspectionData() {
     setEditing(record)
   }
 
-  const colCount = BASE_COLUMNS.length + extraKeys.length + defectKeys.length + 2
-
   return (
     <div className="space-y-5">
       <PageHeader
-        title="검사 DATA"
+        title="오류 DATA"
         description={
           hasUploadedData
-            ? `${meta.fileName} · 정상·경고 ${scoped.length.toLocaleString()}건 표시 · 오류 ${errorCount.toLocaleString()}건은 오류 DATA`
-            : '정상·경고 행만 표시합니다. 오류 행은 오류 DATA 메뉴에서 확인하세요.'
+            ? `${meta.fileName ?? '업로드 파일'} · 오류 ${errorRecords.length.toLocaleString()}건 · 정상·경고 ${inspectionCount.toLocaleString()}건은 검사 DATA`
+            : '오류(#N/A 등)로 분류된 행만 표시합니다. 정상·경고는 검사 DATA에서 확인하세요.'
         }
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {errorCount > 0 ? (
-              <Link
-                to="/error-data"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-danger/30 px-3 py-1.5 text-sm text-danger hover:bg-danger-soft"
-              >
-                오류 DATA {errorCount.toLocaleString()}건
-              </Link>
-            ) : null}
-            {isAdmin ? (
-              <button
-                type="button"
-                onClick={() => setHistoryOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-canvas"
-              >
-                <History size={15} />
-                변경 이력
-              </button>
-            ) : null}
-          </div>
+          <Link to="/data" className="text-sm font-medium text-accent hover:underline">
+            검사 DATA 보기
+          </Link>
         }
       />
 
-      <div className="card border-warn/30 px-4 py-3 text-sm text-muted">
+      <div className="card border-danger/30 px-4 py-3 text-sm text-muted">
         {isAdmin
-          ? '관리자 모드: 행을 더블클릭하거나 수정 버튼으로 검사 DATA를 편집할 수 있습니다.'
+          ? '관리자 모드: 행을 더블클릭하거나 수정 버튼으로 오류 DATA를 편집할 수 있습니다. 수정 후 정상·경고로 바뀌면 검사 DATA로 이동합니다.'
           : '일반 모드: 조회만 가능합니다. 수정을 원하면 설정 → 관리자 모드에서 로그인해 주세요.'}
       </div>
 
@@ -210,7 +189,7 @@ export function InspectionData() {
           setQuery(v)
           setPage(1)
         }}
-        placeholder="품번, 검사원, 금형, 설비, LOT 검색"
+        placeholder="품번, 검사원, 이슈, 금형, 설비 검색"
         sortKey={sortKey}
         sortKeys={sortKeys}
         asc={asc}
@@ -227,9 +206,10 @@ export function InspectionData() {
         pageSizeOptions={[50, 100, 200, 500]}
         onDownload={() =>
           downloadExcel(
-            '검사DATA.xlsx',
+            '오류DATA.xlsx',
             filtered.map((r) => {
               const row: Record<string, string | number> = {
+                이슈: r.issues.join(', '),
                 검사일자: r.date,
                 검사작업자: r.inspector,
                 소속: r.team,
@@ -250,7 +230,6 @@ export function InspectionData() {
                 폐기금액: r.scrapCost,
                 주요불량: r.mainDefect,
                 상태: classLabel[r.rowClass],
-                이슈: r.issues.join(', '),
               }
               for (const k of extraKeys) row[k] = r.extras?.[k] ?? ''
               for (const k of defectKeys) row[k] = r.defects?.[k] ?? 0
@@ -260,14 +239,13 @@ export function InspectionData() {
         }
         extra={
           <p className="num text-sm text-muted">
-            정상·경고 {scoped.length.toLocaleString()}건
-            {filtered.length !== scoped.length
+            오류 {errorRecords.length.toLocaleString()}건
+            {filtered.length !== errorRecords.length
               ? ` · 검색 ${filtered.length.toLocaleString()}건`
               : null}
-            {errorCount > 0 ? ` · 오류 ${errorCount.toLocaleString()}건은 오류 DATA` : null}
           </p>
         }
-        resultTitle="검사 내역"
+        resultTitle="오류 내역"
       >
         <div className="overflow-x-auto">
           <table className="min-w-max w-full text-left text-sm">
@@ -276,6 +254,7 @@ export function InspectionData() {
                 <th className="sticky left-0 z-10 whitespace-nowrap bg-[var(--elevated)] px-2 py-2 font-medium shadow-[1px_0_0_var(--border)]">
                   작업
                 </th>
+                <th className="min-w-[160px] whitespace-nowrap px-2 py-2 font-medium">이슈</th>
                 {BASE_COLUMNS.map((col) => (
                   <th key={col.id} className="whitespace-nowrap px-2 py-2 font-medium">
                     <button
@@ -298,14 +277,15 @@ export function InspectionData() {
                     {k}
                   </th>
                 ))}
-                <th className="whitespace-nowrap px-2 py-2 font-medium">이슈</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={colCount} className="px-2 py-10 text-center text-sm text-muted">
-                    표시할 정상·경고 데이터가 없습니다.
+                    {errorRecords.length === 0
+                      ? '현재 오류로 분류된 행이 없습니다.'
+                      : '검색 조건에 맞는 오류 행이 없습니다.'}
                   </td>
                 </tr>
               ) : (
@@ -337,6 +317,22 @@ export function InspectionData() {
                         수정
                       </button>
                     </td>
+                    <td className="min-w-[160px] px-2 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {r.issues.length ? (
+                          r.issues.map((issue) => (
+                            <span
+                              key={issue}
+                              className="rounded-md bg-danger-soft px-2 py-0.5 text-xs text-danger"
+                            >
+                              {issue}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-muted">-</span>
+                        )}
+                      </div>
+                    </td>
                     {BASE_COLUMNS.map((col) => (
                       <td
                         key={col.id}
@@ -355,7 +351,7 @@ export function InspectionData() {
                             {classLabel[r.rowClass]}
                           </span>
                         ) : (
-                          cellValue(r, col.id)
+                          cellValue(r, col.id) || '-'
                         )}
                       </td>
                     ))}
@@ -369,9 +365,6 @@ export function InspectionData() {
                         {(r.defects?.[k] ?? 0).toLocaleString()}
                       </td>
                     ))}
-                    <td className="max-w-[200px] truncate px-2 py-3 text-xs text-muted">
-                      {r.issues.length ? r.issues.join(', ') : '-'}
-                    </td>
                   </tr>
                 ))
               )}
@@ -390,12 +383,18 @@ export function InspectionData() {
           >
             <div className="mb-4 flex items-start justify-between">
               <div>
-                <p className="text-xs text-muted">검사 상세</p>
-                <h3 className="mt-1 text-lg font-semibold">{selected.product}</h3>
+                <p className="text-xs text-muted">오류 상세</p>
+                <h3 className="mt-1 text-lg font-semibold">{selected.product || '(품번 없음)'}</h3>
               </div>
               <button type="button" onClick={() => setSelected(null)} className="rounded-lg p-1.5 hover:bg-canvas">
                 <X size={16} />
               </button>
+            </div>
+            <div className="mb-4 rounded-lg border border-danger/30 bg-danger-soft/40 px-3 py-2">
+              <p className="text-xs font-medium text-danger">이슈</p>
+              <p className="mt-1 text-sm text-ink">
+                {selected.issues.length ? selected.issues.join(' · ') : '-'}
+              </p>
             </div>
             <dl className="grid grid-cols-2 gap-3 text-sm">
               {(
@@ -404,22 +403,21 @@ export function InspectionData() {
                   ['작업구분', selected.workType],
                   ['검사작업자', selected.inspector],
                   ['소속', selected.team],
-                  ['제품유형', selected.productType],
-                  ['LOT NO', selected.lot],
-                  ['성형작업자', selected.worker],
-                  ['설비', selected.equipment],
-                  ['금형번호', selected.moldNo],
-                  ['시작시간', selected.start],
-                  ['종료시간', selected.end],
-                  ['소요시간', selected.duration],
+                  ['제품유형', selected.productType || '-'],
+                  ['LOT NO', selected.lot || '-'],
+                  ['성형작업자', selected.worker || '-'],
+                  ['설비', selected.equipment || '-'],
+                  ['금형번호', selected.moldNo || '-'],
+                  ['시작시간', selected.start || '-'],
+                  ['종료시간', selected.end || '-'],
+                  ['소요시간', selected.duration || '-'],
                   ['검수량', selected.qty.toLocaleString()],
                   ['합격수', selected.pass.toLocaleString()],
                   ['부적합수', selected.fail.toLocaleString()],
                   ['부적합률', formatPpm(selected.failRate)],
-                  ['주요 불량', selected.mainDefect],
+                  ['주요 불량', selected.mainDefect || '-'],
                   ['폐기금액', formatWon(selected.scrapCost)],
                   ['상태', classLabel[selected.rowClass]],
-                  ['이슈', selected.issues.join(', ') || '-'],
                   ...Object.entries(selected.extras ?? {}).map(([k, v]) => [k, v] as [string, string]),
                 ] as [string, string][]
               ).map(([k, v]) => (
@@ -443,7 +441,6 @@ export function InspectionData() {
       {editing ? (
         <EditInspectionRecordModal record={editing} onClose={() => setEditing(null)} />
       ) : null}
-      {historyOpen ? <ChangeHistoryModal onClose={() => setHistoryOpen(false)} /> : null}
     </div>
   )
 }

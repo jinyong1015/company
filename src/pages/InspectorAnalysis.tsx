@@ -1,16 +1,22 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/common/PageHeader'
-import { Panel } from '../components/common/Panel'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
+import {
+  QtyTop10Chart,
+  type QtyTopItem,
+  type QtyTopView,
+} from '../components/charts/QtyTop10Chart'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
 import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
+import { PLANT_SITE_TABS, plantSiteOf } from '../lib/groups'
 import type { InspectorRow } from '../types'
 import { formatPpm } from '../lib/format'
 
 const VIEW_STATE_KEY = 'inspector-analysis'
+const ALL_PLANTS = ''
 
 type InspectorAnalysisViewState = {
   query: string
@@ -18,6 +24,9 @@ type InspectorAnalysisViewState = {
   asc: boolean
   page: number
   pageSize: number
+  topView: QtyTopView
+  /** 본사 | 2공장 | ''(전체) — 예전 제품유형 값이면 전체로 폴백 */
+  topPlant: string
 }
 
 const defaultViewState: InspectorAnalysisViewState = {
@@ -26,11 +35,25 @@ const defaultViewState: InspectorAnalysisViewState = {
   asc: false,
   page: 1,
   pageSize: 10,
+  topView: 'rank',
+  topPlant: ALL_PLANTS,
 }
 
 function readViewState(): InspectorAnalysisViewState {
-  const stored = loadPageViewState<Partial<InspectorAnalysisViewState>>(VIEW_STATE_KEY)
+  const stored = loadPageViewState<Partial<InspectorAnalysisViewState> & { topType?: string }>(
+    VIEW_STATE_KEY,
+  )
   if (!stored) return defaultViewState
+  const rawPlant =
+    typeof stored.topPlant === 'string'
+      ? stored.topPlant
+      : typeof stored.topType === 'string'
+        ? stored.topType
+        : defaultViewState.topPlant
+  const topPlant =
+    rawPlant === '본사' || rawPlant === '2공장' || rawPlant === ALL_PLANTS
+      ? rawPlant
+      : ALL_PLANTS
   return {
     query: typeof stored.query === 'string' ? stored.query : defaultViewState.query,
     sortKey: typeof stored.sortKey === 'string' ? stored.sortKey : defaultViewState.sortKey,
@@ -40,6 +63,8 @@ function readViewState(): InspectorAnalysisViewState {
       typeof stored.pageSize === 'number' && stored.pageSize > 0
         ? stored.pageSize
         : defaultViewState.pageSize,
+    topView: stored.topView === 'bar' ? 'bar' : 'rank',
+    topPlant,
   }
 }
 
@@ -54,10 +79,16 @@ const sortKeys = [
   { id: 'scrapCost', label: '폐기비용' },
 ]
 
+function toneForPlant(plant: string): 'all' | 'seal' | 'grommet' {
+  if (plant === '본사') return 'seal'
+  if (plant === '2공장') return 'grommet'
+  return 'all'
+}
+
 export function InspectorAnalysis() {
   const { analytics } = useData()
   const [view, setView] = useState<InspectorAnalysisViewState>(readViewState)
-  const { query, sortKey, asc, page, pageSize } = view
+  const { query, sortKey, asc, page, pageSize, topView, topPlant } = view
   const [openId, setOpenId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -67,6 +98,37 @@ export function InspectorAnalysis() {
   function patchView(patch: Partial<InspectorAnalysisViewState>) {
     setView((prev) => ({ ...prev, ...patch }))
   }
+
+  const activePlant =
+    topPlant === '본사' || topPlant === '2공장' ? topPlant : ALL_PLANTS
+
+  const topItems = useMemo((): QtyTopItem[] => {
+    const list = analytics.inspectors.filter((r) => {
+      if (!activePlant) return true
+      return plantSiteOf(r.team) === activePlant
+    })
+    return list.map((r) => ({
+      id: r.id,
+      name: r.name,
+      meta: r.team,
+      qty: r.qty,
+      href: `/inspectors/${r.id}`,
+    }))
+  }, [analytics.inspectors, activePlant])
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      [ALL_PLANTS]: analytics.inspectors.filter((r) => r.qty > 0).length,
+      본사: 0,
+      '2공장': 0,
+    }
+    for (const r of analytics.inspectors) {
+      if (r.qty <= 0) continue
+      const site = plantSiteOf(r.team)
+      if (site) counts[site] = (counts[site] ?? 0) + 1
+    }
+    return counts
+  }, [analytics.inspectors])
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -90,6 +152,7 @@ export function InspectorAnalysis() {
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
   const safePage = Math.min(page, totalPages)
   const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
+  const badgeLabel = activePlant || '전체'
 
   return (
     <div className="space-y-5">
@@ -97,37 +160,70 @@ export function InspectorAnalysis() {
         title="검사자 분석"
         description="소속 → 검사자 → 품번 순으로 검사량과 효율을 확인합니다."
       />
-      <Panel>
-        <SortSearchBar
-          query={query}
-          onQuery={(v) => {
-            patchView({ query: v, page: 1 })
-          }}
-          placeholder="검사자 / 품번 검색"
-          sortKey={sortKey}
-          sortKeys={sortKeys}
-          asc={asc}
-          onSortKey={(key) => patchView({ sortKey: key })}
-          onToggleDir={() => patchView({ asc: !asc })}
-          pageSize={pageSize}
-          onPageSize={(size) => {
-            patchView({ pageSize: size, page: 1 })
-          }}
-          onDownload={() =>
-            downloadExcel(
-              '검사자분석.xlsx',
-              rows.map((r) => ({
-                소속: r.team,
-                검사자: r.name,
-                검수량: r.qty,
-                부적합수량: r.fail,
-                부적합률: r.failRate,
-                UPH: r.uph,
-                폐기비용: r.scrapCost,
-              })),
-            )
-          }
-        />
+
+      <div className="card border-warn/30 px-4 py-3 text-sm text-muted">
+        검사자별 지표는 담당 품번·검사유형 구성의 영향을 받습니다. 단순 순위만으로 평가하지 마세요.
+      </div>
+
+      <QtyTop10Chart
+        items={topItems}
+        title="검사 수량 작업자 TOP 10"
+        subtitle="검사자별 검수량 기준 상위 10명 · 본사 / 2공장"
+        badgeLabel={badgeLabel}
+        tone={toneForPlant(activePlant)}
+        view={topView}
+        onViewChange={(v) => patchView({ topView: v })}
+        emptyMessage="선택한 소속에 해당하는 검수량 데이터가 없습니다."
+        typeTabs={
+          <div className="qty-type-tabs" role="tablist" aria-label="검수량 TOP 소속">
+            {PLANT_SITE_TABS.map((tab) => (
+              <button
+                key={tab.id || 'all'}
+                type="button"
+                role="tab"
+                aria-selected={activePlant === tab.id}
+                className="qty-type-tab"
+                data-active={activePlant === tab.id}
+                onClick={() => patchView({ topPlant: tab.id })}
+              >
+                {tab.label}
+                <span className="qty-type-tab-count">{tabCounts[tab.id] ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        }
+      />
+      <SortSearchBar
+        query={query}
+        onQuery={(v) => {
+          patchView({ query: v, page: 1 })
+        }}
+        placeholder="검사자 / 품번 검색"
+        sortKey={sortKey}
+        sortKeys={sortKeys}
+        asc={asc}
+        onSortKey={(key) => patchView({ sortKey: key })}
+        onToggleDir={() => patchView({ asc: !asc })}
+        pageSize={pageSize}
+        onPageSize={(size) => {
+          patchView({ pageSize: size, page: 1 })
+        }}
+        onDownload={() =>
+          downloadExcel(
+            '검사자분석.xlsx',
+            rows.map((r) => ({
+              소속: r.team,
+              검사자: r.name,
+              검수량: r.qty,
+              부적합수량: r.fail,
+              부적합률: r.failRate,
+              UPH: r.uph,
+              폐기비용: r.scrapCost,
+            })),
+          )
+        }
+        resultTitle="검사자 내역"
+      >
         <div className="overflow-x-auto">
           <table className="min-w-[900px] w-full text-left text-sm">
             <thead>
@@ -149,7 +245,11 @@ export function InspectorAnalysis() {
                   >
                     <td className="px-2 py-3">{row.team}</td>
                     <td className="px-2 py-3 font-medium">
-                      <Link to={`/inspectors/${row.id}`} className="text-accent hover:underline" onClick={(e) => e.stopPropagation()}>
+                      <Link
+                        to={`/inspectors/${row.id}`}
+                        className="text-accent hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         {row.name}
                       </Link>
                     </td>
@@ -195,7 +295,7 @@ export function InspectorAnalysis() {
           </table>
         </div>
         <Pager page={safePage} totalPages={totalPages} total={rows.length} onPage={(p) => patchView({ page: p })} />
-      </Panel>
+      </SortSearchBar>
     </div>
   )
 }

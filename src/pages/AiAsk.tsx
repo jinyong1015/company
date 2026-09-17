@@ -36,7 +36,7 @@ export function AiAsk() {
     <div className="space-y-5">
       <PageHeader
         title="AI CHATBOT"
-        description="질문에서 공장·지표·TOP N·그래프 유형을 해석해 표와 차트로 답합니다. (1공장 SEAL=본사(SEAL), 1공장 GROMMET=본사(유압+그로멧))"
+        description="질문에서 공장·지표·TOP N·그래프 유형을 해석해 표와 차트로 답합니다. (1공장 SEAL=본사(SEAL), 1공장 GROMMET=본사(GROMMET))"
       />
       <Panel>
         <div className="mb-4 flex flex-wrap gap-2">

@@ -37,16 +37,16 @@ export const WEEKLY_REPORT_ORGS: {
 }[] = [
   {
     id: 'seal',
-    label: 'SEAL',
-    shortLabel: 'SEAL',
+    label: '1공장 SEAL',
+    shortLabel: '1공장 SEAL',
     groupId: 'seal',
     color: ANALYSIS_GROUP_BAR_COLORS.find((c) => c.id === 'seal')!.color,
     worstMinQty: 30000,
   },
   {
     id: 'hydraulic',
-    label: '유압 및 ORANGE',
-    shortLabel: '유압 및 ORANGE',
+    label: '1공장 GROMMET',
+    shortLabel: '1공장 GROMMET',
     groupId: 'hydraulic',
     color: ANALYSIS_GROUP_BAR_COLORS.find((c) => c.id === 'hydraulic')!.color,
     worstMinQty: 3000,
@@ -256,13 +256,21 @@ export function buildMonthlyReportView(
     metric,
     months: monthlyMetrics,
     tableRows: [
-      { id: 'seal', label: 'SEAL', values: valuesByRow((m) => m.seal) },
+      {
+        id: 'seal',
+        label: WEEKLY_REPORT_ORGS.find((o) => o.id === 'seal')!.label,
+        values: valuesByRow((m) => m.seal),
+      },
       {
         id: 'hydraulic',
-        label: '유압 및 ORANGE',
+        label: WEEKLY_REPORT_ORGS.find((o) => o.id === 'hydraulic')!.label,
         values: valuesByRow((m) => m.hydraulic),
       },
-      { id: 'plant2', label: '2공장', values: valuesByRow((m) => m.plant2) },
+      {
+        id: 'plant2',
+        label: WEEKLY_REPORT_ORGS.find((o) => o.id === 'plant2')!.label,
+        values: valuesByRow((m) => m.plant2),
+      },
       { id: 'total', label: 'TOTAL', values: valuesByRow((m) => m.total) },
     ],
     range: {
