@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { createPortal } from "react-dom";
 import {
   Bar,
   CartesianGrid,
@@ -16,6 +17,7 @@ import { KpiCard } from "../components/kpi/KpiCard";
 import { Panel } from "../components/common/Panel";
 import { PageHeader } from "../components/common/PageHeader";
 import { ResponsiveGrid } from "../components/common/ResponsiveGrid";
+import { EquipmentDefectHeatmap } from "../components/charts/EquipmentDefectHeatmap";
 import { useData } from "../context/DataContext";
 import {
   groupLabel,
@@ -26,6 +28,7 @@ import {
 import { useFilters } from "../context/FilterContext";
 import { downloadExcel } from "../lib/download";
 import { buildProductDetailHref } from "../lib/productDetailNav";
+import { filterRecords } from "../lib/analyze";
 import { formatPercent, formatPpm, formatWon } from "../lib/format";
 import type {
   DailyTrend,
@@ -52,6 +55,50 @@ function qtySharePct(qty: number, totalQty: number) {
   return Math.round((qty / totalQty) * 1000) / 10;
 }
 
+function GroupSwitchEffect({
+  label,
+  color,
+  onDone,
+}: {
+  label: string;
+  color: string;
+  onDone: () => void;
+}) {
+  useEffect(() => {
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const t = window.setTimeout(onDone, reduce ? 200 : 480);
+    return () => window.clearTimeout(t);
+  }, [onDone, label]);
+
+  return createPortal(
+    <div
+      className="group-switch-backdrop"
+      role="status"
+      aria-live="polite"
+      aria-label={`${label} 분석 그룹으로 전환`}
+    >
+      <div className="group-switch-card">
+        <span
+          className="group-switch-ring"
+          style={{ ["--group-switch-color" as string]: color }}
+          aria-hidden
+        >
+          <span
+            className="group-switch-dot"
+            style={{ backgroundColor: color }}
+          />
+        </span>
+        <p className="group-switch-kicker">분석 그룹 전환</p>
+        <p className="group-switch-label">{label}</p>
+        <p className="group-switch-hint">필터 · KPI · 추이에 반영됩니다</p>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function GroupComparisonTable({
   summaries,
   selectedGroupId,
@@ -70,9 +117,28 @@ function GroupComparisonTable({
       .filter((g) => g.failRate > 0 && g.failRate === maxFailRate)
       .map((g) => g.id),
   );
+  const [switchEffect, setSwitchEffect] = useState<{
+    id: AnalysisGroupId;
+    label: string;
+    color: string;
+  } | null>(null);
+
+  const selectGroup = (id: AnalysisGroupId, label: string, color: string) => {
+    setSwitchEffect({ id, label, color });
+    onSelectGroup(id);
+  };
 
   return (
     <div className="space-y-4">
+      {switchEffect ? (
+        <GroupSwitchEffect
+          key={switchEffect.id + switchEffect.label}
+          label={switchEffect.label}
+          color={switchEffect.color}
+          onDone={() => setSwitchEffect(null)}
+        />
+      ) : null}
+
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs font-medium text-muted">검수량 비중</p>
@@ -92,7 +158,13 @@ function GroupComparisonTable({
               <button
                 key={g.id}
                 type="button"
-                onClick={() => onSelectGroup(g.id as AnalysisGroupId)}
+                onClick={() =>
+                  selectGroup(
+                    g.id as AnalysisGroupId,
+                    g.label,
+                    analysisGroupColor(g.id),
+                  )
+                }
                 className="h-full transition-[width,opacity] duration-300 hover:opacity-90"
                 style={{
                   width: `${share}%`,
@@ -117,7 +189,13 @@ function GroupComparisonTable({
               <li key={g.id}>
                 <button
                   type="button"
-                  onClick={() => onSelectGroup(g.id as AnalysisGroupId)}
+                  onClick={() =>
+                    selectGroup(
+                      g.id as AnalysisGroupId,
+                      g.label,
+                      analysisGroupColor(g.id),
+                    )
+                  }
                   className={`inline-flex items-center gap-1.5 transition-opacity hover:text-ink ${
                     active ? "text-ink" : "opacity-50"
                   }`}
@@ -163,18 +241,17 @@ function GroupComparisonTable({
               return (
                 <tr
                   key={g.id}
-                  className={`border-b border-line/70 transition-colors ${
+                  className={`cursor-pointer border-b border-line/70 transition-colors ${
                     isSelected
                       ? "bg-accent-soft/70"
                       : "hover:bg-canvas/80"
                   } ${isTotal ? "font-medium" : ""}`}
+                  onClick={() =>
+                    selectGroup(g.id as AnalysisGroupId, g.label, color)
+                  }
                 >
                   <td className="px-2 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onSelectGroup(g.id as AnalysisGroupId)
-                      }
+                    <div
                       className="flex w-full min-w-0 items-center gap-2 text-left"
                       aria-pressed={isSelected}
                       title={`${g.label} 분석 그룹으로 전환`}
@@ -194,7 +271,7 @@ function GroupComparisonTable({
                           부적합률↑
                         </span>
                       ) : null}
-                    </button>
+                    </div>
                   </td>
                   <td className="px-2 py-2.5 text-right">
                     <div className="num">{g.qty.toLocaleString()}</div>
@@ -603,7 +680,7 @@ function QualityTrendChart({
 }
 
 export function Dashboard() {
-  const { analytics, hasUploadedData, meta } = useData();
+  const { analytics, hasUploadedData, meta, records } = useData();
   const { filters, setAnalysisGroup } = useFilters();
   const {
     kpis,
@@ -638,6 +715,11 @@ export function Dashboard() {
       return buildGroupedTrendData(groupTrends, dailyTrends, metric);
     return dailyTrends.map((d) => ({ ...d }));
   }, [showGrouped, groupTrends, dailyTrends, metric]);
+
+  const heatmapRecords = useMemo(
+    () => filterRecords(records, filters, true),
+    [records, filters],
+  );
 
   return (
     <div className="space-y-5">
@@ -677,53 +759,67 @@ export function Dashboard() {
         ))}
       </ResponsiveGrid>
 
-      <Panel
-        title="분석 그룹 비교"
-        description="오류 제외 유효 DATA · 행을 누르면 해당 그룹으로 전환"
-      >
-        <GroupComparisonTable
-          summaries={groupSummaries}
-          selectedGroupId={filters.analysisGroup}
-          onSelectGroup={setAnalysisGroup}
-        />
-      </Panel>
+      <section className="card dash-linked min-w-0">
+        <div className="dash-linked-section">
+          <header className="dash-linked-head">
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-semibold text-ink">
+                분석 그룹 비교
+              </h2>
+              <p className="mt-0.5 text-sm text-muted">
+                오류 제외 유효 DATA · 행을 누르면 해당 그룹으로 전환
+              </p>
+            </div>
+          </header>
+          <GroupComparisonTable
+            summaries={groupSummaries}
+            selectedGroupId={filters.analysisGroup}
+            onSelectGroup={setAnalysisGroup}
+          />
+        </div>
 
-      <Panel
-        title="품질 추이"
-        description={
-          showGrouped
-            ? `${trendGrain === "month" ? "월별" : "일별"} · 그룹 막대 + 합계 추이선`
-            : trendGrain === "month"
-              ? "월별 집계"
-              : "일별 집계"
-        }
-        actions={
-          <div className="flex flex-wrap gap-1">
-            {trendMetrics.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setMetric(m.id)}
-                className={`rounded-full px-2.5 py-1 text-xs ${
-                  metric === m.id
-                    ? "bg-accent text-white"
-                    : "bg-canvas text-muted"
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-        }
-      >
-        <QualityTrendChart
-          data={chartData}
-          metric={metric}
-          metricLabel={metricLabel}
-          trendGrain={trendGrain}
-          groups={showGrouped ? chartGroups : undefined}
-          barColor={selectedGroupColor}
-        />
+        <div className="dash-linked-section dash-linked-section--trend">
+          <header className="dash-linked-head">
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-semibold text-ink">품질 추이</h2>
+              <p className="mt-0.5 text-sm text-muted">
+                {showGrouped
+                  ? `${trendGrain === "month" ? "월별" : "일별"} · 그룹 막대 + 합계 추이선`
+                  : trendGrain === "month"
+                    ? "월별 집계"
+                    : "일별 집계"}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {trendMetrics.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setMetric(m.id)}
+                  className={`rounded-full px-2.5 py-1 text-xs ${
+                    metric === m.id
+                      ? "bg-accent text-white"
+                      : "bg-canvas text-muted"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </header>
+          <QualityTrendChart
+            data={chartData}
+            metric={metric}
+            metricLabel={metricLabel}
+            trendGrain={trendGrain}
+            groups={showGrouped ? chartGroups : undefined}
+            barColor={selectedGroupColor}
+          />
+        </div>
+      </section>
+
+      <Panel title="설비 × 불량 유형 히트맵">
+        <EquipmentDefectHeatmap records={heatmapRecords} />
       </Panel>
 
       <ProductDefectTop10

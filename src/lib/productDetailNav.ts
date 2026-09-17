@@ -8,6 +8,7 @@ export type ProductDetailFromId =
   | 'quality'
   | 'workers'
   | 'inspectors'
+  | 'cost'
 
 export const PRODUCT_DETAIL_FROM_LABELS: Record<ProductDetailFromId, string> = {
   'weekly-report': '주간업무 보고',
@@ -16,6 +17,7 @@ export const PRODUCT_DETAIL_FROM_LABELS: Record<ProductDetailFromId, string> = {
   quality: '품질 분석',
   workers: '성형작업자 분석',
   inspectors: '검사자 분석',
+  cost: '비용 분석',
 }
 
 export const PRODUCT_DETAIL_FROM_PATHS: Record<ProductDetailFromId, string> = {
@@ -25,6 +27,7 @@ export const PRODUCT_DETAIL_FROM_PATHS: Record<ProductDetailFromId, string> = {
   quality: '/quality',
   workers: '/workers',
   inspectors: '/inspectors',
+  cost: '/costs',
 }
 
 export function parseProductDetailFrom(
@@ -36,7 +39,8 @@ export function parseProductDetailFrom(
     value === 'products' ||
     value === 'quality' ||
     value === 'workers' ||
-    value === 'inspectors'
+    value === 'inspectors' ||
+    value === 'cost'
   ) {
     return value
   }

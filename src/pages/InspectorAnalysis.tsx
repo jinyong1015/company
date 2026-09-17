@@ -161,10 +161,6 @@ export function InspectorAnalysis() {
         description="소속 → 검사자 → 품번 순으로 검사량과 효율을 확인합니다."
       />
 
-      <div className="card border-warn/30 px-4 py-3 text-sm text-muted">
-        검사자별 지표는 담당 품번·검사유형 구성의 영향을 받습니다. 단순 순위만으로 평가하지 마세요.
-      </div>
-
       <QtyTop10Chart
         items={topItems}
         title="검사 수량 작업자 TOP 10"

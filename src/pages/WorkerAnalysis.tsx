@@ -1,8 +1,14 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { AlertTriangle } from 'lucide-react'
 import { PageHeader } from '../components/common/PageHeader'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
+import {
+  QtyTop10Chart,
+  type QtyTopItem,
+  type QtyTopView,
+} from '../components/charts/QtyTop10Chart'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
 import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
@@ -17,6 +23,7 @@ type WorkerAnalysisViewState = {
   asc: boolean
   page: number
   pageSize: number
+  topView: QtyTopView
 }
 
 const defaultViewState: WorkerAnalysisViewState = {
@@ -25,6 +32,7 @@ const defaultViewState: WorkerAnalysisViewState = {
   asc: false,
   page: 1,
   pageSize: 10,
+  topView: 'rank',
 }
 
 const sortKeys = [
@@ -53,14 +61,14 @@ function readViewState(): WorkerAnalysisViewState {
       typeof stored.pageSize === 'number' && stored.pageSize > 0
         ? stored.pageSize
         : defaultViewState.pageSize,
+    topView: stored.topView === 'bar' ? 'bar' : 'rank',
   }
 }
 
 export function WorkerAnalysis() {
   const { analytics } = useData()
   const [view, setView] = useState<WorkerAnalysisViewState>(readViewState)
-  const { query, sortKey, asc, page, pageSize } = view
-  const [openId, setOpenId] = useState<string | null>(null)
+  const { query, sortKey, asc, page, pageSize, topView } = view
 
   useEffect(() => {
     savePageViewState(VIEW_STATE_KEY, view)
@@ -69,6 +77,16 @@ export function WorkerAnalysis() {
   function patchView(patch: Partial<WorkerAnalysisViewState>) {
     setView((prev) => ({ ...prev, ...patch }))
   }
+
+  const topItems = useMemo((): QtyTopItem[] => {
+    return analytics.workers.map((r) => ({
+      id: r.id,
+      name: r.name,
+      meta: `담당 품번 ${r.productCount}`,
+      qty: r.fail,
+      href: `/workers/${r.id}`,
+    }))
+  }, [analytics.workers])
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -98,6 +116,21 @@ export function WorkerAnalysis() {
         title="성형 작업자 분석"
         description="성형 작업자 → 품번 순으로 실적과 불량 현황을 확인합니다."
       />
+
+      <QtyTop10Chart
+        items={topItems}
+        title="부적합수량 작업자 TOP 10"
+        subtitle="성형 작업자별 부적합수량 기준 상위 10명"
+        badgeLabel="전체"
+        tone="all"
+        view={topView}
+        onViewChange={(v) => patchView({ topView: v })}
+        emptyMessage="표시할 부적합수량 데이터가 없습니다."
+        valueLabel="부적합수량"
+        valueUnit="EA"
+        ValueIcon={AlertTriangle}
+      />
+
       <SortSearchBar
         query={query}
         onQuery={(v) => {
@@ -141,57 +174,20 @@ export function WorkerAnalysis() {
             </thead>
             <tbody>
               {pageRows.map((row) => (
-                <Fragment key={row.id}>
-                  <tr
-                    onClick={() => setOpenId(openId === row.id ? null : row.id)}
-                    className="cursor-pointer border-b border-line/70 hover:bg-canvas"
-                  >
-                    <td className="px-2 py-3 font-medium">
-                      <Link
-                        to={`/workers/${row.id}`}
-                        className="text-accent hover:underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {row.name}
-                      </Link>
-                    </td>
-                    <td className="num px-2 py-3">{row.productCount}</td>
-                    <td className="num px-2 py-3">{row.qty.toLocaleString()}</td>
-                    <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
-                    <td className="num px-2 py-3">{formatPpmAsPercent(row.failRate)}</td>
-                  </tr>
-                  {openId === row.id && (
-                    <tr>
-                      <td colSpan={5} className="bg-canvas/60 px-4 py-3">
-                        <p className="mb-2 text-xs text-muted">
-                          {row.name} 품번별 실적 · 전체 {row.qty.toLocaleString()} EA
-                        </p>
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="text-xs text-muted">
-                              <th className="py-1 text-left">품번</th>
-                              <th className="py-1 text-left">실적수량</th>
-                              <th className="py-1 text-left">부적합수량</th>
-                              <th className="py-1 text-left">불량률(%)</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {row.products.map((p) => (
-                              <tr key={p.product}>
-                                <td className="py-1">{p.product}</td>
-                                <td className="num py-1">{p.qty.toLocaleString()}</td>
-                                <td className="num py-1">{p.fail.toLocaleString()}</td>
-                                <td className="num py-1 font-semibold">
-                                  {formatPpmAsPercent(p.failRate)}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+                <tr key={row.id} className="border-b border-line/70 hover:bg-canvas">
+                  <td className="px-2 py-3 font-medium">
+                    <Link
+                      to={`/workers/${row.id}`}
+                      className="text-accent hover:underline"
+                    >
+                      {row.name}
+                    </Link>
+                  </td>
+                  <td className="num px-2 py-3">{row.productCount}</td>
+                  <td className="num px-2 py-3">{row.qty.toLocaleString()}</td>
+                  <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
+                  <td className="num px-2 py-3">{formatPpmAsPercent(row.failRate)}</td>
+                </tr>
               ))}
               {!pageRows.length && (
                 <tr>
@@ -203,7 +199,12 @@ export function WorkerAnalysis() {
             </tbody>
           </table>
         </div>
-        <Pager page={safePage} totalPages={totalPages} total={rows.length} onPage={(p) => patchView({ page: p })} />
+        <Pager
+          page={safePage}
+          totalPages={totalPages}
+          total={rows.length}
+          onPage={(p) => patchView({ page: p })}
+        />
       </SortSearchBar>
     </div>
   )

@@ -15,7 +15,6 @@ const sortKeys = [
   { id: 'failRate', label: '부적합률' },
   { id: 'hours', label: '검사시간' },
   { id: 'scrapCost', label: '폐기비용' },
-  { id: 'changeRate', label: '증가율' },
 ]
 
 export function MoldAnalysis() {
@@ -80,7 +79,7 @@ export function MoldAnalysis() {
         resultTitle="금형 내역"
       >
         <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full text-left text-sm">
+          <table className="min-w-[860px] w-full text-left text-sm">
             <thead>
               <tr className="border-b border-line text-xs text-muted">
                 <th className="px-2 py-2 font-medium">금형번호</th>
@@ -90,7 +89,6 @@ export function MoldAnalysis() {
                 <th className="px-2 py-2 font-medium">부적합률</th>
                 <th className="px-2 py-2 font-medium">주요 불량</th>
                 <th className="px-2 py-2 font-medium">폐기비용</th>
-                <th className="px-2 py-2 font-medium">최근 변화</th>
               </tr>
             </thead>
             <tbody>
@@ -103,9 +101,6 @@ export function MoldAnalysis() {
                   <td className="num px-2 py-3">{formatPpm(row.failRate)}</td>
                   <td className="px-2 py-3">{row.mainDefect}</td>
                   <td className="num px-2 py-3">{formatWon(row.scrapCost)}</td>
-                  <td className={`num px-2 py-3 ${row.changeRate > 0 ? 'text-danger' : 'text-ok'}`}>
-                    {row.recentChange}
-                  </td>
                 </tr>
               ))}
             </tbody>

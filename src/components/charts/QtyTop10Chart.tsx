@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { BarChart3, ListOrdered, Package, Trophy } from 'lucide-react'
+import { BarChart3, ListOrdered, Package, Trophy, type LucideIcon } from 'lucide-react'
 import { formatPercent } from '../../lib/format'
 
 export type QtyTopView = 'rank' | 'bar'
@@ -35,6 +35,13 @@ type RankRow = {
   rank: number
 }
 
+type MetricOpts = {
+  valueLabel: string
+  valueUnit: string
+  formatValue: (n: number) => string
+  ValueIcon: LucideIcon
+}
+
 function rankTone(rank: number): 'gold' | 'silver' | 'bronze' | 'muted' {
   if (rank === 1) return 'gold'
   if (rank === 2) return 'silver'
@@ -53,9 +60,16 @@ function formatQty(n: number) {
   return Math.round(n).toLocaleString('ko-KR')
 }
 
-function RankListView({ rows }: { rows: RankRow[] }) {
+function RankListView({
+  rows,
+  metric,
+}: {
+  rows: RankRow[]
+  metric: MetricOpts
+}) {
   const [hoverId, setHoverId] = useState<string | null>(null)
   const hovered = rows.find((r) => r.id === hoverId) ?? null
+  const Icon = metric.ValueIcon
 
   return (
     <div className="op-prod-top-list" onMouseLeave={() => setHoverId(null)}>
@@ -94,8 +108,11 @@ function RankListView({ rows }: { rows: RankRow[] }) {
             </div>
             <div className="op-prod-top-metrics">
               <span className="op-prod-top-qty num">
-                <Package size={13} aria-hidden />
-                {formatQty(row.qty)}
+                <Icon size={13} aria-hidden />
+                {metric.formatValue(row.qty)}
+                {metric.valueUnit ? (
+                  <span className="op-prod-top-unit">{metric.valueUnit}</span>
+                ) : null}
               </span>
               <span className="op-prod-top-share num">
                 {formatPercent(row.sharePercent)}
@@ -109,7 +126,10 @@ function RankListView({ rows }: { rows: RankRow[] }) {
                 <strong>{row.rank}위</strong> · {row.name}
               </p>
               {row.meta ? <p>{row.meta}</p> : null}
-              <p>검수량: {formatQty(row.qty)} EA</p>
+              <p>
+                {metric.valueLabel}: {metric.formatValue(row.qty)}
+                {metric.valueUnit ? ` ${metric.valueUnit}` : ''}
+              </p>
               <p>전체 대비: {formatPercent(row.sharePercent)}</p>
               <p className="op-prod-top-tooltip-hint">클릭하여 상세 보기</p>
             </div>
@@ -120,7 +140,13 @@ function RankListView({ rows }: { rows: RankRow[] }) {
   )
 }
 
-function BarChartView({ rows }: { rows: RankRow[] }) {
+function BarChartView({
+  rows,
+  metric,
+}: {
+  rows: RankRow[]
+  metric: MetricOpts
+}) {
   return (
     <div className="op-prod-top-chart op-prod-top-chart--labeled">
       <ResponsiveContainer width="100%" height={400}>
@@ -167,8 +193,8 @@ function BarChartView({ rows }: { rows: RankRow[] }) {
           />
           <YAxis
             tick={{ fill: 'var(--color-muted)', fontSize: 12, fontWeight: 600 }}
-            tickFormatter={(v) => formatQty(Number(v))}
-            width={72}
+            tickFormatter={(v) => metric.formatValue(Number(v))}
+            width={84}
           />
           <Tooltip
             contentStyle={{
@@ -176,7 +202,12 @@ function BarChartView({ rows }: { rows: RankRow[] }) {
               border: '1px solid var(--color-line)',
               borderRadius: 12,
             }}
-            formatter={(value) => [`${formatQty(Number(value))} EA`, '검수량']}
+            formatter={(value) => [
+              `${metric.formatValue(Number(value))}${
+                metric.valueUnit ? ` ${metric.valueUnit}` : ''
+              }`,
+              metric.valueLabel,
+            ]}
             labelFormatter={(_, payload) => {
               const row = payload?.[0]?.payload as RankRow | undefined
               if (!row) return ''
@@ -187,7 +218,7 @@ function BarChartView({ rows }: { rows: RankRow[] }) {
           />
           <Bar
             dataKey="qty"
-            name="검수량"
+            name={metric.valueLabel}
             radius={[6, 6, 0, 0]}
             maxBarSize={48}
           >
@@ -199,7 +230,7 @@ function BarChartView({ rows }: { rows: RankRow[] }) {
               position="top"
               offset={8}
               className="op-prod-top-bar-value"
-              formatter={(value) => formatQty(Number(value))}
+              formatter={(value) => metric.formatValue(Number(value))}
             />
           </Bar>
         </BarChart>
@@ -219,6 +250,10 @@ export function QtyTop10Chart({
   onViewChange,
   emptyMessage = '표시할 검수량 데이터가 없습니다.',
   typeTabs,
+  valueLabel = '검수량',
+  valueUnit = 'EA',
+  formatValue = formatQty,
+  ValueIcon = Package,
 }: {
   items: QtyTopItem[]
   title: string
@@ -229,7 +264,16 @@ export function QtyTop10Chart({
   onViewChange: (view: QtyTopView) => void
   emptyMessage?: string
   typeTabs?: ReactNode
+  valueLabel?: string
+  valueUnit?: string
+  formatValue?: (n: number) => string
+  ValueIcon?: LucideIcon
 }) {
+  const metric: MetricOpts = useMemo(
+    () => ({ valueLabel, valueUnit, formatValue, ValueIcon }),
+    [valueLabel, valueUnit, formatValue, ValueIcon],
+  )
+
   const { chartRows, topSum, totalQty, topShare } = useMemo(() => {
     const positive = items.filter((r) => r.qty > 0)
     const total = positive.reduce((s, r) => s + r.qty, 0)
@@ -304,8 +348,8 @@ export function QtyTop10Chart({
             <div className="op-prod-top-stat">
               <span className="op-prod-top-stat-label">TOP 10 합계</span>
               <strong className="op-prod-top-stat-value">
-                {formatQty(topSum)}
-                <span>EA</span>
+                {metric.formatValue(topSum)}
+                {metric.valueUnit ? <span>{metric.valueUnit}</span> : null}
               </strong>
             </div>
             <div className="op-prod-top-stat">
@@ -317,16 +361,16 @@ export function QtyTop10Chart({
             <div className="op-prod-top-stat">
               <span className="op-prod-top-stat-label">조회 범위 전체</span>
               <strong className="op-prod-top-stat-value">
-                {formatQty(totalQty)}
-                <span>EA</span>
+                {metric.formatValue(totalQty)}
+                {metric.valueUnit ? <span>{metric.valueUnit}</span> : null}
               </strong>
             </div>
           </div>
 
           {view === 'bar' ? (
-            <BarChartView rows={chartRows} />
+            <BarChartView rows={chartRows} metric={metric} />
           ) : (
-            <RankListView rows={chartRows} />
+            <RankListView rows={chartRows} metric={metric} />
           )}
         </div>
       )}

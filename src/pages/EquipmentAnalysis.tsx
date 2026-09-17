@@ -1,8 +1,12 @@
 import { Fragment, useMemo, useState } from 'react'
 import { PageHeader } from '../components/common/PageHeader'
+import { Panel } from '../components/common/Panel'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
+import { EquipmentDefectHeatmap } from '../components/charts/EquipmentDefectHeatmap'
 import { useData } from '../context/DataContext'
+import { useFilters } from '../context/FilterContext'
+import { filterRecords } from '../lib/analyze'
 import { downloadExcel } from '../lib/download'
 import type { EquipmentRow } from '../types'
 import { formatPpm } from '../lib/format'
@@ -19,13 +23,19 @@ const sortKeys = [
 ]
 
 export function EquipmentAnalysis() {
-  const { analytics } = useData()
+  const { analytics, records } = useData()
+  const { filters } = useFilters()
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState('qty')
   const [asc, setAsc] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [openId, setOpenId] = useState<string | null>(null)
+
+  const heatmapRecords = useMemo(
+    () => filterRecords(records, filters, true),
+    [records, filters],
+  )
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -51,6 +61,11 @@ export function EquipmentAnalysis() {
   return (
     <div className="space-y-5">
       <PageHeader title="설비 분석" description="설비 → 품번 순으로 검사량과 품질을 확인합니다." />
+
+      <Panel title="설비 × 불량 유형 히트맵">
+        <EquipmentDefectHeatmap records={heatmapRecords} />
+      </Panel>
+
       <SortSearchBar
         query={query}
         onQuery={(v) => {

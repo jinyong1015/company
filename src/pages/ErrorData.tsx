@@ -171,9 +171,14 @@ export function ErrorData() {
             : '오류(#N/A 등)로 분류된 행만 표시합니다. 정상·경고는 검사 DATA에서 확인하세요.'
         }
         actions={
-          <Link to="/data" className="text-sm font-medium text-accent hover:underline">
-            검사 DATA 보기
-          </Link>
+          inspectionCount > 0 ? (
+            <Link
+              to="/data"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-accent/30 px-3 py-1.5 text-sm text-accent hover:bg-accent-soft"
+            >
+              검사 DATA {inspectionCount.toLocaleString()}건
+            </Link>
+          ) : null
         }
       />
 

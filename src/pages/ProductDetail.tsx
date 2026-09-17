@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   CalendarRange,
   ChevronRight,
+  Coins,
   HardHat,
   LayoutDashboard,
   Package,
@@ -82,6 +83,7 @@ const BACK_NAV_ICONS: Record<ProductDetailFromId, LucideIcon> = {
   quality: Activity,
   workers: HardHat,
   inspectors: Users,
+  cost: Coins,
 };
 
 function buildBackNav(from: ProductDetailFromId, searchParams: URLSearchParams) {
