@@ -30,7 +30,10 @@ const DEFECT_HEADER_ALIASES: Record<string, (typeof KNOWN_DEFECT_TYPES)[number]>
 }
 
 const COLUMN_ALIASES: Record<
-  keyof Omit<InspectionRecord, 'id' | 'hours' | 'failRate' | 'defects' | 'rowClass' | 'issues'>,
+  keyof Omit<
+    InspectionRecord,
+    'id' | 'hours' | 'failRate' | 'defects' | 'rowClass' | 'issues' | 'extras'
+  >,
   string[]
 > = {
   date: ['날짜', '일자', '검사일', '검사일자', 'date', 'inspection_date', 'inspectiondate'],
