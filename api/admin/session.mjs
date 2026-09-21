@@ -1,54 +1,19 @@
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// api/_src/logout.ts
-var logout_exports = {};
-__export(logout_exports, {
-  default: () => handler
-});
-module.exports = __toCommonJS(logout_exports);
-
 // server/admin/audit.ts
-var import_promises = require("node:fs/promises");
-var import_node_os = __toESM(require("node:os"), 1);
-var import_node_path = __toESM(require("node:path"), 1);
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 var MAX_ENTRIES = 500;
 function resolveLogFile() {
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    return import_node_path.default.join(import_node_os.default.tmpdir(), "qualitics-admin-change-log.json");
+    return path.join(os.tmpdir(), "qualitics-admin-change-log.json");
   }
-  return import_node_path.default.join(process.cwd(), "data", "admin-change-log.json");
+  return path.join(process.cwd(), "data", "admin-change-log.json");
 }
 var memoryCache = null;
 async function readAll() {
   if (memoryCache) return memoryCache;
   try {
-    const raw = await (0, import_promises.readFile)(resolveLogFile(), "utf8");
+    const raw = await readFile(resolveLogFile(), "utf8");
     const parsed = JSON.parse(raw);
     memoryCache = Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -59,8 +24,8 @@ async function readAll() {
 async function writeAll(entries) {
   memoryCache = entries;
   const file = resolveLogFile();
-  await (0, import_promises.mkdir)(import_node_path.default.dirname(file), { recursive: true });
-  await (0, import_promises.writeFile)(file, JSON.stringify(entries, null, 2), "utf8");
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(entries, null, 2), "utf8");
 }
 async function appendChangeLog(entry) {
   const full = {
@@ -83,9 +48,9 @@ async function listChangeLogs(limit = 50) {
 }
 
 // server/admin/password.ts
-var import_node_crypto = require("node:crypto");
-var import_node_util = require("node:util");
-var scryptAsync = (0, import_node_util.promisify)(import_node_crypto.scrypt);
+import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
+var scryptAsync = promisify(scrypt);
 var SCRYPT_KEYLEN = 64;
 var HASH_PREFIX = "scrypt";
 function parsePasswordHash(serialized) {
@@ -105,7 +70,7 @@ async function hashWithSalt(password, salt) {
 }
 function safeEqual(a, b) {
   if (a.length !== b.length) return false;
-  return (0, import_node_crypto.timingSafeEqual)(a, b);
+  return timingSafeEqual(a, b);
 }
 async function verifyAdminPassword(password) {
   if (!password || !password.trim()) return false;
@@ -121,7 +86,7 @@ function isAdminPasswordConfigured() {
 }
 
 // server/admin/session.ts
-var import_node_crypto2 = require("node:crypto");
+import { createHmac, randomBytes as randomBytes2, timingSafeEqual as timingSafeEqual2 } from "node:crypto";
 var ADMIN_SESSION_COOKIE = "qa_admin_session";
 var ADMIN_IDLE_MS = 30 * 60 * 1e3;
 var ADMIN_ABSOLUTE_MS = 8 * 60 * 60 * 1e3;
@@ -134,7 +99,7 @@ function getSessionSecret() {
   throw new Error("ADMIN_SESSION_SECRET is not configured");
 }
 function sign(body) {
-  return (0, import_node_crypto2.createHmac)("sha256", getSessionSecret()).update(body).digest("base64url");
+  return createHmac("sha256", getSessionSecret()).update(body).digest("base64url");
 }
 function encodeSession(payload) {
   const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
@@ -147,7 +112,7 @@ function decodeSession(token) {
   const expected = sign(body);
   const a = Buffer.from(signature);
   const b = Buffer.from(expected);
-  if (a.length !== b.length || !(0, import_node_crypto2.timingSafeEqual)(a, b)) return null;
+  if (a.length !== b.length || !timingSafeEqual2(a, b)) return null;
   try {
     const payload = JSON.parse(
       Buffer.from(body, "base64url").toString("utf8")
@@ -162,7 +127,7 @@ function decodeSession(token) {
 }
 function createSessionPayload(now = Date.now()) {
   return {
-    sid: (0, import_node_crypto2.randomBytes)(16).toString("hex"),
+    sid: randomBytes2(16).toString("hex"),
     iat: now,
     exp: now + ADMIN_ABSOLUTE_MS,
     lastActivity: now
@@ -413,8 +378,10 @@ async function runAdminApi(req, res, pathname) {
   }
 }
 
-// api/_src/logout.ts
+// api/_src/session.ts
 async function handler(req, res) {
-  await runAdminApi(req, res, "/api/admin/logout");
+  await runAdminApi(req, res, "/api/admin/session");
 }
-module.exports = module.exports.default || module.exports;
+export {
+  handler as default
+};
