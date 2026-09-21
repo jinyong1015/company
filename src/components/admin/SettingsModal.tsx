@@ -36,7 +36,7 @@ const THEME_OPTIONS: Array<{
   {
     value: 'dark',
     label: '다크',
-    description: '어두운 배경과 밝은 글자',
+    description: '깊은 검정 배경과 밝은 글자',
     Icon: Moon,
   },
 ]

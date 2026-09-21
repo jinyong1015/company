@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { InspectionRecord } from '../../types'
 
 const MAX_DEFECTS = 10
@@ -18,20 +18,64 @@ type DisplayRow =
       members: string[]
     }
 
-function heatFill(count: number, max: number): string {
-  if (count <= 0 || max <= 0)
-    return 'color-mix(in srgb, var(--app-bg) 88%, var(--border))'
+function useIsDark() {
+  const [dark, setDark] = useState(() =>
+    typeof document !== 'undefined'
+      ? document.documentElement.classList.contains('dark')
+      : false,
+  )
+
+  useEffect(() => {
+    const sync = () =>
+      setDark(document.documentElement.classList.contains('dark'))
+    window.addEventListener('qualitics-theme-change', sync)
+    const obs = new MutationObserver(sync)
+    obs.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    })
+    return () => {
+      window.removeEventListener('qualitics-theme-change', sync)
+      obs.disconnect()
+    }
+  }, [])
+
+  return dark
+}
+
+/** 라이트: 연한 앰버→적갈 / 다크: 어두운 갈→딥 앰버 (눈부심 완화) */
+function heatFill(count: number, max: number, dark: boolean): string {
+  if (count <= 0 || max <= 0) {
+    return dark
+      ? 'color-mix(in srgb, var(--elevated) 75%, var(--border))'
+      : 'color-mix(in srgb, var(--app-bg) 88%, var(--border))'
+  }
   const t = Math.min(1, count / max)
-  // 연한 앰버 → 진한 적갈 (발생 정도)
+  if (dark) {
+    const r = Math.round(42 + t * 168)
+    const g = Math.round(28 + t * 72)
+    const b = Math.round(18 + t * 14)
+    return `rgb(${r}, ${g}, ${b})`
+  }
   const r = Math.round(254 - t * 100)
   const g = Math.round(243 - t * 180)
   const b = Math.round(199 - t * 170)
   return `rgb(${r}, ${g}, ${b})`
 }
 
-function heatText(count: number, max: number): string {
+function heatText(count: number, max: number, dark: boolean): string {
   if (count <= 0) return 'var(--text-secondary)'
-  return count / max > 0.55 ? '#fff7ed' : '#7c2d12'
+  const t = count / max
+  if (dark) {
+    return t > 0.42 ? '#fff4e6' : '#c4a484'
+  }
+  return t > 0.55 ? '#fff7ed' : '#7c2d12'
+}
+
+function heatLegend(dark: boolean): string {
+  return dark
+    ? 'linear-gradient(90deg, rgb(42,28,18), rgb(210,100,32))'
+    : 'linear-gradient(90deg, rgb(254,243,199), rgb(154,63,29))'
 }
 
 /** 히트맵 설비 행 그룹: 미지정 → 1공장 → 성형S → 2공장 → 기타 */
@@ -178,6 +222,7 @@ export function EquipmentDefectHeatmap({
 }: {
   records: InspectionRecord[]
 }) {
+  const isDark = useIsDark()
   const [hover, setHover] = useState<Cell | null>(null)
 
   const {
@@ -296,8 +341,8 @@ export function EquipmentDefectHeatmap({
                           type="button"
                           className="flex h-9 w-full min-w-[48px] items-center justify-center rounded-md text-[11px] font-semibold tabular-nums transition-transform hover:scale-[1.04] hover:ring-1 hover:ring-accent/40"
                           style={{
-                            background: heatFill(count, max),
-                            color: heatText(count, max),
+                            background: heatFill(count, max, isDark),
+                            color: heatText(count, max, isDark),
                           }}
                           onMouseEnter={() =>
                             setHover({ equipment: eq, defect, count })
@@ -355,10 +400,7 @@ export function EquipmentDefectHeatmap({
           <span>적음</span>
           <span
             className="h-2.5 w-16 rounded-full"
-            style={{
-              background:
-                'linear-gradient(90deg, rgb(254,243,199), rgb(154,63,29))',
-            }}
+            style={{ background: heatLegend(isDark) }}
           />
           <span>많음</span>
         </div>

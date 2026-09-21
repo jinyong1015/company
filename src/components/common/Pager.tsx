@@ -52,10 +52,10 @@ export function Pager({
               type="button"
               onClick={() => onPage(item)}
               aria-current={item === page ? 'page' : undefined}
-              className={`min-w-9 rounded-full border px-3 py-1.5 ${
+              className={`min-w-9 rounded-full border px-3 py-1.5 transition ${
                 item === page
-                  ? 'border-ink bg-ink text-white'
-                  : 'border-line bg-white hover:bg-canvas'
+                  ? 'border-accent bg-accent text-white shadow-sm dark:border-accent/45 dark:bg-accent/15 dark:text-accent dark:shadow-[inset_0_0_0_1px_rgba(139,180,255,0.35)]'
+                  : 'border-line bg-white hover:bg-canvas dark:bg-[var(--elevated)] dark:hover:bg-accent/10'
               }`}
             >
               {item}

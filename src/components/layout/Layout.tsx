@@ -143,7 +143,7 @@ function TopNavigation() {
   const chipClass = (isActive: boolean) =>
     `inline-flex h-11 shrink-0 items-center gap-2 rounded-full border px-3.5 text-sm font-semibold transition-all duration-200 ${
       isActive
-        ? "border-accent bg-accent text-white shadow-[0_7px_18px_rgba(59,130,246,0.3)]"
+        ? "border-accent bg-accent text-white shadow-[0_7px_18px_rgba(59,130,246,0.3)] dark:border-accent/45 dark:bg-accent/15 dark:text-accent dark:shadow-[0_0_0_1px_rgba(110,168,254,0.22)]"
         : "border-line bg-surface text-ink shadow-sm hover:-translate-y-0.5 hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
     }`;
 
