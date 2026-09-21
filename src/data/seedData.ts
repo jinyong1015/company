@@ -14,7 +14,7 @@ type SeedDraft = {
   date: string
   inspector: string
   team: '본사' | '2공장'
-  productType: 'SEAL' | '그로멧' | '유압'
+  productType: 'SEAL' | '그로멧' | 'GROMMET'
   worker: string
   equipment: string
   product: string
@@ -53,7 +53,7 @@ const EQUIP_PLANT2 = ['[2공장] INJ-11', '[2공장] INJ-12', '[2공장] PRESS-2
 type ProductMeta = {
   product: string
   moldNo: string
-  type: 'SEAL' | '그로멧' | '유압'
+  type: 'SEAL' | '그로멧' | 'GROMMET'
 }
 
 const PRODUCTS_SEAL: ProductMeta[] = [
@@ -64,12 +64,12 @@ const PRODUCTS_SEAL: ProductMeta[] = [
 const PRODUCTS_GROMMET: ProductMeta[] = [
   { product: 'GROMMET-D03', moldNo: 'M-5099', type: '그로멧' },
   { product: 'GROMMET-E15', moldNo: 'M-5110', type: '그로멧' },
-  { product: 'HYD-F09', moldNo: 'M-4021', type: '유압' },
-  { product: 'HYD-G11', moldNo: 'M-4033', type: '유압' },
+  { product: 'HYD-F09', moldNo: 'M-4021', type: 'GROMMET' },
+  { product: 'HYD-G11', moldNo: 'M-4033', type: 'GROMMET' },
 ]
 const PRODUCTS_P2: ProductMeta[] = [
   { product: 'O-RING-C21', moldNo: 'M-3115', type: 'SEAL' },
-  { product: 'BUSH-F09', moldNo: 'M-4021', type: '유압' },
+  { product: 'BUSH-F09', moldNo: 'M-4021', type: 'GROMMET' },
   { product: 'PAD-D03', moldNo: 'M-5099', type: '그로멧' },
   { product: 'COVER-E15', moldNo: 'M-3115', type: '그로멧' },
 ]

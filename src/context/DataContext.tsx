@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { analyzeRecords, emptyAnalytics } from '../lib/analyze'
+import { normalizeProductType } from '../lib/groups'
 import { parseInspectionExcel } from '../lib/excel'
 import { seedRecords } from '../data/seedData'
 import type { Analytics, InspectionRecord, UploadResult } from '../types'
@@ -24,7 +25,7 @@ const STORAGE_KEY = 'inspection-analytics-records'
 const META_KEY = 'inspection-analytics-meta'
 const SEED_VERSION_KEY = 'inspection-analytics-seed-version'
 /** 시드 가데이터 갱신 시 올리고, source=seed 사용자만 자동 교체 */
-const SEED_VERSION = '2026-09-17-demo-v1'
+const SEED_VERSION = '2026-09-21-grommet-v1'
 const DATA_SYNC_CHANNEL = 'inspection-analytics-data-sync'
 
 interface DataMeta {
@@ -148,6 +149,15 @@ function createSeedMeta(): DataMeta {
   }
 }
 
+function withNormalizedProductTypes(
+  records: InspectionRecord[],
+): InspectionRecord[] {
+  return records.map((r) => ({
+    ...r,
+    productType: normalizeProductType(r.productType) || r.productType,
+  }))
+}
+
 function getInitialData(): { records: InspectionRecord[]; meta: DataMeta } {
   const stored = loadStoredRecords()
   const meta = loadMeta()
@@ -155,20 +165,22 @@ function getInitialData(): { records: InspectionRecord[]; meta: DataMeta } {
   // 저장본 없음 → 시드 가데이터
   if (!stored || stored.length === 0) {
     const nextMeta = createSeedMeta()
-    persist(seedRecords, nextMeta)
+    const records = withNormalizedProductTypes(seedRecords)
+    persist(records, nextMeta)
     writeSeedVersion()
-    return { records: seedRecords, meta: nextMeta }
+    return { records, meta: nextMeta }
   }
 
   // 시드 사용 중이고 시드 버전이 바뀌면 최신 가데이터로 교체 (업로드본은 유지)
   if (meta.source === 'seed' && readSeedVersion() !== SEED_VERSION) {
     const nextMeta = createSeedMeta()
-    persist(seedRecords, nextMeta)
+    const records = withNormalizedProductTypes(seedRecords)
+    persist(records, nextMeta)
     writeSeedVersion()
-    return { records: seedRecords, meta: nextMeta }
+    return { records, meta: nextMeta }
   }
 
-  return { records: stored, meta }
+  return { records: withNormalizedProductTypes(stored), meta }
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
@@ -315,9 +327,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const resetToSeed = useCallback(() => {
     const nextMeta = createSeedMeta()
-    setRecords(seedRecords)
+    const records = withNormalizedProductTypes(seedRecords)
+    setRecords(records)
     setMeta(nextMeta)
-    persist(seedRecords, nextMeta)
+    persist(records, nextMeta)
     writeSeedVersion()
     setUploadError(null)
     setPending(null)

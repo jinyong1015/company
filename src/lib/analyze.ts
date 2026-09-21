@@ -1,5 +1,5 @@
 import type { FilterState } from "../context/FilterContext";
-import { ANALYSIS_GROUPS, isAnalyzable, matchesAnalysisGroup, type AnalysisGroupId } from "./groups";
+import { ANALYSIS_GROUPS, isAnalyzable, matchesAnalysisGroup, normalizeProductType, type AnalysisGroupId } from "./groups";
 import { toEntityId } from "./entityId";
 import { failRatePpm, formatPpm, formatPpmDelta, formatWonSuffix, statusByPpm } from "./format";
 import type {
@@ -1024,7 +1024,11 @@ export function analyzeRecords(
   allRecords: InspectionRecord[],
   filters: FilterState,
 ): Analytics {
-  const analyzable = allRecords.filter((r) => isAnalyzable(r));
+  const normalizedRecords = allRecords.map((r) => ({
+    ...r,
+    productType: normalizeProductType(r.productType) || r.productType,
+  }))
+  const analyzable = normalizedRecords.filter((r) => isAnalyzable(r));
   const grouped = analyzable.filter((r) =>
     matchesAnalysisGroup(r, filters.analysisGroup ?? "all"),
   );

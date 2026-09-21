@@ -37,6 +37,14 @@ export function normalizeTeam(team: string): string {
   return t
 }
 
+/** 제품유형 — 유압 → GROMMET (필터·집계·표시 통일) */
+export function normalizeProductType(type: string): string {
+  const t = type.trim()
+  if (!t) return ''
+  if (t.includes('유압')) return 'GROMMET'
+  return t
+}
+
 function isHq(team: string) {
   return normalizeTeam(team).includes('본사')
 }

@@ -1,10 +1,12 @@
 import type { InspectionRecord } from '../types'
 import { failRatePpm } from './format'
+import { normalizeProductType } from './groups'
 
 /** 검사 DATA 수정 후 파생지표·상태를 다시 계산한다. */
 export function recomputeInspectionRecord(
   draft: InspectionRecord,
 ): InspectionRecord {
+  const productType = normalizeProductType(draft.productType) || draft.productType
   const qty = Math.max(0, Math.round(Number(draft.qty) || 0))
   const fail = Math.max(0, Math.round(Number(draft.fail) || 0))
   const pass = Math.max(0, Math.round(Number(draft.pass) || Math.max(qty - fail, 0)))
@@ -37,7 +39,7 @@ export function recomputeInspectionRecord(
   const issues: string[] = []
   let rowClass: InspectionRecord['rowClass'] = 'ok'
 
-  if (!draft.productType || draft.productType === '#N/A') {
+  if (!productType || productType === '#N/A') {
     issues.push('제품유형 오류')
     rowClass = 'error'
   }
@@ -67,6 +69,7 @@ export function recomputeInspectionRecord(
 
   return {
     ...draft,
+    productType,
     start: draft.start ?? '',
     end: draft.end ?? '',
     qty,

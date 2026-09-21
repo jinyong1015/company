@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx'
 import type { InspectionRecord, QualityCheckItem, UploadResult } from '../types'
 import { failRatePpm } from './format'
-import { normalizeTeam } from './groups'
+import { normalizeProductType, normalizeTeam } from './groups'
 
 export const KNOWN_DEFECT_TYPES = [
   'BURR',
@@ -494,7 +494,9 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     const team = normalizeTeam(str(cell(row, headerMap.team)))
     const productTypeRaw = str(cell(row, headerMap.productType))
     const productType =
-      isPlaceholder(productTypeRaw) || isNaValue(productTypeRaw) ? '' : productTypeRaw
+      isPlaceholder(productTypeRaw) || isNaValue(productTypeRaw)
+        ? ''
+        : normalizeProductType(productTypeRaw)
     const lotRaw = str(cell(row, headerMap.lot))
     const lot = isPlaceholder(lotRaw) || isNaValue(lotRaw) ? '' : lotRaw
     const workerRaw = str(cell(row, headerMap.worker))
@@ -724,7 +726,7 @@ export function createSampleWorkbook(): Blob {
     },
     {
       날짜: '2026-08-04', 작업구분: '검사작업', 검사원: '최현우', 소속: '2공장',
-      '제품 유형': '유압', '성형 LOT': 'L260804-07', 작업자: '신재원', 설비: 'PRESS-03',
+      '제품 유형': 'GROMMET', '성형 LOT': 'L260804-07', 작업자: '신재원', 설비: 'PRESS-03',
       품번: 'HYD-F09', 금형번호: 'M-4021', 시작: '14:30', 종료: '17:10', '소요시간(분)': 160,
       검사량: 760, 합격수량: 728, 부적합수량: 32, BURR: 28, 미성형: 4, 폐기비용: 186000,
     },
@@ -736,7 +738,7 @@ export function createSampleWorkbook(): Blob {
     },
     {
       날짜: '2026-08-06', 작업구분: '검사작업', 검사원: '한도윤', 소속: '본사',
-      '제품 유형': '유압', '성형 LOT': 'L260806-08', 작업자: '문지호', 설비: 'PRESS-01',
+      '제품 유형': 'GROMMET', '성형 LOT': 'L260806-08', 작업자: '문지호', 설비: 'PRESS-01',
       품번: 'HYD-E15', 금형번호: 'M-3115', 시작: '15:00', 종료: '16:40', '소요시간(분)': 100,
       검사량: 890, 합격수량: 882, 부적합수량: 8, 변형: 5, 흠집: 3, 폐기비용: 36000,
     },
@@ -754,7 +756,7 @@ export function createSampleWorkbook(): Blob {
     },
     {
       날짜: '2026-08-09', 작업구분: '검사작업', 검사원: '이준호', 소속: '본사',
-      '제품 유형': '유압', '성형 LOT': 'L260809-01', 작업자: '오성민', 설비: 'PRESS-02',
+      '제품 유형': 'GROMMET', '성형 LOT': 'L260809-01', 작업자: '오성민', 설비: 'PRESS-02',
       품번: 'HYD-A12', 금형번호: 'M-1042', 시작: '09:00', 종료: '11:30', '소요시간(분)': 150,
       검사량: 1560, 합격수량: 1510, 부적합수량: 50, BURR: 36, '뜯김/찢어짐': 14, 폐기비용: 210000,
     },
