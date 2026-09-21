@@ -1,6 +1,7 @@
 import { appendChangeLog, listChangeLogs } from './audit.ts'
 import { isAdminPasswordConfigured, verifyAdminPassword } from './password.ts'
 import {
+  ADMIN_ABSOLUTE_MS,
   ADMIN_SESSION_COOKIE,
   buildClearCookieHeader,
   buildSetCookieHeader,
@@ -93,7 +94,10 @@ export async function handleAdminRoute(
           message: '관리자 모드로 로그인되었습니다.',
           expiresAt: session.exp,
         },
-        buildSetCookieHeader(encodeSession(session)),
+        buildSetCookieHeader(
+          encodeSession(session),
+          Math.floor(ADMIN_ABSOLUTE_MS / 1000),
+        ),
       )
     } catch {
       return fail(500, '로그인 처리 중 오류가 발생했습니다.')

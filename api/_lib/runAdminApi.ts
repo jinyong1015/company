@@ -10,6 +10,24 @@ function readCookieHeader(req: VercelRequest): string | undefined {
   return raw
 }
 
+/** Vercel은 JSON body를 object로 주기도, string으로 주기도 한다. */
+function parseBody(raw: unknown): unknown {
+  if (raw == null) return null
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return null
+    try {
+      return JSON.parse(trimmed) as unknown
+    } catch {
+      return null
+    }
+  }
+  if (Buffer.isBuffer(raw)) {
+    return parseBody(raw.toString('utf8'))
+  }
+  return raw
+}
+
 function applyResult(res: VercelResponse, result: AdminRouteResult) {
   const cookies = result.setCookie
     ? Array.isArray(result.setCookie)
@@ -33,7 +51,7 @@ export async function runAdminApi(
       pathname,
       cookieHeader: readCookieHeader(req),
       searchParams: url.searchParams,
-      body: req.body ?? null,
+      body: parseBody(req.body),
       userAgent:
         typeof req.headers['user-agent'] === 'string'
           ? req.headers['user-agent']
@@ -53,13 +71,4 @@ export async function runAdminApi(
     res.status(500).json({ ok: false, message })
     return true
   }
-}
-
-export function pathFromQuery(
-  path: string | string[] | undefined,
-  prefix: string,
-): string {
-  const segs = Array.isArray(path) ? path : path ? [path] : []
-  const joined = segs.join('/')
-  return joined ? `${prefix}/${joined}` : prefix
 }

@@ -100,27 +100,42 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (password: string) => {
-    const res = await fetch('/api/admin/login', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    })
-    const data = (await res.json().catch(() => null)) as {
-      ok?: boolean
-      message?: string
-    } | null
-    if (res.ok && data?.ok) {
-      setIsAdmin(true)
-      setAdminPanel('status')
-      return {
-        ok: true,
-        message: data.message ?? '관리자 모드로 로그인되었습니다.',
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      })
+      const contentType = res.headers.get('content-type') ?? ''
+      if (!contentType.includes('application/json')) {
+        return {
+          ok: false,
+          message:
+            '관리자 API에 연결할 수 없습니다. Vercel 배포·환경변수를 확인해 주세요.',
+        }
       }
-    }
-    return {
-      ok: false,
-      message: data?.message ?? '관리자 비밀번호가 올바르지 않습니다.',
+      const data = (await res.json()) as {
+        ok?: boolean
+        message?: string
+      }
+      if (res.ok && data?.ok) {
+        setIsAdmin(true)
+        setAdminPanel('status')
+        return {
+          ok: true,
+          message: data.message ?? '관리자 모드로 로그인되었습니다.',
+        }
+      }
+      return {
+        ok: false,
+        message: data?.message ?? '관리자 비밀번호가 올바르지 않습니다.',
+      }
+    } catch {
+      return {
+        ok: false,
+        message: '관리자 API 요청에 실패했습니다. 네트워크·배포 상태를 확인해 주세요.',
+      }
     }
   }, [])
 
