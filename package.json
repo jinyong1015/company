@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/bundle-admin-api.mjs && tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "admin:hash": "node scripts/hash-admin-password.mjs"
+    "admin:hash": "node scripts/hash-admin-password.mjs",
+    "admin:bundle-api": "node scripts/bundle-admin-api.mjs"
   },
   "dependencies": {
     "@vercel/node": "^13.0.1",
@@ -27,6 +28,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/xlsx": "^0.0.35",
     "@vitejs/plugin-react": "^6.0.4",
+    "esbuild": "^0.27.0",
     "oxlint": "^1.75.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",

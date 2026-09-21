@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import {
   handleAdminRoute,
   type AdminRouteResult,
-} from '../../server/admin/routes'
+} from '../../server/admin/routes.ts'
 
 function readCookieHeader(req: VercelRequest): string | undefined {
   const raw = req.headers.cookie
@@ -10,7 +10,6 @@ function readCookieHeader(req: VercelRequest): string | undefined {
   return raw
 }
 
-/** Vercel은 JSON body를 object로 주기도, string으로 주기도 한다. */
 function parseBody(raw: unknown): unknown {
   if (raw == null) return null
   if (typeof raw === 'string') {
@@ -68,6 +67,7 @@ export async function runAdminApi(
       err instanceof Error && /ADMIN_SESSION_SECRET/.test(err.message)
         ? 'ADMIN_SESSION_SECRET 환경변수가 설정되지 않았습니다.'
         : '서버 오류가 발생했습니다.'
+    console.error('[admin-api]', err)
     res.status(500).json({ ok: false, message })
     return true
   }
