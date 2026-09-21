@@ -1,6 +1,14 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, RotateCcw, Upload } from 'lucide-react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Download,
+  FileSpreadsheet,
+  Megaphone,
+  RotateCcw,
+  Upload,
+} from 'lucide-react'
 import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
 import { ResponsiveGrid } from '../components/common/ResponsiveGrid'
@@ -65,7 +73,6 @@ export function DataManagement() {
     <div className="space-y-5">
       <PageHeader
         title="데이터 업로드"
-        description="Excel 선택 → 컬럼 확인 → 검증 → 오류는 분석 제외·오류 DATA로 분리 / 경고 확인 → 저장 → Dashboard 갱신"
         actions={
           <div className="flex flex-wrap gap-2">
             <button
@@ -89,6 +96,22 @@ export function DataManagement() {
           </div>
         }
       />
+
+      <aside
+        className="flex gap-3 rounded-xl border border-accent/25 bg-accent-soft/60 px-4 py-3.5"
+        role="note"
+        aria-label="공지사항"
+      >
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+          <Megaphone size={16} aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <p className="text-xs font-semibold tracking-wide text-accent">공지사항</p>
+          <p className="mt-1 text-sm leading-relaxed text-ink">
+            MES 최종검사일지현황 데이터를 업로드 하시면 됩니다.
+          </p>
+        </div>
+      </aside>
 
       <Panel title="Excel Upload">
         <div
