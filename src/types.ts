@@ -47,6 +47,18 @@ export interface ProductBreakdown {
   mainDefect: string
 }
 
+export interface EquipmentBreakdown {
+  equipment: string
+  qty: number
+  fail: number
+  failRate: number
+  scrapCost: number
+  hours: number
+  minutes: number
+  uph: number
+  mainDefect: string
+}
+
 export interface InspectorRow {
   id: string
   name: string
@@ -157,6 +169,7 @@ export interface MoldRow {
   recentChange: string
   changeRate: number
   status: Status
+  equipment: EquipmentBreakdown[]
 }
 
 export interface EquipmentRow {

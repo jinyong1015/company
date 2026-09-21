@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import {
   Bar,
-  BarChart,
   CartesianGrid,
   ComposedChart,
   LabelList,
@@ -28,6 +27,7 @@ import { PageHeader } from "../components/common/PageHeader";
 import { Panel } from "../components/common/Panel";
 import { ResponsiveGrid } from "../components/common/ResponsiveGrid";
 import { StatusBadge } from "../components/common/StatusBadge";
+import { DefectPieChart } from "../components/charts/DefectCharts";
 import { useData } from "../context/DataContext";
 import {
   cloneFilterState,
@@ -58,6 +58,10 @@ import {
   formatWonSuffix,
   statusByPpm,
 } from "../lib/format";
+import {
+  DEFECT_ALL_COLOR,
+  defectTypeColor,
+} from "../lib/defectColors";
 import type { Analytics, InspectionRecord, ProductRow } from "../types";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -367,6 +371,12 @@ function ProductDetailBody({
   const [selectedDefect, setSelectedDefect] = useState("");
   const [trendMetric, setTrendMetric] = useState<"qty" | "scrapCost">("qty");
 
+  const selectedDefectColor = useMemo(() => {
+    if (!selectedDefect) return DEFECT_ALL_COLOR;
+    const idx = defects.findIndex((d) => d.name === selectedDefect);
+    return idx >= 0 ? defectTypeColor(idx) : DEFECT_ALL_COLOR;
+  }, [defects, selectedDefect]);
+
   useEffect(() => {
     if (!defects.length) {
       setSelectedDefect("");
@@ -633,58 +643,45 @@ function ProductDetailBody({
         </Panel>
         <Panel
           title="불량 유형별 발생량"
-          description="어떤 불량이 발생했는지 정확히 집계"
+          description="품질 분석과 동일한 색상 · 원그래프"
         >
-          <div className="h-[240px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={defects}>
-                <CartesianGrid stroke="#eef1f5" vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 11, fill: "#5b6577" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#5b6577" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={36}
-                />
-                <Tooltip
-                  contentStyle={{
-                    border: "1px solid #e2e6ec",
-                    borderRadius: 12,
-                    boxShadow: "none",
-                    fontSize: 12,
-                  }}
-                />
-                <Bar
-                  dataKey="count"
-                  fill="#3b82f6"
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={28}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <DefectPieChart data={defects} />
         </Panel>
       </ResponsiveGrid>
 
       <Panel
         title="불량 내역 상세"
         description="유형을 선택하면 아래 설비·금형 비중이 바로 바뀝니다."
+        className="transition-[border-color,box-shadow] duration-200"
+        style={{
+          borderColor: selectedDefectColor,
+          boxShadow: `0 0 0 1px color-mix(in srgb, ${selectedDefectColor} 35%, transparent)`,
+        }}
       >
         {defects.length ? (
           <>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-accent/40 bg-accent/5 px-3 py-2.5">
+            <div
+              className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2.5"
+              style={{
+                borderColor: `color-mix(in srgb, ${selectedDefectColor} 45%, transparent)`,
+                background: `color-mix(in srgb, ${selectedDefectColor} 8%, transparent)`,
+              }}
+            >
               <p className="text-sm text-ink">
-                <span className="font-medium text-accent">불량 유형을 선택</span>
+                <span
+                  className="font-medium"
+                  style={{ color: selectedDefectColor }}
+                >
+                  불량 유형을 선택
+                </span>
                 해 설비·금형별 발생 비중을 확인하세요.
               </p>
               <p className="text-xs text-muted">
                 현재 선택{" "}
-                <span className="font-semibold text-accent">
+                <span
+                  className="font-semibold"
+                  style={{ color: selectedDefectColor }}
+                >
                   {selectedDefect || "전체"}
                 </span>
               </p>
@@ -703,13 +700,15 @@ function ProductDetailBody({
                     label: "전체",
                     count: defects.reduce((s, d) => s + d.count, 0),
                     share: 100,
+                    color: DEFECT_ALL_COLOR,
                   },
-                  ...defects.map((d) => ({
+                  ...defects.map((d, i) => ({
                     key: d.name,
                     value: d.name,
                     label: d.name,
                     count: d.count,
                     share: d.share,
+                    color: defectTypeColor(i),
                   })),
                 ] as const
               ).map((d) => {
@@ -723,33 +722,55 @@ function ProductDetailBody({
                     onClick={() => setSelectedDefect(d.value)}
                     className={`group flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition ${
                       active
-                        ? "border-accent bg-accent/5 shadow-sm ring-1 ring-accent/30"
-                        : "border-line bg-white hover:border-accent/50 hover:bg-canvas"
+                        ? "shadow-sm"
+                        : "border-line bg-white hover:bg-canvas"
                     }`}
+                    style={
+                      active
+                        ? {
+                            borderColor: d.color,
+                            background: `color-mix(in srgb, ${d.color} 12%, var(--card))`,
+                            boxShadow: `0 0 0 1px color-mix(in srgb, ${d.color} 35%, transparent)`,
+                          }
+                        : undefined
+                    }
                   >
                     <span
-                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                        active
-                          ? "border-accent"
-                          : "border-line group-hover:border-accent/60"
-                      }`}
+                      className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2"
+                      style={{
+                        borderColor: active ? d.color : "var(--border)",
+                      }}
                       aria-hidden
                     >
                       {active ? (
-                        <span className="h-2 w-2 rounded-full bg-accent" />
+                        <span
+                          className="h-2 w-2 rounded-full"
+                          style={{ background: d.color }}
+                        />
                       ) : null}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center justify-between gap-2">
-                        <span
-                          className={`truncate text-sm font-semibold ${
-                            active ? "text-accent" : "text-ink"
-                          }`}
-                        >
-                          {d.label}
+                        <span className="flex min-w-0 items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                            style={{ background: d.color }}
+                            aria-hidden
+                          />
+                          <span
+                            className={`truncate text-sm font-semibold ${
+                              active ? "" : "text-ink"
+                            }`}
+                            style={active ? { color: d.color } : undefined}
+                          >
+                            {d.label}
+                          </span>
                         </span>
                         {active ? (
-                          <span className="shrink-0 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-medium text-white">
+                          <span
+                            className="shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium text-white"
+                            style={{ background: d.color }}
+                          >
                             선택됨
                           </span>
                         ) : (
@@ -768,10 +789,12 @@ function ProductDetailBody({
                       </span>
                       <span className="mt-2 block h-1 overflow-hidden rounded-full bg-line/70">
                         <span
-                          className={`block h-full rounded-full ${
-                            active ? "bg-accent" : "bg-slate-300"
-                          }`}
-                          style={{ width: `${Math.min(100, d.share)}%` }}
+                          className="block h-full rounded-full"
+                          style={{
+                            width: `${Math.min(100, d.share)}%`,
+                            background: d.color,
+                            opacity: active ? 1 : 0.55,
+                          }}
                         />
                       </span>
                     </span>
@@ -787,7 +810,10 @@ function ProductDetailBody({
         {defects.length && defectDrill.total > 0 ? (
           <div className="mt-5 border-t border-line pt-5">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="rounded-md bg-accent px-2 py-1 text-xs font-semibold text-white">
+              <span
+                className="rounded-md px-2 py-1 text-xs font-semibold text-white"
+                style={{ background: selectedDefectColor }}
+              >
                 {defectDrill.defectName}
               </span>
               <span className="text-sm font-medium text-ink">
@@ -825,11 +851,19 @@ function ProductDetailBody({
                     </div>
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line/60">
                       <div
-                        className="h-full rounded-full bg-accent"
-                        style={{ width: `${Math.min(100, eq.share)}%` }}
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${Math.min(100, eq.share)}%`,
+                          background: selectedDefectColor,
+                        }}
                       />
                     </div>
-                    <ul className="mt-2 space-y-1 border-l-2 border-line pl-3 text-xs text-muted">
+                    <ul
+                      className="mt-2 space-y-1 border-l-2 pl-3 text-xs text-muted"
+                      style={{
+                        borderColor: `color-mix(in srgb, ${selectedDefectColor} 40%, var(--border))`,
+                      }}
+                    >
                       <li className="font-medium text-ink/70">금형</li>
                       {eq.molds.map((m) => (
                         <li
@@ -874,8 +908,12 @@ function ProductDetailBody({
                     </div>
                     <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-line/60">
                       <div
-                        className="h-full rounded-full bg-sky-500"
-                        style={{ width: `${Math.min(100, m.share)}%` }}
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${Math.min(100, m.share)}%`,
+                          background: selectedDefectColor,
+                          opacity: 0.85,
+                        }}
                       />
                     </div>
                   </li>
@@ -949,7 +987,14 @@ function ProductDetailBody({
             <tbody>
               {workerUph.map((row) => (
                 <tr key={row.id} className="border-b border-line/70">
-                  <td className="px-2 py-2.5 font-medium">{row.worker}</td>
+                  <td className="px-2 py-2.5 font-medium">
+                    <Link
+                      to={`/workers/${toEntityId("wrk", row.worker)}?product=${encodeURIComponent(name)}`}
+                      className="text-accent hover:underline"
+                    >
+                      {row.worker}
+                    </Link>
+                  </td>
                   <td className="num px-2 py-2.5">
                     {row.qty.toLocaleString()}
                   </td>
@@ -998,7 +1043,14 @@ function ProductDetailBody({
             <tbody>
               {inspectorUph.map((row) => (
                 <tr key={row.id} className="border-b border-line/70">
-                  <td className="px-2 py-2.5 font-medium">{row.inspector}</td>
+                  <td className="px-2 py-2.5 font-medium">
+                    <Link
+                      to={`/inspectors/${toEntityId("ins", row.inspector)}?product=${encodeURIComponent(name)}`}
+                      className="text-accent hover:underline"
+                    >
+                      {row.inspector}
+                    </Link>
+                  </td>
                   <td className="px-2 py-2.5">{row.team}</td>
                   <td className="num px-2 py-2.5">
                     {row.qty.toLocaleString()}

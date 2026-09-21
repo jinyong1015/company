@@ -136,7 +136,7 @@ export function ProductAnalysis() {
       const type = r.type || '미지정'
       if (activeType && type !== activeType) return false
       if (!q) return true
-      return r.name.toLowerCase().includes(q) || type.toLowerCase().includes(q)
+      return r.name.toLowerCase().includes(q)
     })
     return [...list].sort((a, b) => {
       const av = a[sortKey as keyof ProductRow]
@@ -207,7 +207,7 @@ export function ProductAnalysis() {
       <SortSearchBar
         query={query}
         onQuery={(v) => patchView({ query: v, page: 1 })}
-        placeholder={activeType ? '품번 검색' : '품번 / 제품유형 검색'}
+        placeholder="품번 검색"
         sortKey={sortKey}
         sortKeys={sortKeys}
         asc={asc}
@@ -251,7 +251,7 @@ export function ProductAnalysis() {
           </div>
 
           <div
-            className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
+            className="product-type-tabs"
             role="tablist"
             aria-label="제품유형 탭"
           >
@@ -259,19 +259,12 @@ export function ProductAnalysis() {
               type="button"
               role="tab"
               aria-selected={activeType === ALL_TYPES}
+              data-active={activeType === ALL_TYPES}
               onClick={() => selectType(ALL_TYPES)}
-              className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition ${
-                activeType === ALL_TYPES
-                  ? 'border-accent bg-accent text-white shadow-sm'
-                  : 'border-line bg-white text-ink hover:border-accent/40 hover:bg-accent-soft'
-              }`}
+              className="product-type-tab"
             >
-              전체
-              <span
-                className={`ml-1.5 num text-xs ${activeType === ALL_TYPES ? 'text-white/80' : 'text-muted'}`}
-              >
-                {analytics.products.length}
-              </span>
+              <span className="product-type-tab-label">전체</span>
+              <span className="product-type-tab-count">{analytics.products.length}</span>
             </button>
             {typeOptions.map((t) => {
               const active = t.type === activeType
@@ -281,17 +274,12 @@ export function ProductAnalysis() {
                   type="button"
                   role="tab"
                   aria-selected={active}
+                  data-active={active}
                   onClick={() => selectType(t.type)}
-                  className={`shrink-0 rounded-full border px-3.5 py-2 text-sm font-medium transition ${
-                    active
-                      ? 'border-accent bg-accent text-white shadow-sm'
-                      : 'border-line bg-white text-ink hover:border-accent/40 hover:bg-accent-soft'
-                  }`}
+                  className="product-type-tab"
                 >
-                  {t.type}
-                  <span className={`ml-1.5 num text-xs ${active ? 'text-white/80' : 'text-muted'}`}>
-                    {t.count}
-                  </span>
+                  <span className="product-type-tab-label">{t.type}</span>
+                  <span className="product-type-tab-count">{t.count}</span>
                 </button>
               )
             })}

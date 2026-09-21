@@ -5,6 +5,8 @@ import {
   Cell,
   LabelList,
   Line,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -118,6 +120,92 @@ export function DefectBarChart({ data }: { data: DefectType[] }) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  )
+}
+
+/** 품질 분석 TOP10과 동일 팔레트 — 품번 상세 등 원형(도넛) */
+export function DefectPieChart({ data }: { data: DefectType[] }) {
+  const chartData = useMemo(
+    () =>
+      data.map((d, i) => ({
+        ...d,
+        fill: DEFECT_TYPE_COLORS[i % DEFECT_TYPE_COLORS.length],
+      })),
+    [data],
+  )
+
+  if (!chartData.length) {
+    return (
+      <div className="flex h-[380px] items-center justify-center text-sm text-muted">
+        불량 유형 데이터가 없습니다.
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-[380px] w-full flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="min-h-0 min-w-0 flex-1 basis-[62%]">
+        <ResponsiveContainer width="100%" height="100%" minHeight={280}>
+          <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+            <Pie
+              data={chartData}
+              dataKey="count"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius="40%"
+              outerRadius="86%"
+              paddingAngle={1.5}
+              stroke="var(--card, #fff)"
+              strokeWidth={2}
+              label={false}
+              labelLine={false}
+              isAnimationActive={false}
+            >
+              {chartData.map((d) => (
+                <Cell key={d.name} fill={d.fill} />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{
+                border: '1px solid #e2e6ec',
+                borderRadius: 12,
+                boxShadow: 'none',
+                fontSize: 12,
+              }}
+              formatter={(value, _n, item) => [
+                `${Number(value).toLocaleString()}건 (${item.payload.share}%)`,
+                '발생량',
+              ]}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+      <ul className="max-h-[360px] min-w-0 flex-1 basis-[38%] space-y-1.5 overflow-y-auto pr-1 text-xs sm:pl-1">
+        {chartData.map((d, i) => (
+          <li
+            key={d.name}
+            className="flex items-center gap-2 rounded-lg border border-line/70 bg-canvas/40 px-2 py-1.5"
+          >
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-sm"
+              style={{ background: d.fill }}
+              aria-hidden
+            />
+            <span className="min-w-0 flex-1 truncate font-medium text-ink">
+              <span className="mr-1 text-muted">{i + 1}.</span>
+              {d.name}
+            </span>
+            <span className="num shrink-0 text-muted">
+              {d.count.toLocaleString()}
+            </span>
+            <span className="num w-10 shrink-0 text-right font-semibold text-ink">
+              {d.share}%
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

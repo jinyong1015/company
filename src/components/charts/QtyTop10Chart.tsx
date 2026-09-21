@@ -311,34 +311,35 @@ export function QtyTop10Chart({
             <p className="op-prod-top-sub">{subtitle}</p>
           </div>
         </div>
-        <div className="op-prod-top-head-controls">
-          {typeTabs}
-          <div className="filter-pills" role="tablist" aria-label="보기 방식">
-            <button
-              type="button"
-              className="filter-pill"
-              role="tab"
-              aria-selected={view === 'rank'}
-              data-active={view === 'rank'}
-              onClick={() => onViewChange('rank')}
-            >
-              <ListOrdered size={14} aria-hidden />
-              가로 순위
-            </button>
-            <button
-              type="button"
-              className="filter-pill"
-              role="tab"
-              aria-selected={view === 'bar'}
-              data-active={view === 'bar'}
-              onClick={() => onViewChange('bar')}
-            >
-              <BarChart3 size={14} aria-hidden />
-              막대 차트
-            </button>
-          </div>
+        <div className="op-prod-top-view-toggle" role="tablist" aria-label="보기 방식">
+          <button
+            type="button"
+            className="op-prod-top-view-btn"
+            role="tab"
+            aria-selected={view === 'rank'}
+            data-active={view === 'rank'}
+            onClick={() => onViewChange('rank')}
+            title="가로 순위"
+          >
+            <ListOrdered size={15} aria-hidden />
+            <span>순위</span>
+          </button>
+          <button
+            type="button"
+            className="op-prod-top-view-btn"
+            role="tab"
+            aria-selected={view === 'bar'}
+            data-active={view === 'bar'}
+            onClick={() => onViewChange('bar')}
+            title="막대 차트"
+          >
+            <BarChart3 size={15} aria-hidden />
+            <span>막대</span>
+          </button>
         </div>
       </header>
+
+      {typeTabs ? <div className="op-prod-top-filters">{typeTabs}</div> : null}
 
       {chartRows.length === 0 ? (
         <p className="op-prod-top-empty">{emptyMessage}</p>

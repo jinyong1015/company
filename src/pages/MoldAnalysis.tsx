@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { PageHeader } from '../components/common/PageHeader'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
@@ -24,11 +24,16 @@ export function MoldAnalysis() {
   const [asc, setAsc] = useState(false)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
+  const [openId, setOpenId] = useState<string | null>(null)
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
     const list = analytics.molds.filter(
-      (r) => !q || r.moldNo.toLowerCase().includes(q) || r.product.toLowerCase().includes(q),
+      (r) =>
+        !q ||
+        r.moldNo.toLowerCase().includes(q) ||
+        r.product.toLowerCase().includes(q) ||
+        r.equipment.some((e) => e.equipment.toLowerCase().includes(q)),
     )
     return [...list].sort((a, b) => {
       const av = a[sortKey as keyof MoldRow]
@@ -45,14 +50,17 @@ export function MoldAnalysis() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="금형 분석" description="금형별 품질 상태를 부적합률 기준으로 확인합니다." />
+      <PageHeader
+        title="금형 분석"
+        description="금형 → 설비 순으로 작업 이력과 품질을 확인합니다."
+      />
       <SortSearchBar
         query={query}
         onQuery={(v) => {
           setQuery(v)
           setPage(1)
         }}
-        placeholder="금형 / 품번 검색"
+        placeholder="금형 / 설비 / 품번 검색"
         sortKey={sortKey}
         sortKeys={sortKeys}
         asc={asc}
@@ -73,6 +81,7 @@ export function MoldAnalysis() {
               부적합수량: r.fail,
               부적합률: r.failRate,
               폐기비용: r.scrapCost,
+              설비수: r.equipment.length,
             })),
           )
         }
@@ -93,15 +102,53 @@ export function MoldAnalysis() {
             </thead>
             <tbody>
               {pageRows.map((row) => (
-                <tr key={row.id} className="border-b border-line/70">
-                  <td className="num px-2 py-3 font-medium">{row.moldNo}</td>
-                  <td className="px-2 py-3">{row.product}</td>
-                  <td className="num px-2 py-3">{row.qty.toLocaleString()}</td>
-                  <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
-                  <td className="num px-2 py-3">{formatPpm(row.failRate)}</td>
-                  <td className="px-2 py-3">{row.mainDefect}</td>
-                  <td className="num px-2 py-3">{formatWon(row.scrapCost)}</td>
-                </tr>
+                <Fragment key={row.id}>
+                  <tr
+                    onClick={() => setOpenId(openId === row.id ? null : row.id)}
+                    className="cursor-pointer border-b border-line/70 hover:bg-canvas"
+                  >
+                    <td className="num px-2 py-3 font-medium text-accent">{row.moldNo}</td>
+                    <td className="px-2 py-3">{row.product}</td>
+                    <td className="num px-2 py-3">{row.qty.toLocaleString()}</td>
+                    <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
+                    <td className="num px-2 py-3">{formatPpm(row.failRate)}</td>
+                    <td className="px-2 py-3">{row.mainDefect}</td>
+                    <td className="num px-2 py-3">{formatWon(row.scrapCost)}</td>
+                  </tr>
+                  {openId === row.id && (
+                    <tr>
+                      <td colSpan={7} className="bg-canvas/60 px-4 py-3">
+                        <p className="mb-2 text-xs text-muted">
+                          {row.moldNo} 설비별 검사량 · 전체 {row.qty.toLocaleString()} EA
+                        </p>
+                        {row.equipment.length ? (
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-xs text-muted">
+                                <th className="py-1 text-left">설비</th>
+                                <th className="py-1 text-left">검수량</th>
+                                <th className="py-1 text-left">부적합수량</th>
+                                <th className="py-1 text-left">부적합률</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {row.equipment.map((e) => (
+                                <tr key={e.equipment}>
+                                  <td className="py-1">{e.equipment}</td>
+                                  <td className="num py-1">{e.qty.toLocaleString()}</td>
+                                  <td className="num py-1">{e.fail.toLocaleString()}</td>
+                                  <td className="num py-1">{formatPpm(e.failRate)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p className="text-sm text-muted">이 금형에 연결된 설비 DATA가 없습니다.</p>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

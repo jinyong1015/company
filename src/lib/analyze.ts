@@ -8,6 +8,7 @@ import type {
   CostPoint,
   DailyTrend,
   DefectType,
+  EquipmentBreakdown,
   EquipmentRow,
   GroupSummary,
   GroupTrendSeries,
@@ -275,6 +276,34 @@ function productBreakdown(records: InspectionRecord[]): ProductBreakdown[] {
       const hours = sum(list, "hours");
       return {
         product,
+        qty,
+        fail,
+        failRate: failRatePpm(fail, qty),
+        scrapCost: sum(list, "scrapCost"),
+        hours: Math.round(hours * 10) / 10,
+        minutes: minutesOf(list),
+        uph: hours > 0 ? Math.round(qty / hours) : 0,
+        mainDefect: mainDefectOf(list),
+      };
+    })
+    .sort((a, b) => b.qty - a.qty);
+}
+
+function equipmentBreakdown(records: InspectionRecord[]): EquipmentBreakdown[] {
+  const map = new Map<string, InspectionRecord[]>();
+  for (const r of records) {
+    const name = r.equipment?.trim() || "미지정";
+    const list = map.get(name) ?? [];
+    list.push(r);
+    map.set(name, list);
+  }
+  return [...map.entries()]
+    .map(([equipment, list]) => {
+      const qty = sum(list, "qty");
+      const fail = sum(list, "fail");
+      const hours = sum(list, "hours");
+      return {
+        equipment,
         qty,
         fail,
         failRate: failRatePpm(fail, qty),
@@ -675,6 +704,7 @@ function buildMolds(
         recentChange: formatPpmDelta(diff),
         changeRate: diff,
         status: statusByPpm(failRate),
+        equipment: equipmentBreakdown(list),
       };
     })
     .sort((a, b) => b.failRate - a.failRate);

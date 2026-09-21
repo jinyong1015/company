@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 export function Panel({
   title,
@@ -6,15 +6,17 @@ export function Panel({
   actions,
   children,
   className = '',
+  style,
 }: {
   title?: string
   description?: string
   actions?: ReactNode
   children: ReactNode
   className?: string
+  style?: CSSProperties
 }) {
   return (
-    <section className={`card min-w-0 ${className}`}>
+    <section className={`card min-w-0 ${className}`} style={style}>
       {(title || actions) && (
         <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5">
           <div className="min-w-0">

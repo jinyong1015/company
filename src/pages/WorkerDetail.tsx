@@ -1,5 +1,5 @@
-import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, HardHat } from 'lucide-react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, ChevronRight, HardHat, Package } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -20,7 +20,7 @@ import { useFilters } from '../context/FilterContext'
 import { filterRecords, buildPeriodTrends, resolvePeriodRange } from '../lib/analyze'
 import { fromEntityId, toEntityId } from '../lib/entityId'
 import { buildProductDetailHref } from '../lib/productDetailNav'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { failRatePpm, formatPpmAsPercent, formatWon } from '../lib/format'
 import type { ProductBreakdown } from '../types'
 
@@ -31,11 +31,19 @@ function toDateInput(d: Date) {
   return `${y}-${m}-${day}`
 }
 
-function WorkerDetailBackNav() {
+function WorkerDetailBackNav({
+  productName,
+  productHref,
+}: {
+  productName?: string
+  productHref?: string
+}) {
+  const toProduct = Boolean(productName && productHref)
+
   return (
     <nav aria-label="성형 작업자 상세 돌아가기" className="sticky top-16 z-10">
       <Link
-        to="/workers"
+        to={toProduct ? productHref! : '/workers'}
         className="group flex items-center gap-3 rounded-2xl border-2 border-accent/50 bg-white p-3 shadow-[0_8px_24px_rgba(59,130,246,0.12)] ring-1 ring-accent/20 transition hover:border-accent hover:bg-accent/[0.03] hover:shadow-[0_12px_28px_rgba(59,130,246,0.18)] sm:gap-4 sm:p-4"
       >
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-white shadow-sm transition group-hover:bg-blue-600 sm:h-12 sm:w-12">
@@ -43,7 +51,11 @@ function WorkerDetailBackNav() {
         </span>
 
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/25 sm:h-12 sm:w-12">
-          <HardHat size={20} strokeWidth={2.25} aria-hidden />
+          {toProduct ? (
+            <Package size={20} strokeWidth={2.25} aria-hidden />
+          ) : (
+            <HardHat size={20} strokeWidth={2.25} aria-hidden />
+          )}
         </span>
 
         <span className="min-w-0 flex-1">
@@ -51,9 +63,23 @@ function WorkerDetailBackNav() {
             돌아가기
           </span>
           <span className="mt-0.5 block truncate text-base font-bold text-ink transition group-hover:text-accent sm:text-lg">
-            성형 작업자 분석
+            {toProduct ? productName : '성형 작업자 분석'}
           </span>
+          {toProduct ? (
+            <span className="mt-0.5 block text-xs text-muted">품번 상세</span>
+          ) : null}
         </span>
+
+        {toProduct ? (
+          <span className="hidden shrink-0 rounded-xl border border-line bg-canvas px-3 py-2 text-right sm:block">
+            <span className="block text-[10px] font-semibold tracking-wide text-muted uppercase">
+              품번
+            </span>
+            <span className="mt-0.5 block max-w-[12rem] truncate text-xs font-semibold text-ink">
+              {productName}
+            </span>
+          </span>
+        ) : null}
 
         <ChevronRight
           size={20}
@@ -102,10 +128,12 @@ function buildProductStats(
 
 export function WorkerDetail() {
   const { id } = useParams()
+  const [searchParams] = useSearchParams()
   const { analytics, records } = useData()
   const { filters } = useFilters()
   const name = fromEntityId(id, 'wrk')
-  const [selectedProduct, setSelectedProduct] = useState('')
+  const productFromUrl = searchParams.get('product')?.trim() ?? ''
+  const [selectedProduct, setSelectedProduct] = useState(productFromUrl)
   const [productQuery, setProductQuery] = useState('')
 
   const worker =
@@ -132,10 +160,32 @@ export function WorkerDetail() {
     }))
   }, [scoped, worker])
 
+  useEffect(() => {
+    if (!productFromUrl) return
+    if (productOptions.some((p) => p.product === productFromUrl)) {
+      setSelectedProduct(productFromUrl)
+    }
+  }, [productFromUrl, productOptions])
+
   const activeProduct = productOptions.some((p) => p.product === selectedProduct)
     ? selectedProduct
     : ''
   const hasSelection = Boolean(activeProduct)
+
+  const backNavProduct = productFromUrl || ''
+  const backNavProps = backNavProduct
+    ? {
+        productName: backNavProduct,
+        productHref: buildProductDetailHref(
+          toEntityId('prd', backNavProduct),
+          'workers',
+          {
+            worker: name,
+            workerId: id ?? toEntityId('wrk', name),
+          },
+        ),
+      }
+    : {}
 
   const visibleProducts = useMemo(() => {
     const q = productQuery.trim().toLowerCase()
@@ -161,7 +211,7 @@ export function WorkerDetail() {
   if (!name) {
     return (
       <div className="space-y-5">
-        <WorkerDetailBackNav />
+        <WorkerDetailBackNav {...backNavProps} />
         <PageHeader title="성형 작업자 상세" description="대상을 찾을 수 없습니다." />
       </div>
     )
@@ -170,7 +220,7 @@ export function WorkerDetail() {
   if (!worker && scoped.length === 0) {
     return (
       <div className="space-y-5">
-        <WorkerDetailBackNav />
+        <WorkerDetailBackNav {...backNavProps} />
         <PageHeader
           title={name}
           description="선택한 기간/분석 그룹에 이 성형 작업자의 DATA가 없습니다."
@@ -253,7 +303,7 @@ export function WorkerDetail() {
 
   return (
     <div className="space-y-5">
-      <WorkerDetailBackNav />
+      <WorkerDetailBackNav {...backNavProps} />
       <PageHeader
         title={row.name}
         description={`성형 작업자 · 선택한 기간/분석 그룹 기준 · ${scopeLabel}`}
