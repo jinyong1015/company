@@ -1,19 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Connect, Plugin } from 'vite'
-import { appendChangeLog, listChangeLogs } from './audit.ts'
-import { isAdminPasswordConfigured, verifyAdminPassword } from './password.ts'
-import {
-  ADMIN_SESSION_COOKIE,
-  buildClearCookieHeader,
-  buildSetCookieHeader,
-  createSessionPayload,
-  decodeSession,
-  encodeSession,
-  isSessionValid,
-  readCookieValue,
-  requireAdminFromCookie,
-  touchSession,
-} from './session.ts'
+import { handleAdminRoute } from './routes.ts'
 
 type Json = Record<string, unknown>
 
@@ -52,208 +39,52 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>
-  }
-  return {}
+function applyResult(
+  res: ServerResponse,
+  result: NonNullable<Awaited<ReturnType<typeof handleAdminRoute>>>,
+) {
+  sendJson(res, result.status, result.body, result.setCookie)
 }
 
-function asStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value.filter((v): v is string => typeof v === 'string')
-}
-
-function asStatus(value: unknown): {
-  isAnalysisEligible: boolean
-  errorCodes: string[]
-} {
-  const rec = asRecord(value)
-  return {
-    isAnalysisEligible: Boolean(rec.isAnalysisEligible),
-    errorCodes: asStringArray(rec.errorCodes),
-  }
-}
-
-async function handleAdminApi(
+async function dispatch(
   req: IncomingMessage,
   res: ServerResponse,
   url: URL,
 ): Promise<boolean> {
-  const { pathname } = url
-  const method = (req.method ?? 'GET').toUpperCase()
-  const cookie = req.headers.cookie
-
-  if (pathname === '/api/admin/login' && method === 'POST') {
-    try {
-      if (!isAdminPasswordConfigured()) {
-        sendJson(res, 503, {
-          ok: false,
-          message: '관리자 비밀번호가 서버에 설정되지 않았습니다.',
-        })
-        return true
-      }
-      const body = (await readJsonBody(req)) as { password?: unknown } | null
-      const password = typeof body?.password === 'string' ? body.password : ''
-      if (!password.trim()) {
-        sendJson(res, 400, {
-          ok: false,
-          message: '관리자 비밀번호를 입력해 주세요.',
-        })
-        return true
-      }
-      const valid = await verifyAdminPassword(password)
-      if (!valid) {
-        sendJson(res, 401, {
-          ok: false,
-          message: '관리자 비밀번호가 올바르지 않습니다.',
-        })
-        return true
-      }
-      const session = createSessionPayload()
-      sendJson(
-        res,
-        200,
-        {
-          ok: true,
-          message: '관리자 모드로 로그인되었습니다.',
-          expiresAt: session.exp,
-        },
-        buildSetCookieHeader(encodeSession(session)),
-      )
-    } catch {
-      sendJson(res, 500, {
-        ok: false,
-        message: '로그인 처리 중 오류가 발생했습니다.',
-      })
-    }
-    return true
-  }
-
-  if (pathname === '/api/admin/logout' && method === 'POST') {
-    sendJson(res, 200, { ok: true }, buildClearCookieHeader())
-    return true
-  }
-
-  if (pathname === '/api/admin/session' && method === 'GET') {
-    const token = readCookieValue(cookie, ADMIN_SESSION_COOKIE)
-    const payload = decodeSession(token)
-    if (!isSessionValid(payload)) {
-      sendJson(
-        res,
-        200,
-        { authenticated: false },
-        token ? buildClearCookieHeader() : undefined,
-      )
-      return true
-    }
-    const refreshed = touchSession(payload)
-    sendJson(
-      res,
-      200,
-      {
-        authenticated: true,
-        expiresAt: refreshed.exp,
-        sessionId: refreshed.sid,
-      },
-      buildSetCookieHeader(encodeSession(refreshed)),
-    )
-    return true
-  }
-
-  if (pathname === '/api/inspection-data/changes' && method === 'GET') {
-    const auth = requireAdminFromCookie(cookie)
-    if (!auth.ok) {
-      sendJson(res, auth.status, { ok: false, message: auth.message })
-      return true
-    }
-    const limit = Number(url.searchParams.get('limit') ?? '50')
-    const items = await listChangeLogs(limit)
-    const refreshed = touchSession(auth.session)
-    sendJson(
-      res,
-      200,
-      { ok: true, items },
-      buildSetCookieHeader(encodeSession(refreshed)),
-    )
-    return true
-  }
-
-  const patchMatch = pathname.match(/^\/api\/inspection-data\/([^/]+)$/)
-  if (patchMatch && method === 'PATCH') {
-    const auth = requireAdminFromCookie(cookie)
-    if (!auth.ok) {
-      sendJson(res, auth.status, { ok: false, message: auth.message })
-      return true
-    }
-    const id = decodeURIComponent(patchMatch[1] ?? '')
-    if (!id) {
-      sendJson(res, 400, { ok: false, message: '수정 대상 ID가 없습니다.' })
-      return true
-    }
-    const body = (await readJsonBody(req)) as {
-      reason?: unknown
-      before?: unknown
-      after?: unknown
-      fields?: unknown
-      statusBefore?: unknown
-      statusAfter?: unknown
-    } | null
-    const reason = typeof body?.reason === 'string' ? body.reason.trim() : ''
-    if (!reason) {
-      sendJson(res, 400, {
-        ok: false,
-        message: '수정 사유를 입력해 주세요.',
-      })
-      return true
-    }
-    const before = asRecord(body?.before)
-    const after = asRecord(body?.after)
-    const fields = asStringArray(body?.fields)
-    const clientInfo = req.headers['user-agent']?.slice(0, 240) ?? 'unknown'
-    const entry = await appendChangeLog({
-      recordId: id,
-      fields: fields.length > 0 ? fields : Object.keys(after),
-      before,
-      after,
-      reason,
-      sessionId: auth.session.sid,
-      clientInfo,
-      statusBefore: asStatus(body?.statusBefore),
-      statusAfter: asStatus(body?.statusAfter),
-    })
-    const refreshed = touchSession(auth.session)
-    sendJson(
-      res,
-      200,
-      {
-        ok: true,
-        changeId: entry.id,
-        message:
-          '검사 DATA가 수정되었습니다. 변경 내용이 전체 분석 메뉴에 반영되었습니다.',
-      },
-      buildSetCookieHeader(encodeSession(refreshed)),
-    )
-    return true
-  }
-
-  return false
+  const result = await handleAdminRoute({
+    method: req.method ?? 'GET',
+    pathname: url.pathname,
+    cookieHeader: req.headers.cookie,
+    searchParams: url.searchParams,
+    body: ['POST', 'PATCH', 'PUT'].includes((req.method ?? '').toUpperCase())
+      ? await readJsonBody(req)
+      : null,
+    userAgent: req.headers['user-agent'],
+  })
+  if (!result) return false
+  applyResult(res, result)
+  return true
 }
 
 function adminMiddleware(): Connect.NextHandleFunction {
   return (req, res, next) => {
     const rawUrl = req.url ?? '/'
-    if (!rawUrl.startsWith('/api/admin') && !rawUrl.startsWith('/api/inspection-data')) {
+    if (
+      !rawUrl.startsWith('/api/admin') &&
+      !rawUrl.startsWith('/api/inspection-data')
+    ) {
       next()
       return
     }
     const host = req.headers.host ?? 'localhost'
     const url = new URL(rawUrl, `http://${host}`)
-    void handleAdminApi(req, res, url).then((handled) => {
-      if (!handled) next()
-    }).catch(() => {
-      sendJson(res, 500, { ok: false, message: '서버 오류가 발생했습니다.' })
-    })
+    void dispatch(req, res, url)
+      .then((handled) => {
+        if (!handled) next()
+      })
+      .catch(() => {
+        sendJson(res, 500, { ok: false, message: '서버 오류가 발생했습니다.' })
+      })
   }
 }
 

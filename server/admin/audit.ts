@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 
 export type AdminChangeLogEntry = {
@@ -21,23 +22,36 @@ export type AdminChangeLogEntry = {
   }
 }
 
-const LOG_DIR = path.join(process.cwd(), 'data')
-const LOG_FILE = path.join(LOG_DIR, 'admin-change-log.json')
 const MAX_ENTRIES = 500
 
-async function readAll(): Promise<AdminChangeLogEntry[]> {
-  try {
-    const raw = await readFile(LOG_FILE, 'utf8')
-    const parsed = JSON.parse(raw) as AdminChangeLogEntry[]
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
+/** Vercel 서버리스는 프로젝트 디렉터리 쓰기가 불가 → /tmp 사용 */
+function resolveLogFile(): string {
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.join(os.tmpdir(), 'qualitics-admin-change-log.json')
   }
+  return path.join(process.cwd(), 'data', 'admin-change-log.json')
+}
+
+/** 인스턴스 메모리 캐시 (콜드스타트 시 파일에서 복원) */
+let memoryCache: AdminChangeLogEntry[] | null = null
+
+async function readAll(): Promise<AdminChangeLogEntry[]> {
+  if (memoryCache) return memoryCache
+  try {
+    const raw = await readFile(resolveLogFile(), 'utf8')
+    const parsed = JSON.parse(raw) as AdminChangeLogEntry[]
+    memoryCache = Array.isArray(parsed) ? parsed : []
+  } catch {
+    memoryCache = []
+  }
+  return memoryCache
 }
 
 async function writeAll(entries: AdminChangeLogEntry[]) {
-  await mkdir(LOG_DIR, { recursive: true })
-  await writeFile(LOG_FILE, JSON.stringify(entries, null, 2), 'utf8')
+  memoryCache = entries
+  const file = resolveLogFile()
+  await mkdir(path.dirname(file), { recursive: true })
+  await writeFile(file, JSON.stringify(entries, null, 2), 'utf8')
 }
 
 export async function appendChangeLog(
@@ -49,8 +63,13 @@ export async function appendChangeLog(
     changedAt: new Date().toISOString(),
   }
   const all = await readAll()
-  all.unshift(full)
-  await writeAll(all.slice(0, MAX_ENTRIES))
+  const next = [full, ...all].slice(0, MAX_ENTRIES)
+  try {
+    await writeAll(next)
+  } catch {
+    // 파일 저장 실패 시에도 메모리에는 유지 (서버리스 환경)
+    memoryCache = next
+  }
   return full
 }
 

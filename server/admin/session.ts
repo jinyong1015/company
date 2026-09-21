@@ -93,13 +93,25 @@ export function buildSetCookieHeader(token: string, maxAgeSeconds?: number): str
     'HttpOnly',
     'SameSite=Lax',
   ]
-  if (process.env.NODE_ENV === 'production') parts.push('Secure')
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    parts.push('Secure')
+  }
   if (typeof maxAgeSeconds === 'number') parts.push(`Max-Age=${maxAgeSeconds}`)
   return parts.join('; ')
 }
 
 export function buildClearCookieHeader(): string {
-  return `${ADMIN_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
+  const parts = [
+    `${ADMIN_SESSION_COOKIE}=`,
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=0',
+  ]
+  if (process.env.NODE_ENV === 'production' || process.env.VERCEL) {
+    parts.push('Secure')
+  }
+  return parts.join('; ')
 }
 
 export function readCookieValue(
