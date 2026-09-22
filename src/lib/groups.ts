@@ -37,11 +37,15 @@ export function normalizeTeam(team: string): string {
   return t
 }
 
-/** 제품유형 — 유압 → GROMMET (필터·집계·표시 통일) */
+/** 제품유형 — 유압·그로멧·GROMMET 등 → `GROMMET` (필터·집계·표시 통일) */
 export function normalizeProductType(type: string): string {
   const t = type.trim()
   if (!t) return ''
   if (t.includes('유압')) return 'GROMMET'
+  const lower = t.toLowerCase()
+  if (lower === 'grommet' || t.includes('그로멧') || t.includes('그로메트')) {
+    return 'GROMMET'
+  }
   return t
 }
 
