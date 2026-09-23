@@ -251,6 +251,8 @@ export interface CostPoint {
 export interface QualityCheckItem {
   label: string
   count: number
+  /** 오류 = 분석 제외 / 경고 = 분석 포함 (구버전 저장본은 없을 수 있음) */
+  severity?: 'error' | 'warn'
 }
 
 export interface UploadResult {

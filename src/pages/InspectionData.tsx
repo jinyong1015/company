@@ -5,13 +5,19 @@ import { Pager } from '../components/common/Pager'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { ChangeHistoryModal } from '../components/admin/ChangeHistoryModal'
 import { EditInspectionRecordModal } from '../components/admin/EditInspectionRecordModal'
+import {
+  DataEditButton,
+  DataEditToolbar,
+  DataHistoryButton,
+  DataRowSelectEdit,
+} from '../components/ui/DataEditButton'
 import { useAdmin } from '../context/AdminContext'
 import { useData } from '../context/DataContext'
 import { useToast } from '../context/ToastContext'
 import { filterInspectionDataRecords } from '../lib/analyze'
 import { downloadExcel } from '../lib/download'
 import type { InspectionRecord } from '../types'
-import { History, Pencil, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { formatPpm, formatWon } from '../lib/format'
 
 type SortKey = keyof InspectionRecord
@@ -48,11 +54,11 @@ const classLabel = {
   excluded: '분석 제외',
 } as const
 
-const classStyle = {
-  ok: 'bg-ok-soft text-ok',
-  warn: 'bg-warn-soft text-warn',
-  error: 'bg-danger-soft text-danger',
-  excluded: 'bg-canvas text-muted',
+const statusBadgeClass = {
+  ok: 'pd-status-badge pd-status-badge-ok',
+  warn: 'pd-status-badge pd-status-badge-warn',
+  error: 'pd-status-badge pd-status-badge-error',
+  excluded: 'pd-status-badge pd-status-badge-excluded',
 } as const
 
 function cellValue(r: InspectionRecord, key: SortKey): string {
@@ -78,6 +84,7 @@ export function InspectionData() {
   const [asc, setAsc] = useState(false)
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<InspectionRecord | null>(null)
+  const [detail, setDetail] = useState<InspectionRecord | null>(null)
   const [editing, setEditing] = useState<InspectionRecord | null>(null)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [pageSize, setPageSize] = useState(50)
@@ -159,7 +166,7 @@ export function InspectionData() {
       openLogin()
       return
     }
-    setSelected(null)
+    setDetail(null)
     setEditing(record)
   }
 
@@ -175,26 +182,14 @@ export function InspectionData() {
             : '정상·경고 행만 표시합니다. 오류 행은 오류 DATA 메뉴에서 확인하세요.'
         }
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {errorCount > 0 ? (
-              <Link
-                to="/error-data"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-danger/30 px-3 py-1.5 text-sm text-danger hover:bg-danger-soft"
-              >
-                오류 DATA {errorCount.toLocaleString()}건
-              </Link>
-            ) : null}
-            {isAdmin ? (
-              <button
-                type="button"
-                onClick={() => setHistoryOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-canvas"
-              >
-                <History size={15} />
-                변경 이력
-              </button>
-            ) : null}
-          </div>
+          errorCount > 0 ? (
+            <Link
+              to="/error-data"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-danger/30 px-3 py-1.5 text-sm text-danger hover:bg-danger-soft"
+            >
+              오류 DATA {errorCount.toLocaleString()}건
+            </Link>
+          ) : null
         }
       />
 
@@ -269,42 +264,65 @@ export function InspectionData() {
         }
         resultTitle="검사 내역"
       >
-        <div className="overflow-x-auto">
-          <table className="min-w-max w-full text-left text-sm">
+        <DataEditToolbar
+          selectionLabel={
+            selected
+              ? `${selected.date} · ${selected.product || '(품번 없음)'} · ${selected.inspector}`
+              : null
+          }
+          emptyLabel={
+            isAdmin
+              ? '수정할 행을 클릭해 선택하세요.'
+              : '조회 전용입니다. 행을 선택해 상세를 확인할 수 있습니다.'
+          }
+        >
+          {selected ? (
+            <span className={statusBadgeClass[selected.rowClass]}>{classLabel[selected.rowClass]}</span>
+          ) : null}
+          {isAdmin ? <DataHistoryButton onClick={() => setHistoryOpen(true)} /> : null}
+          <DataEditButton
+            isAdmin={isAdmin}
+            canEdit={Boolean(selected)}
+            onEdit={() => selected && requestEdit(selected)}
+            onRequestLogin={() => {
+              pushToast('검사 DATA 수정은 관리자 모드에서만 가능합니다.', 'info')
+              openLogin()
+            }}
+            lockedTitle="검사 DATA 수정은 관리자 모드에서만 가능합니다."
+            label="선택 행 수정"
+            size="sm"
+            tone="production"
+          />
+        </DataEditToolbar>
+
+        <div className="table-wrap">
+          <table className="data-table">
             <thead>
-              <tr className="border-b border-line text-xs text-muted">
-                <th className="sticky left-0 z-10 whitespace-nowrap bg-[var(--elevated)] px-2 py-2 font-medium shadow-[1px_0_0_var(--border)]">
-                  작업
-                </th>
+              <tr>
+                <th className="sticky-col">작업</th>
                 {BASE_COLUMNS.map((col) => (
-                  <th key={col.id} className="whitespace-nowrap px-2 py-2 font-medium">
-                    <button
-                      type="button"
-                      onClick={() => toggleSort(col.id)}
-                      className="hover:text-ink"
-                    >
+                  <th key={col.id} className={['qty', 'pass', 'fail', 'failRate', 'scrapCost'].includes(col.id) ? 'num' : undefined}>
+                    <button type="button" onClick={() => toggleSort(col.id)}>
                       {col.label}
                       {sortKey === col.id ? (asc ? ' ↑' : ' ↓') : ''}
                     </button>
                   </th>
                 ))}
                 {extraKeys.map((k) => (
-                  <th key={`extra-${k}`} className="whitespace-nowrap px-2 py-2 font-medium">
-                    {k}
-                  </th>
+                  <th key={`extra-${k}`}>{k}</th>
                 ))}
                 {defectKeys.map((k) => (
-                  <th key={`defect-${k}`} className="whitespace-nowrap px-2 py-2 font-medium">
+                  <th key={`defect-${k}`} className="num">
                     {k}
                   </th>
                 ))}
-                <th className="whitespace-nowrap px-2 py-2 font-medium">이슈</th>
+                <th>이슈</th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={colCount} className="px-2 py-10 text-center text-sm text-muted">
+                  <td colSpan={colCount} style={{ textAlign: 'center', padding: '40px 14px' }}>
                     표시할 정상·경고 데이터가 없습니다.
                   </td>
                 </tr>
@@ -314,62 +332,63 @@ export function InspectionData() {
                     key={r.id}
                     onClick={() => setSelected(r)}
                     onDoubleClick={() => requestEdit(r)}
-                    className={`cursor-pointer border-b border-line/70 hover:bg-canvas ${
-                      isAdmin ? 'pd-row-editable' : ''
+                    className={`pd-row-selectable ${isAdmin ? 'pd-row-editable' : ''} ${
+                      selected?.id === r.id ? 'pd-row-selected' : ''
                     }`}
                   >
-                    <td className="sticky left-0 z-10 whitespace-nowrap bg-[var(--elevated)] px-2 py-3 shadow-[1px_0_0_var(--border)]">
-                      <button
-                        type="button"
-                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs ${
-                          isAdmin
-                            ? 'border-accent/40 text-accent hover:bg-accent-soft'
-                            : 'border-line text-muted'
-                        }`}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          requestEdit(r)
+                    <td className="sticky-col" onClick={(e) => e.stopPropagation()}>
+                      <DataRowSelectEdit
+                        selected={selected?.id === r.id}
+                        isAdmin={isAdmin}
+                        tone="production"
+                        onSelect={() => setSelected(r)}
+                        onEdit={() => requestEdit(r)}
+                        onRequestLogin={() => {
+                          pushToast('검사 DATA 수정은 관리자 모드에서만 가능합니다.', 'info')
+                          openLogin()
                         }}
-                        disabled={!isAdmin}
-                        title={isAdmin ? '수정' : '관리자 로그인 필요'}
-                      >
-                        <Pencil size={12} />
-                        수정
-                      </button>
+                        lockedTitle="검사 DATA 수정은 관리자 모드에서만 가능합니다."
+                      />
                     </td>
                     {BASE_COLUMNS.map((col) => (
                       <td
                         key={col.id}
-                        className={`whitespace-nowrap px-2 py-3 ${
-                          col.id === 'product' ? 'font-medium' : ''
-                        } ${
+                        className={
                           ['date', 'qty', 'pass', 'fail', 'failRate', 'scrapCost', 'moldNo', 'start', 'end'].includes(
                             col.id,
                           )
                             ? 'num'
-                            : ''
-                        }`}
+                            : undefined
+                        }
                       >
                         {col.id === 'rowClass' ? (
-                          <span className={`rounded-md px-2 py-0.5 text-xs ${classStyle[r.rowClass]}`}>
-                            {classLabel[r.rowClass]}
-                          </span>
+                          <span className={statusBadgeClass[r.rowClass]}>{classLabel[r.rowClass]}</span>
+                        ) : col.id === 'product' ? (
+                          <button
+                            type="button"
+                            className="linkish"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelected(r)
+                              setDetail(r)
+                            }}
+                          >
+                            {cellValue(r, col.id)}
+                          </button>
                         ) : (
                           cellValue(r, col.id)
                         )}
                       </td>
                     ))}
                     {extraKeys.map((k) => (
-                      <td key={`extra-${k}`} className="whitespace-nowrap px-2 py-3">
-                        {r.extras?.[k] ?? '-'}
-                      </td>
+                      <td key={`extra-${k}`}>{r.extras?.[k] ?? '-'}</td>
                     ))}
                     {defectKeys.map((k) => (
-                      <td key={`defect-${k}`} className="num whitespace-nowrap px-2 py-3">
+                      <td key={`defect-${k}`} className="num">
                         {(r.defects?.[k] ?? 0).toLocaleString()}
                       </td>
                     ))}
-                    <td className="max-w-[200px] truncate px-2 py-3 text-xs text-muted">
+                    <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {r.issues.length ? r.issues.join(', ') : '-'}
                     </td>
                   </tr>
@@ -382,8 +401,8 @@ export function InspectionData() {
         <Pager page={safePage} totalPages={totalPages} total={filtered.length} onPage={setPage} />
       </SortSearchBar>
 
-      {selected && (
-        <div className="fixed inset-0 z-40 flex justify-end bg-ink/20" onClick={() => setSelected(null)}>
+      {detail && (
+        <div className="fixed inset-0 z-40 flex justify-end bg-ink/20" onClick={() => setDetail(null)}>
           <aside
             className="h-full w-full max-w-md overflow-y-auto border-l border-line bg-surface p-5 shadow-none"
             onClick={(e) => e.stopPropagation()}
@@ -391,36 +410,36 @@ export function InspectionData() {
             <div className="mb-4 flex items-start justify-between">
               <div>
                 <p className="text-xs text-muted">검사 상세</p>
-                <h3 className="mt-1 text-lg font-semibold">{selected.product}</h3>
+                <h3 className="mt-1 text-lg font-semibold">{detail.product}</h3>
               </div>
-              <button type="button" onClick={() => setSelected(null)} className="rounded-lg p-1.5 hover:bg-canvas">
+              <button type="button" onClick={() => setDetail(null)} className="rounded-lg p-1.5 hover:bg-canvas">
                 <X size={16} />
               </button>
             </div>
             <dl className="grid grid-cols-2 gap-3 text-sm">
               {(
                 [
-                  ['검사일자', selected.date],
-                  ['작업구분', selected.workType],
-                  ['검사작업자', selected.inspector],
-                  ['소속', selected.team],
-                  ['제품유형', selected.productType],
-                  ['LOT NO', selected.lot],
-                  ['성형작업자', selected.worker],
-                  ['설비', selected.equipment],
-                  ['금형번호', selected.moldNo],
-                  ['시작시간', selected.start],
-                  ['종료시간', selected.end],
-                  ['소요시간', selected.duration],
-                  ['검수량', selected.qty.toLocaleString()],
-                  ['합격수', selected.pass.toLocaleString()],
-                  ['부적합수', selected.fail.toLocaleString()],
-                  ['부적합률', formatPpm(selected.failRate)],
-                  ['주요 불량', selected.mainDefect],
-                  ['폐기금액', formatWon(selected.scrapCost)],
-                  ['상태', classLabel[selected.rowClass]],
-                  ['이슈', selected.issues.join(', ') || '-'],
-                  ...Object.entries(selected.extras ?? {}).map(([k, v]) => [k, v] as [string, string]),
+                  ['검사일자', detail.date],
+                  ['작업구분', detail.workType],
+                  ['검사작업자', detail.inspector],
+                  ['소속', detail.team],
+                  ['제품유형', detail.productType],
+                  ['LOT NO', detail.lot],
+                  ['성형작업자', detail.worker],
+                  ['설비', detail.equipment],
+                  ['금형번호', detail.moldNo],
+                  ['시작시간', detail.start],
+                  ['종료시간', detail.end],
+                  ['소요시간', detail.duration],
+                  ['검수량', detail.qty.toLocaleString()],
+                  ['합격수', detail.pass.toLocaleString()],
+                  ['부적합수', detail.fail.toLocaleString()],
+                  ['부적합률', formatPpm(detail.failRate)],
+                  ['주요 불량', detail.mainDefect],
+                  ['폐기금액', formatWon(detail.scrapCost)],
+                  ['상태', classLabel[detail.rowClass]],
+                  ['이슈', detail.issues.join(', ') || '-'],
+                  ...Object.entries(detail.extras ?? {}).map(([k, v]) => [k, v] as [string, string]),
                 ] as [string, string][]
               ).map(([k, v]) => (
                 <div key={k} className="rounded-lg border border-line px-3 py-2">
@@ -432,7 +451,7 @@ export function InspectionData() {
             <button
               type="button"
               className="btn btn-primary mt-4 w-full"
-              onClick={() => requestEdit(selected)}
+              onClick={() => requestEdit(detail)}
             >
               {isAdmin ? '이 행 수정' : '관리자 로그인 후 수정'}
             </button>

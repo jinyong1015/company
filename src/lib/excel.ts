@@ -658,18 +658,18 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
   })
 
   const qualityChecks: QualityCheckItem[] = [
-    { label: '필수값 누락', count: quality.requiredMissing },
-    { label: '중복', count: quality.duplicate },
-    { label: '잘못된 날짜', count: quality.invalidDate },
-    { label: '잘못된 숫자', count: quality.invalidNumber },
-    { label: '검수량 0', count: quality.zeroQty },
-    { label: '작업구분 오류', count: quality.invalidWorkType },
-    { label: '합격+부적합 ≠ 검수량', count: quality.qtyMismatch },
-    { label: '#N/A 값', count: quality.naValue },
-    { label: '제품 유형 누락/#N/A', count: quality.productTypeMissing },
-    { label: '설비 누락', count: quality.equipmentMissing },
-    { label: '금형번호 누락', count: quality.moldMissing },
-    { label: 'LOT 누락', count: quality.lotMissing },
+    { label: '필수값 누락', count: quality.requiredMissing, severity: 'error' },
+    { label: '중복', count: quality.duplicate, severity: 'error' },
+    { label: '잘못된 날짜', count: quality.invalidDate, severity: 'error' },
+    { label: '잘못된 숫자', count: quality.invalidNumber, severity: 'error' },
+    { label: '검수량 0', count: quality.zeroQty, severity: 'error' },
+    { label: '작업구분 오류', count: quality.invalidWorkType, severity: 'error' },
+    { label: '#N/A 값', count: quality.naValue, severity: 'error' },
+    { label: '제품 유형 누락/#N/A', count: quality.productTypeMissing, severity: 'error' },
+    { label: '합격+부적합 ≠ 검수량', count: quality.qtyMismatch, severity: 'warn' },
+    { label: '설비 누락', count: quality.equipmentMissing, severity: 'warn' },
+    { label: '금형번호 누락', count: quality.moldMissing, severity: 'warn' },
+    { label: 'LOT 누락', count: quality.lotMissing, severity: 'warn' },
   ]
 
   const valid = records.filter((r) => r.rowClass === 'ok').length
