@@ -460,6 +460,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     invalidDate: 0,
     invalidNumber: 0,
     zeroQty: 0,
+    zeroQtyWithFail: 0,
     invalidWorkType: 0,
     qtyMismatch: 0,
     workTypeInconsistent: 0,
@@ -511,9 +512,17 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     const durationRaw = cell(row, headerMap.duration)
     let mainDefect = str(cell(row, headerMap.mainDefect))
 
-    const mappedValues = Object.values(headerMap).map((h) => cell(row, h))
-    const hasNa = mappedValues.some((v) => isNaValue(v)) ||
-      headers.some((h) => isNaValue(row[h]))
+    // 제품유형 #N/A + 성형LOT/LOT NO가 P로 시작 + 품번 있음 → 제품유형 #N/A만 정상 허용
+    const allowProductTypeNa =
+      isNaValue(productTypeRaw) && Boolean(product) && lot.startsWith('P')
+
+    const isExemptProductTypeNa = (header?: string) =>
+      Boolean(allowProductTypeNa && header && header === headerMap.productType)
+
+    const hasNa =
+      (Object.entries(headerMap) as [keyof typeof COLUMN_ALIASES, string | undefined][]).some(
+        ([, h]) => !isExemptProductTypeNa(h) && isNaValue(cell(row, h)),
+      ) || headers.some((h) => !isExemptProductTypeNa(h) && isNaValue(row[h]))
 
     const issues: string[] = []
     let blocking = false
@@ -523,6 +532,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
       quality.naValue += 1
       issues.push('#N/A')
       // 제품유형 등 어떤 컬럼이든 #N/A면 오류 — 업로드 차단 / 오류 행 제외 대상
+      // (단, allowProductTypeNa인 제품유형 #N/A는 위에서 제외)
       blocking = true
     }
 
@@ -541,11 +551,6 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
       issues.push('잘못된 숫자')
       blocking = true
     }
-    if (qty === 0) {
-      quality.zeroQty += 1
-      issues.push('검수량 0')
-      blocking = true
-    }
     if (workType && !ALLOWED_WORK_TYPES.includes(workType)) {
       quality.invalidWorkType += 1
       quality.workTypeInconsistent += 1
@@ -557,12 +562,13 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
       issues.push('작업구분 누락')
       blocking = true
     }
-    if (!productType) {
+    if (!productType && !allowProductTypeNa) {
       quality.productTypeMissing += 1
       issues.push(
         isNaValue(productTypeRaw) ? '제품 유형 #N/A' : '제품 유형 누락',
       )
       // 제품유형 #N/A / 누락은 오류 처리
+      // (성형LOT가 P로 시작하고 품번이 있는 #N/A는 예외)
       blocking = true
     }
     if (!equipment) {
@@ -591,6 +597,19 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
       safeFail = defectSum
     }
     mainDefect = topDefectName(defects, mainDefect || '기타')
+
+    if (qty === 0) {
+      const hasFailQty = (fail !== null && fail > 0) || defectSum > 0
+      if (hasFailQty) {
+        quality.zeroQtyWithFail += 1
+        issues.push('검수량 0 (부적합 있음)')
+        warning = true
+      } else {
+        quality.zeroQty += 1
+        issues.push('검수량 0')
+        blocking = true
+      }
+    }
 
     if (pass !== null && fail !== null && pass + fail !== safeQty && safeQty > 0) {
       quality.qtyMismatch += 1
@@ -667,6 +686,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     { label: '#N/A 값', count: quality.naValue, severity: 'error' },
     { label: '제품 유형 누락/#N/A', count: quality.productTypeMissing, severity: 'error' },
     { label: '합격+부적합 ≠ 검수량', count: quality.qtyMismatch, severity: 'warn' },
+    { label: '검수량 0 (부적합 있음)', count: quality.zeroQtyWithFail, severity: 'warn' },
     { label: '설비 누락', count: quality.equipmentMissing, severity: 'warn' },
     { label: '금형번호 누락', count: quality.moldMissing, severity: 'warn' },
     { label: 'LOT 누락', count: quality.lotMissing, severity: 'warn' },
@@ -692,7 +712,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
       excluded,
       missing: quality.missing,
       duplicate: quality.duplicate,
-      zeroQty: quality.zeroQty,
+      zeroQty: quality.zeroQty + quality.zeroQtyWithFail,
       requiredMissing: quality.requiredMissing,
       invalidWorkType: quality.invalidWorkType,
       blocked: error > 0,

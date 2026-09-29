@@ -19,6 +19,7 @@ import type { QualityCheckItem } from '../types'
 
 const WARN_LABELS = new Set([
   '합격+부적합 ≠ 검수량',
+  '검수량 0 (부적합 있음)',
   '설비 누락',
   '금형번호 누락',
   'LOT 누락',
