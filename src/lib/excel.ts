@@ -565,7 +565,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     if (!productType && !allowProductTypeNa) {
       quality.productTypeMissing += 1
       issues.push(
-        isNaValue(productTypeRaw) ? '제품 유형 #N/A' : '제품 유형 누락',
+        '제품 유형 누락',
       )
       // 제품유형 #N/A / 누락은 오류 처리
       // (성형LOT가 P로 시작하고 품번이 있는 #N/A는 예외)
@@ -684,7 +684,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     { label: '검수량 0', count: quality.zeroQty, severity: 'error' },
     { label: '작업구분 오류', count: quality.invalidWorkType, severity: 'error' },
     { label: '#N/A 값', count: quality.naValue, severity: 'error' },
-    { label: '제품 유형 누락/#N/A', count: quality.productTypeMissing, severity: 'error' },
+    { label: '제품 유형 누락', count: quality.productTypeMissing, severity: 'error' },
     { label: '합격+부적합 ≠ 검수량', count: quality.qtyMismatch, severity: 'warn' },
     { label: '검수량 0 (부적합 있음)', count: quality.zeroQtyWithFail, severity: 'warn' },
     { label: '설비 누락', count: quality.equipmentMissing, severity: 'warn' },

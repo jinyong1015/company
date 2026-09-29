@@ -15,7 +15,7 @@ import { useAdmin } from '../context/AdminContext'
 import { useData } from '../context/DataContext'
 import { useToast } from '../context/ToastContext'
 import { filterInspectionDataRecords } from '../lib/analyze'
-import { downloadExcel } from '../lib/download'
+import { downloadStyledExcel } from '../lib/download'
 import type { InspectionRecord } from '../types'
 import { X } from 'lucide-react'
 import { formatPpm, formatWon } from '../lib/format'
@@ -220,10 +220,15 @@ export function InspectionData() {
           setPage(1)
         }}
         pageSizeOptions={[50, 100, 200, 500]}
-        onDownload={() =>
-          downloadExcel(
+        onDownload={() => {
+          const sorted = [...filtered].sort((a, b) => {
+            const byDate = a.date.localeCompare(b.date)
+            if (byDate !== 0) return byDate
+            return a.start.localeCompare(b.start)
+          })
+          void downloadStyledExcel(
             '검사DATA.xlsx',
-            filtered.map((r) => {
+            sorted.map((r) => {
               const row: Record<string, string | number> = {
                 검사일자: r.date,
                 검사작업자: r.inspector,
@@ -251,8 +256,9 @@ export function InspectionData() {
               for (const k of defectKeys) row[k] = r.defects?.[k] ?? 0
               return row
             }),
+            { sheetName: '검사DATA' },
           )
-        }
+        }}
         extra={
           <p className="num text-sm text-muted">
             정상·경고 {scoped.length.toLocaleString()}건
