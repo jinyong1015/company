@@ -369,6 +369,16 @@ export function WeeklyReport() {
     }
     setSnapshotSaving(true)
     try {
+      const metrics: WeeklyReportMetric[] = [
+        'failRate',
+        'qty',
+        'fail',
+        'scrapCost',
+      ]
+      const monthlyByMetric = Object.fromEntries(
+        metrics.map((m) => [m, buildMonthlyReportView(records, m, anchor)]),
+      ) as Record<WeeklyReportMetric, ReturnType<typeof buildMonthlyReportView>>
+
       const result = await saveWeeklyReportSnapshot({
         periodKey,
         title: weeklyDetail.title,
@@ -379,6 +389,9 @@ export function WeeklyReport() {
           issues,
           worst5: weeklyDetail.worst5,
           worst5Thresholds: weeklyDetail.worst5Thresholds,
+          monthlyByMetric,
+          selectedMonthKey,
+          metric,
         },
       })
       if (!result.ok) {
@@ -399,6 +412,10 @@ export function WeeklyReport() {
     weeklyDetail,
     issues,
     refreshSnapshotList,
+    records,
+    anchor,
+    selectedMonthKey,
+    metric,
   ])
 
   const handleSelectSnapshot = useCallback(
@@ -409,6 +426,9 @@ export function WeeklyReport() {
         return
       }
       setActiveSnapshot(result.record)
+      if (result.record.payload.metric) {
+        setMetric(result.record.payload.metric)
+      }
       pushToast('확정본을 불러왔습니다.', 'info')
     },
     [pushToast],
@@ -532,6 +552,10 @@ export function WeeklyReport() {
   const shownWorst5 = activeSnapshot?.payload.worst5 ?? weeklyDetail.worst5
   const shownWorst5Thresholds =
     activeSnapshot?.payload.worst5Thresholds ?? worst5Thresholds
+  const shownMonthlyView =
+    activeSnapshot?.payload.monthlyByMetric?.[metric] ?? monthlyView
+  const shownSelectedMonthKey =
+    activeSnapshot?.payload.selectedMonthKey ?? selectedMonthKey
 
   const handleCustomProductionLabelChange = useCallback(
     (label: string) => {
@@ -573,11 +597,11 @@ export function WeeklyReport() {
       />
 
       <MonthlyTrendSection
-        view={monthlyView}
+        view={shownMonthlyView}
         metric={metric}
         onMetricChange={setMetric}
-        selectedMonthKey={selectedMonthKey}
-        onMonthSelect={handleMonthSelect}
+        selectedMonthKey={shownSelectedMonthKey}
+        onMonthSelect={viewingSnapshot ? () => undefined : handleMonthSelect}
       />
 
       <div className="space-y-4">

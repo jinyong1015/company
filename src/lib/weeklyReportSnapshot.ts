@@ -1,5 +1,10 @@
 import { getSupabase, isCloudSyncEnabled } from './supabase'
-import type { WeeklyReportDetail, WeeklyIssue } from '../types'
+import type {
+  WeeklyIssue,
+  WeeklyReportDetail,
+  WeeklyReportMetric,
+  WeeklyReportMonthlyView,
+} from '../types'
 
 /** Supabase에 저장되는 스냅샷 본문 */
 export type WeeklyReportSnapshotPayload = {
@@ -9,6 +14,10 @@ export type WeeklyReportSnapshotPayload = {
   issues: WeeklyIssue[]
   worst5: WeeklyReportDetail['worst5']
   worst5Thresholds: WeeklyReportDetail['worst5Thresholds']
+  /** 월별 현황(지표별). 구버전 스냅샷에는 없을 수 있음 */
+  monthlyByMetric?: Partial<Record<WeeklyReportMetric, WeeklyReportMonthlyView>>
+  selectedMonthKey?: string
+  metric?: WeeklyReportMetric
 }
 
 export type WeeklyReportSnapshotMeta = {
