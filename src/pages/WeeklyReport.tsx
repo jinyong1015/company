@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { CalendarRange } from 'lucide-react'
 import { PageHeader } from '../components/common/PageHeader'
@@ -16,6 +16,7 @@ import {
   buildMonthlyReportView,
   buildWeeklyReportDetail,
   buildWeeklyReportDetailByDateRange,
+  collectWorst5DetailRecords,
   findDefaultWeek,
   formatProductionPeriodLabel,
   getWeekDateRange,
@@ -27,6 +28,7 @@ import {
   syncWeeklyIssues,
   WEEKLY_REPORT_ORGS,
 } from '../lib/weeklyReport'
+import { cacheWeeklySnapshotDetailRecords } from '../lib/weeklySnapshotDetailCache'
 import {
   formatProductionQueryPeriodTitle,
   loadProductionPeriodLabel,
@@ -208,6 +210,8 @@ export function WeeklyReport() {
   useEffect(() => {
     saveWeeklyReportPeriod(periodState)
     const nextParams = buildWeeklyReportSearchParams(periodState)
+    const snapshotId = searchParams.get('snapshotId')
+    if (snapshotId) nextParams.set('snapshotId', snapshotId)
     if (!weeklyReportPeriodParamsEqual(searchParams, nextParams)) {
       setSearchParams(nextParams, { replace: true })
     }
@@ -281,8 +285,26 @@ export function WeeklyReport() {
   }, [weeklyDetail, periodKey, issuesHydratedKey])
 
   // 기간 변경 시 스냅샷 보기 해제 + 목록 로드
+  // (첫 마운트에서는 URL snapshotId를 유지해 상세에서 복귀할 수 있게 함)
+  const periodKeyRef = useRef<string | null>(null)
   useEffect(() => {
-    setActiveSnapshot(null)
+    const changed =
+      periodKeyRef.current !== null && periodKeyRef.current !== periodKey
+    periodKeyRef.current = periodKey
+
+    if (changed) {
+      setActiveSnapshot(null)
+      setSearchParams(
+        (prev) => {
+          if (!prev.get('snapshotId')) return prev
+          const next = new URLSearchParams(prev)
+          next.delete('snapshotId')
+          return next
+        },
+        { replace: true },
+      )
+    }
+
     if (!isCloudSyncEnabled()) {
       setSnapshotList([])
       setSnapshotListLoading(false)
@@ -299,7 +321,7 @@ export function WeeklyReport() {
     return () => {
       cancelled = true
     }
-  }, [periodKey])
+  }, [periodKey, setSearchParams])
 
   const handleMonthSelect = useCallback(
     (monthKey: string) => {
@@ -379,6 +401,12 @@ export function WeeklyReport() {
         metrics.map((m) => [m, buildMonthlyReportView(records, m, anchor)]),
       ) as Record<WeeklyReportMetric, ReturnType<typeof buildMonthlyReportView>>
 
+      const detailRecords = collectWorst5DetailRecords(
+        records,
+        weeklyDetail.period,
+        weeklyDetail.worst5,
+      )
+
       const result = await saveWeeklyReportSnapshot({
         periodKey,
         title: weeklyDetail.title,
@@ -392,11 +420,15 @@ export function WeeklyReport() {
           monthlyByMetric,
           selectedMonthKey,
           metric,
+          detailRecords,
         },
       })
       if (!result.ok) {
         pushToast(`스냅샷 저장 실패: ${result.error ?? '알 수 없음'}`, 'error')
         return
+      }
+      if (result.id) {
+        cacheWeeklySnapshotDetailRecords(result.id, detailRecords, false)
       }
       pushToast('주간보고 확정본을 저장했습니다.', 'success')
       await refreshSnapshotList()
@@ -419,20 +451,62 @@ export function WeeklyReport() {
   ])
 
   const handleSelectSnapshot = useCallback(
-    async (id: string) => {
+    async (id: string, options?: { silent?: boolean }) => {
       const result = await fetchWeeklyReportSnapshot(id)
       if (!result.ok || !result.record) {
         pushToast(`스냅샷을 불러오지 못했습니다: ${result.error ?? '알 수 없음'}`, 'error')
         return
       }
       setActiveSnapshot(result.record)
+      const detailRecords = result.record.payload.detailRecords
+      const missingDetail = !Object.prototype.hasOwnProperty.call(
+        result.record.payload,
+        'detailRecords',
+      )
+      cacheWeeklySnapshotDetailRecords(
+        result.record.id,
+        detailRecords ?? [],
+        missingDetail,
+      )
       if (result.record.payload.metric) {
         setMetric(result.record.payload.metric)
       }
-      pushToast('확정본을 불러왔습니다.', 'info')
+      // URL에 snapshotId 유지 (상세 복귀용)
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set('snapshotId', id)
+          return next
+        },
+        { replace: true },
+      )
+      if (!options?.silent) {
+        pushToast('확정본을 불러왔습니다.', 'info')
+      }
     },
-    [pushToast],
+    [pushToast, setSearchParams],
   )
+
+  // URL snapshotId → 확정본 자동 로드 (상세에서 복귀 시)
+  useEffect(() => {
+    const id = searchParams.get('snapshotId')?.trim()
+    if (!id) return
+    if (activeSnapshot?.id === id) return
+    void handleSelectSnapshot(id, { silent: true })
+  }, [searchParams, activeSnapshot?.id, handleSelectSnapshot])
+
+  const clearActiveSnapshot = useCallback(() => {
+    setActiveSnapshot(null)
+    setSearchParams(
+      (prev) => {
+        if (!prev.get('snapshotId')) return prev
+        const next = new URLSearchParams(prev)
+        next.delete('snapshotId')
+        return next
+      },
+      { replace: true },
+    )
+  }, [setSearchParams])
 
   const handleDeleteSnapshot = useCallback(
     async (id: string) => {
@@ -447,11 +521,11 @@ export function WeeklyReport() {
         pushToast(`스냅샷 삭제 실패: ${result.error ?? '알 수 없음'}`, 'error')
         return
       }
-      if (activeSnapshot?.id === id) setActiveSnapshot(null)
+      if (activeSnapshot?.id === id) clearActiveSnapshot()
       pushToast('확정본을 삭제했습니다.', 'success')
       await refreshSnapshotList()
     },
-    [isAdmin, openLogin, pushToast, activeSnapshot?.id, refreshSnapshotList],
+    [isAdmin, openLogin, pushToast, activeSnapshot?.id, refreshSnapshotList, clearActiveSnapshot],
   )
 
   const handleSaveIssues = useCallback(
@@ -556,6 +630,18 @@ export function WeeklyReport() {
     activeSnapshot?.payload.monthlyByMetric?.[metric] ?? monthlyView
   const shownSelectedMonthKey =
     activeSnapshot?.payload.selectedMonthKey ?? selectedMonthKey
+
+  const worst5LinkPeriod = useMemo<WeeklyReportPeriodState>(() => {
+    if (!viewingSnapshot || !activeSnapshot) return periodState
+    const p = activeSnapshot.payload.period
+    return {
+      selectedMonthKey: `${p.year}-${String(p.month).padStart(2, '0')}`,
+      week: p.weekOfMonth,
+      periodMode: p.isCustom ? 'custom' : 'week',
+      rangeStart: p.startDate,
+      rangeEnd: p.endDate,
+    }
+  }, [viewingSnapshot, activeSnapshot, periodState])
 
   const handleCustomProductionLabelChange = useCallback(
     (label: string) => {
@@ -730,7 +816,7 @@ export function WeeklyReport() {
               activeSnapshotId={activeSnapshot?.id ?? null}
               onSave={() => void handleSaveSnapshot()}
               onSelect={(id) => void handleSelectSnapshot(id)}
-              onClear={() => setActiveSnapshot(null)}
+              onClear={clearActiveSnapshot}
               onDelete={(id) => void handleDeleteSnapshot(id)}
               onRequestLogin={openLogin}
             />
@@ -788,7 +874,8 @@ export function WeeklyReport() {
                         : (value) => handleWorst5ThresholdChange(org.id, value)
                     }
                     items={shownWorst5[org.id] ?? []}
-                    period={periodState}
+                    period={worst5LinkPeriod}
+                    snapshotId={activeSnapshot?.id ?? null}
                   />
                 ))}
               </div>

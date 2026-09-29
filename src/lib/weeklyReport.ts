@@ -762,14 +762,33 @@ export function chartDataFromMonthly(view: WeeklyReportMonthlyView) {
 
 import type { WeeklyReportPeriodState } from './weeklyReportPeriod'
 
+/** WORST 5 품번의 해당 기간 원본 행 — 스냅샷 상세 드릴다운용 */
+export function collectWorst5DetailRecords(
+  records: InspectionRecord[],
+  period: Pick<WeekPeriod, 'startDate' | 'endDate'>,
+  worst5: WeeklyReportDetail['worst5'],
+): InspectionRecord[] {
+  const products = new Set(
+    Object.values(worst5).flatMap((list) => list.map((item) => item.product)),
+  )
+  if (products.size === 0) return []
+  return analyzableRecords(records).filter(
+    (r) =>
+      products.has(r.product) &&
+      inDateRange(r.date, period.startDate, period.endDate),
+  )
+}
+
 /** 주간업무 보고 → 품번 상세 (조회 기간·주차 컨텍스트 유지) */
 export function buildWeeklyReportProductLink(
   product: string,
   period: WeeklyReportPeriodState,
+  options?: { snapshotId?: string | null },
 ) {
   return buildProductDetailHref(toEntityId('prd', product), 'weekly-report', {
     startDate: period.rangeStart,
     endDate: period.rangeEnd,
     weeklyReportPeriod: period,
+    snapshotId: options?.snapshotId ?? undefined,
   })
 }

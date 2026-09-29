@@ -113,6 +113,6 @@ export function weeklyReportPeriodParamsEqual(
   a: URLSearchParams,
   b: URLSearchParams,
 ) {
-  const keys = ['month', 'week', 'mode', 'startDate', 'endDate'] as const
+  const keys = ['month', 'week', 'mode', 'startDate', 'endDate', 'snapshotId'] as const
   return keys.every((key) => a.get(key) === b.get(key))
 }

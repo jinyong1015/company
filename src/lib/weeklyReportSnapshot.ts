@@ -1,5 +1,6 @@
 import { getSupabase, isCloudSyncEnabled } from './supabase'
 import type {
+  InspectionRecord,
   WeeklyIssue,
   WeeklyReportDetail,
   WeeklyReportMetric,
@@ -18,6 +19,12 @@ export type WeeklyReportSnapshotPayload = {
   monthlyByMetric?: Partial<Record<WeeklyReportMetric, WeeklyReportMonthlyView>>
   selectedMonthKey?: string
   metric?: WeeklyReportMetric
+  /**
+   * WORST 5 품번의 해당 기간 원본 검사 행.
+   * 품번·성형작업자·검사자 상세가 현재 업로드 DATA와 무관히 동일하게 보이도록 보존.
+   * 구버전 스냅샷에는 없을 수 있음.
+   */
+  detailRecords?: InspectionRecord[]
 }
 
 export type WeeklyReportSnapshotMeta = {

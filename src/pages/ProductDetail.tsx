@@ -48,6 +48,9 @@ import {
   buildWeeklyReportBackHref,
   buildWorkerAnalysisBackHref,
   buildInspectorAnalysisBackHref,
+  buildWorkerDetailHref,
+  buildInspectorDetailHref,
+  readUrlDateRange,
   type ProductDetailFromId,
 } from "../lib/productDetailNav";
 import {
@@ -62,23 +65,8 @@ import {
   DEFECT_ALL_COLOR,
   defectTypeColor,
 } from "../lib/defectColors";
+import { useWeeklySnapshotSourceRecords } from "../hooks/useWeeklySnapshotSourceRecords";
 import type { Analytics, InspectionRecord, ProductRow } from "../types";
-
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
-function readUrlDateRange(searchParams: URLSearchParams) {
-  const startDate = searchParams.get("startDate");
-  const endDate = searchParams.get("endDate");
-  if (
-    !startDate ||
-    !endDate ||
-    !DATE_PATTERN.test(startDate) ||
-    !DATE_PATTERN.test(endDate)
-  ) {
-    return null;
-  }
-  return { startDate, endDate };
-}
 
 const BACK_NAV_ICONS: Record<ProductDetailFromId, LucideIcon> = {
   "weekly-report": CalendarRange,
@@ -90,14 +78,18 @@ const BACK_NAV_ICONS: Record<ProductDetailFromId, LucideIcon> = {
   cost: Coins,
 };
 
-function buildBackNav(from: ProductDetailFromId, searchParams: URLSearchParams) {
+function buildBackNav(
+  from: ProductDetailFromId,
+  searchParams: URLSearchParams,
+  productName?: string,
+) {
   const path =
     from === "weekly-report"
       ? buildWeeklyReportBackHref(searchParams)
       : from === "workers"
-        ? buildWorkerAnalysisBackHref(searchParams)
+        ? buildWorkerAnalysisBackHref(searchParams, productName)
         : from === "inspectors"
-          ? buildInspectorAnalysisBackHref(searchParams)
+          ? buildInspectorAnalysisBackHref(searchParams, productName)
           : PRODUCT_DETAIL_FROM_PATHS[from];
 
   return {
@@ -111,9 +103,16 @@ function buildBackNav(from: ProductDetailFromId, searchParams: URLSearchParams) 
 export function ProductDetail() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
-  const { analytics, records } = useData();
+  const { analytics } = useData();
   const { filters, setCustomDateRange, replaceFilters } = useFilters();
   const name = fromEntityId(id, "prd");
+  const snapshotId = searchParams.get("snapshotId")?.trim() || null;
+  const {
+    records: sourceRecords,
+    usingSnapshot,
+    status: snapshotStatus,
+    error: snapshotError,
+  } = useWeeklySnapshotSourceRecords(snapshotId);
   const urlDateRange = useMemo(
     () => readUrlDateRange(searchParams),
     [searchParams],
@@ -146,36 +145,59 @@ export function ProductDetail() {
   }, [id, searchParams]);
 
   const effectiveFilters = useMemo<FilterState>(() => {
-    const withPeriod = urlDateRange
+    const base: FilterState = usingSnapshot
       ? {
           ...filters,
+          analysisGroup: "all",
+          teams: [],
+          inspectors: [],
+          workTypes: [],
+          productTypes: [],
+          products: [],
+          molds: [],
+          equipment: [],
+          workers: [],
+          lots: [],
+        }
+      : filters;
+    const withPeriod = urlDateRange
+      ? {
+          ...base,
           period: "custom" as const,
           startDate: urlDateRange.startDate,
           endDate: urlDateRange.endDate,
         }
-      : filters;
+      : base;
     if (urlWorker) return { ...withPeriod, workers: [urlWorker] };
     if (urlInspector) return { ...withPeriod, inspectors: [urlInspector] };
     return withPeriod;
-  }, [filters, urlDateRange, urlWorker, urlInspector]);
+  }, [filters, urlDateRange, urlWorker, urlInspector, usingSnapshot]);
 
   const scoped = useMemo(
     () =>
-      filterRecords(records, effectiveFilters, true).filter((r) => {
+      filterRecords(sourceRecords, effectiveFilters, true).filter((r) => {
         if (r.product !== name) return false;
         if (urlWorker) return r.worker === urlWorker && r.qty > 0;
         if (urlInspector) return r.inspector === urlInspector && r.qty > 0;
         return true;
       }),
-    [records, effectiveFilters, name, urlWorker, urlInspector],
+    [sourceRecords, effectiveFilters, name, urlWorker, urlInspector],
   );
 
   const productAnalytics = useMemo(
     () =>
-      urlDateRange || urlWorker || urlInspector
-        ? analyzeRecords(records, effectiveFilters)
+      usingSnapshot || urlDateRange || urlWorker || urlInspector
+        ? analyzeRecords(sourceRecords, effectiveFilters)
         : analytics,
-    [urlDateRange, urlWorker, urlInspector, records, effectiveFilters, analytics],
+    [
+      usingSnapshot,
+      urlDateRange,
+      urlWorker,
+      urlInspector,
+      sourceRecords,
+      effectiveFilters,
+      analytics,
+    ],
   );
 
   const product =
@@ -185,7 +207,7 @@ export function ProductDetail() {
   const trendRange = resolvePeriodRange(effectiveFilters);
 
   const backFrom = parseProductDetailFrom(searchParams.get("from"));
-  const backNav = buildBackNav(backFrom, searchParams);
+  const backNav = buildBackNav(backFrom, searchParams, name);
   const fromWeeklyReport = backFrom === "weekly-report";
   const fromWorkers = backFrom === "workers";
   const fromInspectors = backFrom === "inspectors";
@@ -204,10 +226,43 @@ export function ProductDetail() {
       ? { label: "검사자", value: urlInspector }
       : null;
 
+  const snapshotBanner =
+    usingSnapshot && snapshotStatus === "loading" ? (
+      <div className="card border-accent/30 px-4 py-3 text-sm text-muted">
+        스냅샷 원본 DATA를 불러오는 중…
+      </div>
+    ) : usingSnapshot && snapshotStatus === "missing" ? (
+      <div className="card border-warn/40 px-4 py-3 text-sm text-muted">
+        이 스냅샷에는 품번 상세용 원본 DATA가 포함되어 있지 않습니다. 주간보고에서
+        스냅샷을 다시 저장하면 당시 데이터로 상세 조회할 수 있습니다.
+      </div>
+    ) : usingSnapshot && snapshotStatus === "error" ? (
+      <div className="card border-danger/40 px-4 py-3 text-sm text-danger">
+        {snapshotError ?? "스냅샷 DATA를 불러오지 못했습니다."}
+      </div>
+    ) : usingSnapshot && snapshotStatus === "ready" ? (
+      <div className="card border-accent/30 px-4 py-3 text-sm text-muted">
+        스냅샷 확정본 기준 조회 · 현재 업로드 DATA와 무관합니다.
+      </div>
+    ) : null;
+
   if (!name) {
     return (
       <div className="space-y-5">
         <PageHeader title="품번 상세" description="대상을 찾을 수 없습니다." />
+      </div>
+    );
+  }
+
+  if (usingSnapshot && snapshotStatus === "loading") {
+    return (
+      <div className="space-y-5">
+        <ProductDetailBackNav
+          backNav={backNav}
+          periodRange={periodRange}
+          personScope={personScope}
+        />
+        {snapshotBanner}
       </div>
     );
   }
@@ -220,6 +275,7 @@ export function ProductDetail() {
           periodRange={periodRange}
           personScope={personScope}
         />
+        {snapshotBanner}
         <PageHeader
           title={name}
           description={
@@ -230,7 +286,9 @@ export function ProductDetail() {
         />
         <Panel>
           <p className="text-sm text-muted">
-            기간이나 분석 그룹을 바꿔 다시 확인해 주세요.
+            {usingSnapshot
+              ? "스냅샷에 저장된 원본 행 기준으로 해당 품번 DATA가 없습니다."
+              : "기간이나 분석 그룹을 바꿔 다시 확인해 주세요."}
           </p>
         </Panel>
       </div>
@@ -238,16 +296,19 @@ export function ProductDetail() {
   }
 
   return (
-    <ProductDetailBody
-      name={name}
-      product={product}
-      scoped={scoped}
-      analytics={productAnalytics}
-      backNav={backNav}
-      periodRange={periodRange}
-      trendRange={trendRange}
-      personScope={personScope}
-    />
+    <>
+      {snapshotBanner ? <div className="mb-5">{snapshotBanner}</div> : null}
+      <ProductDetailBody
+        name={name}
+        product={product}
+        scoped={scoped}
+        analytics={productAnalytics}
+        backNav={backNav}
+        periodRange={periodRange}
+        trendRange={trendRange}
+        personScope={personScope}
+      />
+    </>
   );
 }
 
@@ -352,6 +413,7 @@ function ProductDetailBody({
   trendRange: { start: Date; end: Date };
   personScope?: { label: string; value: string } | null;
 }) {
+  const [searchParams] = useSearchParams();
   const qty = product?.qty ?? scoped.reduce((s, r) => s + r.qty, 0);
   const pass = product?.pass ?? scoped.reduce((s, r) => s + r.pass, 0);
   const fail = product?.fail ?? scoped.reduce((s, r) => s + r.fail, 0);
@@ -989,7 +1051,10 @@ function ProductDetailBody({
                 <tr key={row.id} className="border-b border-line/70">
                   <td className="px-2 py-2.5 font-medium">
                     <Link
-                      to={`/workers/${toEntityId("wrk", row.worker)}?product=${encodeURIComponent(name)}`}
+                      to={buildWorkerDetailHref(
+                        toEntityId("wrk", row.worker),
+                        { product: name, carryFrom: searchParams },
+                      )}
                       className="text-accent hover:underline"
                     >
                       {row.worker}
@@ -1045,7 +1110,10 @@ function ProductDetailBody({
                 <tr key={row.id} className="border-b border-line/70">
                   <td className="px-2 py-2.5 font-medium">
                     <Link
-                      to={`/inspectors/${toEntityId("ins", row.inspector)}?product=${encodeURIComponent(name)}`}
+                      to={buildInspectorDetailHref(
+                        toEntityId("ins", row.inspector),
+                        { product: name, carryFrom: searchParams },
+                      )}
                       className="text-accent hover:underline"
                     >
                       {row.inspector}

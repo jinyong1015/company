@@ -99,6 +99,7 @@ export function Worst5Card({
   onMinQtyChange,
   items,
   period,
+  snapshotId,
 }: {
   title: string
   color: string
@@ -106,6 +107,7 @@ export function Worst5Card({
   onMinQtyChange?: (value: number) => void
   items: WorstProductItem[]
   period: WeeklyReportPeriodState
+  snapshotId?: string | null
 }) {
   const chartData = useMemo(
     () =>
@@ -246,10 +248,9 @@ export function Worst5Card({
                       </td>
                       <td className="px-2 py-2.5">
                         <Link
-                          to={buildWeeklyReportProductLink(
-                            item.product,
-                            period,
-                          )}
+                          to={buildWeeklyReportProductLink(item.product, period, {
+                            snapshotId,
+                          })}
                           className="block truncate font-semibold text-accent hover:underline"
                           title={item.product}
                         >

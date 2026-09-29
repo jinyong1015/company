@@ -16,11 +16,16 @@ import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
 import { ResponsiveGrid } from '../components/common/ResponsiveGrid'
 import { useData } from '../context/DataContext'
-import { useFilters } from '../context/FilterContext'
+import { cloneFilterState, useFilters, type FilterState } from '../context/FilterContext'
 import { filterRecords, buildPeriodTrends, resolvePeriodRange } from '../lib/analyze'
 import { fromEntityId, toEntityId } from '../lib/entityId'
-import { buildProductDetailHref } from '../lib/productDetailNav'
-import { useMemo, useState, useEffect } from 'react'
+import {
+  buildProductDetailHref,
+  buildProductDetailReturnHref,
+  readUrlDateRange,
+} from '../lib/productDetailNav'
+import { useWeeklySnapshotSourceRecords } from '../hooks/useWeeklySnapshotSourceRecords'
+import { useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { failRatePpm, formatPpmAsPercent, formatWon } from '../lib/format'
 import type { ProductBreakdown } from '../types'
 
@@ -129,20 +134,72 @@ function buildProductStats(
 export function WorkerDetail() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
-  const { analytics, records } = useData()
-  const { filters } = useFilters()
+  const { analytics } = useData()
+  const { filters, setCustomDateRange, replaceFilters } = useFilters()
   const name = fromEntityId(id, 'wrk')
   const productFromUrl = searchParams.get('product')?.trim() ?? ''
+  const snapshotId = searchParams.get('snapshotId')?.trim() || null
+  const {
+    records: sourceRecords,
+    usingSnapshot,
+    status: snapshotStatus,
+    error: snapshotError,
+  } = useWeeklySnapshotSourceRecords(snapshotId)
+  const urlDateRange = useMemo(
+    () => readUrlDateRange(searchParams),
+    [searchParams],
+  )
   const [selectedProduct, setSelectedProduct] = useState(productFromUrl)
   const [productQuery, setProductQuery] = useState('')
+  const filtersRef = useRef(filters)
+  filtersRef.current = filters
+
+  useLayoutEffect(() => {
+    if (!urlDateRange) return
+    const snapshot = cloneFilterState(filtersRef.current)
+    setCustomDateRange(urlDateRange.startDate, urlDateRange.endDate)
+    return () => {
+      replaceFilters(snapshot)
+    }
+  }, [
+    urlDateRange?.startDate,
+    urlDateRange?.endDate,
+    setCustomDateRange,
+    replaceFilters,
+  ])
+
+  const effectiveFilters = useMemo<FilterState>(() => {
+    const base: FilterState = usingSnapshot
+      ? {
+          ...filters,
+          analysisGroup: 'all',
+          teams: [],
+          inspectors: [],
+          workTypes: [],
+          productTypes: [],
+          products: [],
+          molds: [],
+          equipment: [],
+          workers: [],
+          lots: [],
+        }
+      : filters
+    if (!urlDateRange) return base
+    return {
+      ...base,
+      period: 'custom',
+      startDate: urlDateRange.startDate,
+      endDate: urlDateRange.endDate,
+    }
+  }, [filters, urlDateRange, usingSnapshot])
 
   const worker =
     analytics.workers.find((w) => w.id === id || w.id === toEntityId('wrk', name) || w.name === name) ??
     null
 
   const scoped = useMemo(
-    () => filterRecords(records, filters, true).filter((r) => r.worker === name),
-    [records, filters, name],
+    () => filterRecords(sourceRecords, effectiveFilters, true).filter((r) => r.worker === name),
+    [sourceRecords, effectiveFilters, name],
   )
 
   const productOptions = useMemo(() => {
@@ -176,9 +233,9 @@ export function WorkerDetail() {
   const backNavProps = backNavProduct
     ? {
         productName: backNavProduct,
-        productHref: buildProductDetailHref(
+        productHref: buildProductDetailReturnHref(
           toEntityId('prd', backNavProduct),
-          'workers',
+          searchParams,
           {
             worker: name,
             workerId: id ?? toEntityId('wrk', name),
@@ -204,9 +261,28 @@ export function WorkerDetail() {
   }, [productOptions, hasSelection, activeProduct])
 
   const { trends: byDate, grain: trendGrain } = useMemo(
-    () => buildPeriodTrends(filtered, filters),
-    [filtered, filters],
+    () => buildPeriodTrends(filtered, effectiveFilters),
+    [filtered, effectiveFilters],
   )
+
+  const snapshotBanner =
+    usingSnapshot && snapshotStatus === 'loading' ? (
+      <div className="card border-accent/30 px-4 py-3 text-sm text-muted">
+        스냅샷 원본 DATA를 불러오는 중…
+      </div>
+    ) : usingSnapshot && snapshotStatus === 'missing' ? (
+      <div className="card border-warn/40 px-4 py-3 text-sm text-muted">
+        이 스냅샷에는 상세용 원본 DATA가 없습니다. 주간보고에서 스냅샷을 다시 저장해 주세요.
+      </div>
+    ) : usingSnapshot && snapshotStatus === 'error' ? (
+      <div className="card border-danger/40 px-4 py-3 text-sm text-danger">
+        {snapshotError ?? '스냅샷 DATA를 불러오지 못했습니다.'}
+      </div>
+    ) : usingSnapshot && snapshotStatus === 'ready' ? (
+      <div className="card border-accent/30 px-4 py-3 text-sm text-muted">
+        스냅샷 확정본 기준 조회 · 현재 업로드 DATA와 무관합니다.
+      </div>
+    ) : null
 
   if (!name) {
     return (
@@ -217,16 +293,30 @@ export function WorkerDetail() {
     )
   }
 
+  if (usingSnapshot && snapshotStatus === 'loading') {
+    return (
+      <div className="space-y-5">
+        <WorkerDetailBackNav {...backNavProps} />
+        {snapshotBanner}
+      </div>
+    )
+  }
+
   if (!worker && scoped.length === 0) {
     return (
       <div className="space-y-5">
         <WorkerDetailBackNav {...backNavProps} />
+        {snapshotBanner}
         <PageHeader
           title={name}
           description="선택한 기간/분석 그룹에 이 성형 작업자의 DATA가 없습니다."
         />
         <Panel>
-          <p className="text-sm text-muted">기간이나 분석 그룹을 바꿔 다시 확인해 주세요.</p>
+          <p className="text-sm text-muted">
+            {usingSnapshot
+              ? '스냅샷에 저장된 원본 행 기준으로 해당 작업자 DATA가 없습니다.'
+              : '기간이나 분석 그룹을 바꿔 다시 확인해 주세요.'}
+          </p>
         </Panel>
       </div>
     )
@@ -287,12 +377,22 @@ export function WorkerDetail() {
 
   const scopeLabel = hasSelection ? `품번 ${activeProduct} 기준` : '전체 품번 기준'
   const totalQty = productOptions.reduce((s, p) => s + p.qty, 0)
-  const period = resolvePeriodRange(filters)
+  const period = resolvePeriodRange(effectiveFilters)
   const periodStart = toDateInput(period.start)
   const periodEnd = toDateInput(period.end)
   const workerId = row.id
 
   function productDetailHref(productName: string) {
+    if (urlDateRange || searchParams.get('from') === 'weekly-report') {
+      return buildProductDetailReturnHref(
+        toEntityId('prd', productName),
+        searchParams,
+        {
+          worker: name,
+          workerId,
+        },
+      )
+    }
     return buildProductDetailHref(toEntityId('prd', productName), 'workers', {
       startDate: periodStart,
       endDate: periodEnd,
@@ -304,6 +404,7 @@ export function WorkerDetail() {
   return (
     <div className="space-y-5">
       <WorkerDetailBackNav {...backNavProps} />
+      {snapshotBanner}
       <PageHeader
         title={row.name}
         description={`성형 작업자 · 선택한 기간/분석 그룹 기준 · ${scopeLabel}`}

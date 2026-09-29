@@ -79,7 +79,7 @@ export function ErrorData() {
   const { pushToast } = useToast()
   const [query, setQuery] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('date')
-  const [asc, setAsc] = useState(false)
+  const [asc, setAsc] = useState(true)
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<InspectionRecord | null>(null)
   const [detail, setDetail] = useState<InspectionRecord | null>(null)
