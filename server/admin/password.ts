@@ -1,5 +1,6 @@
 import { randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from './supabaseConfig.ts'
 
 const scryptAsync = promisify(scrypt)
 
@@ -43,14 +44,32 @@ function safeEqual(a: Buffer, b: Buffer): boolean {
   return timingSafeEqual(a, b)
 }
 
-/**
- * 서버 환경변수 ADMIN_PASSWORD_HASH(scrypt)만으로 검증한다.
- * 평문 ADMIN_PASSWORD는 사용하지 않는다.
- * 비밀번호·해시는 프런트엔드 번들·공개 API 응답에 포함되면 안 된다.
- */
-export async function verifyAdminPassword(password: string): Promise<boolean> {
-  if (!password || !password.trim()) return false
+async function verifyViaSupabase(password: string): Promise<boolean | null> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/verify_admin_password`, {
+      method: 'POST',
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_password: password }),
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      console.warn('[admin-auth] supabase verify failed', res.status, text.slice(0, 200))
+      return null
+    }
+    const data = (await res.json()) as unknown
+    return data === true
+  } catch (err) {
+    console.warn('[admin-auth] supabase verify error', err)
+    return null
+  }
+}
 
+async function verifyViaEnvHash(password: string): Promise<boolean> {
   const configuredHash = process.env.ADMIN_PASSWORD_HASH?.trim()
   if (!configuredHash) return false
 
@@ -61,6 +80,23 @@ export async function verifyAdminPassword(password: string): Promise<boolean> {
   return safeEqual(derived, parts.hash)
 }
 
+/**
+ * 관리자 비밀번호 검증.
+ * 1) Supabase RPC `verify_admin_password` (우선)
+ * 2) 환경변수 ADMIN_PASSWORD_HASH (폴백)
+ */
+export async function verifyAdminPassword(password: string): Promise<boolean> {
+  if (!password || !password.trim()) return false
+
+  const supabaseResult = await verifyViaSupabase(password)
+  if (supabaseResult === true) return true
+  if (supabaseResult === false) return false
+
+  return verifyViaEnvHash(password)
+}
+
 export function isAdminPasswordConfigured(): boolean {
+  // Supabase 기본 설정이 있으면 항상 로그인 시도 가능
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) return true
   return Boolean(process.env.ADMIN_PASSWORD_HASH?.trim())
 }

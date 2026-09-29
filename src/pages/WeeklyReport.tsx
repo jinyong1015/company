@@ -6,8 +6,11 @@ import { Panel } from '../components/common/Panel'
 import { MonthlyTrendSection } from '../components/weekly-report/MonthlyTrendSection'
 import { WeeklyIssuePanel } from '../components/weekly-report/WeeklyIssuePanel'
 import { WeeklyProductionTable } from '../components/weekly-report/WeeklyProductionTable'
+import { WeeklySnapshotBar } from '../components/weekly-report/WeeklySnapshotBar'
 import { Worst5Card } from '../components/weekly-report/Worst5Card'
 import { useData } from '../context/DataContext'
+import { useAdmin } from '../context/AdminContext'
+import { useToast } from '../context/ToastContext'
 import {
   buildAutoWeeklyIssues,
   buildMonthlyReportView,
@@ -40,8 +43,15 @@ import {
   type WeeklyReportPeriodState,
 } from '../lib/weeklyReportPeriod'
 import type { WeeklyReportMetric, WeeklyReportOrgId, InspectionRecord } from '../types'
-import { useToast } from '../context/ToastContext'
 import { isCloudSyncEnabled } from '../lib/supabase'
+import {
+  deleteWeeklyReportSnapshot,
+  fetchWeeklyReportSnapshot,
+  listWeeklyReportSnapshots,
+  saveWeeklyReportSnapshot,
+  type WeeklyReportSnapshotMeta,
+  type WeeklyReportSnapshotRecord,
+} from '../lib/weeklyReportSnapshot'
 
 type PeriodMode = WeeklyReportPeriodMode
 
@@ -142,6 +152,7 @@ function resolveWeeklyReportPeriod(
 
 export function WeeklyReport() {
   const { records } = useData()
+  const { isAdmin, openLogin } = useAdmin()
   const { pushToast } = useToast()
   const anchor = new Date()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -162,6 +173,11 @@ export function WeeklyReport() {
     loadWorst5Thresholds(),
   )
   const [issuesSaving, setIssuesSaving] = useState(false)
+  const [snapshotList, setSnapshotList] = useState<WeeklyReportSnapshotMeta[]>([])
+  const [snapshotListLoading, setSnapshotListLoading] = useState(false)
+  const [snapshotSaving, setSnapshotSaving] = useState(false)
+  const [activeSnapshot, setActiveSnapshot] =
+    useState<WeeklyReportSnapshotRecord | null>(null)
 
   const monthlyView = useMemo(
     () => buildMonthlyReportView(records, metric, anchor),
@@ -264,6 +280,27 @@ export function WeeklyReport() {
     setIssues(weeklyDetail.issues)
   }, [weeklyDetail, periodKey, issuesHydratedKey])
 
+  // 기간 변경 시 스냅샷 보기 해제 + 목록 로드
+  useEffect(() => {
+    setActiveSnapshot(null)
+    if (!isCloudSyncEnabled()) {
+      setSnapshotList([])
+      setSnapshotListLoading(false)
+      return
+    }
+    let cancelled = false
+    setSnapshotListLoading(true)
+    ;(async () => {
+      const result = await listWeeklyReportSnapshots(periodKey)
+      if (cancelled) return
+      setSnapshotListLoading(false)
+      setSnapshotList(result.ok ? result.items : [])
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [periodKey])
+
   const handleMonthSelect = useCallback(
     (monthKey: string) => {
       const { year: y, month: m } = parseMonthKey(monthKey)
@@ -310,8 +347,104 @@ export function WeeklyReport() {
     setRangeStart((prev) => (prev && value < prev ? value : prev))
   }, [])
 
+  const refreshSnapshotList = useCallback(async () => {
+    if (!isCloudSyncEnabled()) {
+      setSnapshotList([])
+      return
+    }
+    setSnapshotListLoading(true)
+    const result = await listWeeklyReportSnapshots(periodKey)
+    setSnapshotListLoading(false)
+    setSnapshotList(result.ok ? result.items : [])
+  }, [periodKey])
+
+  const handleSaveSnapshot = useCallback(async () => {
+    if (!isAdmin) {
+      openLogin()
+      return
+    }
+    if (activeSnapshot) {
+      pushToast('스냅샷 보기 중에는 저장할 수 없습니다. 실시간으로 돌아가 주세요.', 'info')
+      return
+    }
+    setSnapshotSaving(true)
+    try {
+      const result = await saveWeeklyReportSnapshot({
+        periodKey,
+        title: weeklyDetail.title,
+        payload: {
+          period: weeklyDetail.period,
+          title: weeklyDetail.title,
+          productionRows: weeklyDetail.productionRows,
+          issues,
+          worst5: weeklyDetail.worst5,
+          worst5Thresholds: weeklyDetail.worst5Thresholds,
+        },
+      })
+      if (!result.ok) {
+        pushToast(`스냅샷 저장 실패: ${result.error ?? '알 수 없음'}`, 'error')
+        return
+      }
+      pushToast('주간보고 확정본을 저장했습니다.', 'success')
+      await refreshSnapshotList()
+    } finally {
+      setSnapshotSaving(false)
+    }
+  }, [
+    isAdmin,
+    openLogin,
+    activeSnapshot,
+    pushToast,
+    periodKey,
+    weeklyDetail,
+    issues,
+    refreshSnapshotList,
+  ])
+
+  const handleSelectSnapshot = useCallback(
+    async (id: string) => {
+      const result = await fetchWeeklyReportSnapshot(id)
+      if (!result.ok || !result.record) {
+        pushToast(`스냅샷을 불러오지 못했습니다: ${result.error ?? '알 수 없음'}`, 'error')
+        return
+      }
+      setActiveSnapshot(result.record)
+      pushToast('확정본을 불러왔습니다.', 'info')
+    },
+    [pushToast],
+  )
+
+  const handleDeleteSnapshot = useCallback(
+    async (id: string) => {
+      if (!isAdmin) {
+        openLogin()
+        return
+      }
+      const confirmed = window.confirm('이 확정본을 삭제할까요?')
+      if (!confirmed) return
+      const result = await deleteWeeklyReportSnapshot(id)
+      if (!result.ok) {
+        pushToast(`스냅샷 삭제 실패: ${result.error ?? '알 수 없음'}`, 'error')
+        return
+      }
+      if (activeSnapshot?.id === id) setActiveSnapshot(null)
+      pushToast('확정본을 삭제했습니다.', 'success')
+      await refreshSnapshotList()
+    },
+    [isAdmin, openLogin, pushToast, activeSnapshot?.id, refreshSnapshotList],
+  )
+
   const handleSaveIssues = useCallback(
     async (next: typeof issues) => {
+      if (!isAdmin) {
+        pushToast('주간 ISSUE 수정은 관리자 모드에서만 가능합니다.', 'info')
+        openLogin()
+        return
+      }
+      if (activeSnapshot) {
+        pushToast('스냅샷 보기 중에는 이슈를 수정할 수 없습니다.', 'info')
+        return
+      }
       const key = periodKeyFromPeriod(weeklyDetail.period)
       setIssues(next)
       setIssuesSaving(true)
@@ -336,7 +469,7 @@ export function WeeklyReport() {
         setIssuesSaving(false)
       }
     },
-    [weeklyDetail.period, pushToast],
+    [weeklyDetail.period, pushToast, isAdmin, openLogin, activeSnapshot],
   )
 
   const handleAiGenerateIssues = useCallback(() => {
@@ -390,6 +523,16 @@ export function WeeklyReport() {
     customProductionLabel,
   ])
 
+  const viewingSnapshot = Boolean(activeSnapshot)
+  const shownTitle = activeSnapshot?.payload.title ?? weeklyDetail.title
+  const shownPeriod = activeSnapshot?.payload.period ?? weeklyDetail.period
+  const shownIssues = activeSnapshot?.payload.issues ?? issues
+  const shownProductionRows =
+    activeSnapshot?.payload.productionRows ?? displayProductionRows
+  const shownWorst5 = activeSnapshot?.payload.worst5 ?? weeklyDetail.worst5
+  const shownWorst5Thresholds =
+    activeSnapshot?.payload.worst5Thresholds ?? worst5Thresholds
+
   const handleCustomProductionLabelChange = useCallback(
     (label: string) => {
       const trimmed = label.trim()
@@ -442,19 +585,24 @@ export function WeeklyReport() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
               <p className="text-lg font-semibold text-ink">
-                ◆ {weeklyDetail.title}
+                ◆ {shownTitle}
               </p>
               <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
                 <CalendarRange size={14} className="shrink-0 text-accent" />
                 <span className="num font-semibold text-ink">
-                  {weeklyDetail.period.startDate} ~ {weeklyDetail.period.endDate}
+                  {shownPeriod.startDate} ~ {shownPeriod.endDate}
                 </span>
-                {weeklyDetail.period.isCustom ? (
+                {viewingSnapshot ? (
+                  <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-bold text-accent">
+                    확정 스냅샷
+                  </span>
+                ) : null}
+                {shownPeriod.isCustom ? (
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
                     사용자 지정 기간
                   </span>
                 ) : (
-                  <span>{weeklyDetail.period.label}</span>
+                  <span>{shownPeriod.label}</span>
                 )}
               </p>
             </div>
@@ -548,56 +696,80 @@ export function WeeklyReport() {
         </div>
 
         {!rangeInvalid ? (
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-            <div className="space-y-5 min-w-0">
-              <Panel
-                title="주간 생산/검사 실적"
-                description="전주 대비 주차별 실적 비교"
-              >
-                <WeeklyProductionTable
-                  rows={displayProductionRows}
-                  editableCustomPeriodLabel={
-                    customProductionLabelKey
-                      ? {
-                          label: customProductionLabel,
-                          defaultLabel: defaultCustomProductionLabel,
-                          queryPeriodTitle: formatProductionQueryPeriodTitle(
-                            rangeStart,
-                            rangeEnd,
-                          ),
-                          onChange: handleCustomProductionLabelChange,
-                        }
-                      : undefined
-                  }
-                />
-              </Panel>
-              <WeeklyIssuePanel
-                issues={issues}
-                onSave={handleSaveIssues}
-                onAiGenerate={handleAiGenerateIssues}
-                saving={issuesSaving}
-                cloudSync={isCloudSyncEnabled()}
-                syncReady={issuesHydratedKey === periodKey}
-              />
-            </div>
+          <>
+            <WeeklySnapshotBar
+              isAdmin={isAdmin}
+              cloudReady={isCloudSyncEnabled()}
+              saving={snapshotSaving}
+              loadingList={snapshotListLoading}
+              snapshots={snapshotList}
+              activeSnapshotId={activeSnapshot?.id ?? null}
+              onSave={() => void handleSaveSnapshot()}
+              onSelect={(id) => void handleSelectSnapshot(id)}
+              onClear={() => setActiveSnapshot(null)}
+              onDelete={(id) => void handleDeleteSnapshot(id)}
+              onRequestLogin={openLogin}
+            />
 
-            <div className="min-w-0 space-y-4">
-              <p className="text-sm font-semibold text-ink">부적합 WORST 5</p>
-              {WEEKLY_REPORT_ORGS.map((org) => (
-                <Worst5Card
-                  key={org.id}
-                  title={org.label}
-                  color={org.color}
-                  minQty={worst5Thresholds[org.id]}
-                  onMinQtyChange={(value) =>
-                    handleWorst5ThresholdChange(org.id, value)
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+              <div className="space-y-5 min-w-0">
+                <Panel
+                  title="주간 생산/검사 실적"
+                  description={
+                    viewingSnapshot
+                      ? '확정본에 저장된 실적'
+                      : '전주 대비 주차별 실적 비교'
                   }
-                  items={weeklyDetail.worst5[org.id]}
-                  period={periodState}
+                >
+                  <WeeklyProductionTable
+                    rows={shownProductionRows}
+                    editableCustomPeriodLabel={
+                      !viewingSnapshot && customProductionLabelKey
+                        ? {
+                            label: customProductionLabel,
+                            defaultLabel: defaultCustomProductionLabel,
+                            queryPeriodTitle: formatProductionQueryPeriodTitle(
+                              rangeStart,
+                              rangeEnd,
+                            ),
+                            onChange: handleCustomProductionLabelChange,
+                          }
+                        : undefined
+                    }
+                  />
+                </Panel>
+                <WeeklyIssuePanel
+                  issues={shownIssues}
+                  onSave={handleSaveIssues}
+                  onAiGenerate={handleAiGenerateIssues}
+                  saving={issuesSaving}
+                  cloudSync={isCloudSyncEnabled()}
+                  syncReady={issuesHydratedKey === periodKey}
+                  canEdit={isAdmin && !viewingSnapshot}
+                  onRequestLogin={openLogin}
                 />
-              ))}
+              </div>
+
+              <div className="min-w-0 space-y-4">
+                <p className="text-sm font-semibold text-ink">부적합 WORST 5</p>
+                {WEEKLY_REPORT_ORGS.map((org) => (
+                  <Worst5Card
+                    key={org.id}
+                    title={org.label}
+                    color={org.color}
+                    minQty={shownWorst5Thresholds[org.id]}
+                    onMinQtyChange={
+                      viewingSnapshot
+                        ? undefined
+                        : (value) => handleWorst5ThresholdChange(org.id, value)
+                    }
+                    items={shownWorst5[org.id] ?? []}
+                    period={periodState}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
+          </>
         ) : null}
       </div>
     </div>

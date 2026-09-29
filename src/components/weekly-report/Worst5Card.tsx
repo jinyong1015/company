@@ -103,7 +103,7 @@ export function Worst5Card({
   title: string
   color: string
   minQty: number
-  onMinQtyChange: (value: number) => void
+  onMinQtyChange?: (value: number) => void
   items: WorstProductItem[]
   period: WeeklyReportPeriodState
 }) {
@@ -134,10 +134,14 @@ export function Worst5Card({
     <section className="rounded-2xl border border-line bg-white p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-ink">{title}</h3>
-        <MinQtyThresholdControl
-          minQty={minQty}
-          onChange={onMinQtyChange}
-        />
+        {onMinQtyChange ? (
+          <MinQtyThresholdControl
+            minQty={minQty}
+            onChange={onMinQtyChange}
+          />
+        ) : (
+          <span className="text-[11px] text-muted">검수량 ≥ {minQty.toLocaleString()}</span>
+        )}
       </div>
 
       {items.length === 0 ? (

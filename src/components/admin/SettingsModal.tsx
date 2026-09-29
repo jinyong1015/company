@@ -163,7 +163,7 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
         <div>
           <h3 className="settings-section-title">관리자 로그인</h3>
           <p className="settings-panel-lead">
-            검사 DATA 수정을 위해 관리자 비밀번호를 입력해 주세요.
+            검사 DATA 수정을 위해 관리자 비밀번호를 입력해 주세요. (Supabase에서 검증)
           </p>
         </div>
       </div>

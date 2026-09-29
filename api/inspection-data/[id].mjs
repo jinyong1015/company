@@ -50,6 +50,12 @@ async function listChangeLogs(limit = 50) {
 // server/admin/password.ts
 import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
+
+// server/admin/supabaseConfig.ts
+var SUPABASE_URL = process.env.VITE_SUPABASE_URL?.trim() || process.env.SUPABASE_URL?.trim() || "https://zwznfnqkqvmsxulqucml.supabase.co";
+var SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY?.trim() || process.env.SUPABASE_ANON_KEY?.trim() || "sb_publishable_oIYbc30k0hyhKD47SJDneA_dxrxgz3-";
+
+// server/admin/password.ts
 var scryptAsync = promisify(scrypt);
 var SCRYPT_KEYLEN = 64;
 var HASH_PREFIX = "scrypt";
@@ -72,8 +78,31 @@ function safeEqual(a, b) {
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }
-async function verifyAdminPassword(password) {
-  if (!password || !password.trim()) return false;
+async function verifyViaSupabase(password) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/verify_admin_password`, {
+      method: "POST",
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ p_password: password })
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.warn("[admin-auth] supabase verify failed", res.status, text.slice(0, 200));
+      return null;
+    }
+    const data = await res.json();
+    return data === true;
+  } catch (err) {
+    console.warn("[admin-auth] supabase verify error", err);
+    return null;
+  }
+}
+async function verifyViaEnvHash(password) {
   const configuredHash = process.env.ADMIN_PASSWORD_HASH?.trim();
   if (!configuredHash) return false;
   const parts = parsePasswordHash(configuredHash);
@@ -81,7 +110,15 @@ async function verifyAdminPassword(password) {
   const derived = await hashWithSalt(password, parts.salt);
   return safeEqual(derived, parts.hash);
 }
+async function verifyAdminPassword(password) {
+  if (!password || !password.trim()) return false;
+  const supabaseResult = await verifyViaSupabase(password);
+  if (supabaseResult === true) return true;
+  if (supabaseResult === false) return false;
+  return verifyViaEnvHash(password);
+}
 function isAdminPasswordConfigured() {
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) return true;
   return Boolean(process.env.ADMIN_PASSWORD_HASH?.trim());
 }
 

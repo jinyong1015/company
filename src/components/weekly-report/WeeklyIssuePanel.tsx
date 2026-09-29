@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Lock, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { Panel } from '../common/Panel'
 import type { WeeklyIssue } from '../../types'
 
@@ -28,6 +28,8 @@ export function WeeklyIssuePanel({
   saving = false,
   cloudSync = false,
   syncReady = true,
+  canEdit = false,
+  onRequestLogin,
 }: {
   issues: WeeklyIssue[]
   onSave: (issues: WeeklyIssue[]) => void | Promise<void>
@@ -35,6 +37,8 @@ export function WeeklyIssuePanel({
   saving?: boolean
   cloudSync?: boolean
   syncReady?: boolean
+  canEdit?: boolean
+  onRequestLogin?: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(() => cloneIssues(issues))
@@ -45,7 +49,18 @@ export function WeeklyIssuePanel({
     }
   }, [issues, editing])
 
+  useEffect(() => {
+    if (!canEdit && editing) {
+      setDraft(cloneIssues(issues))
+      setEditing(false)
+    }
+  }, [canEdit, editing, issues])
+
   const startEdit = () => {
+    if (!canEdit) {
+      onRequestLogin?.()
+      return
+    }
     setDraft(cloneIssues(issues.length ? issues : [newIssue(1)]))
     setEditing(true)
   }
@@ -97,13 +112,13 @@ export function WeeklyIssuePanel({
       description={
         cloudSync
           ? syncReady
-            ? '주요 품질 이슈 · PC 간 공유 저장 연결됨'
+            ? '주요 품질 이슈'
             : '주요 품질 이슈 · 공유 데이터 불러오는 중…'
-          : '주요 품질 이슈 · 원인 · 개선조치 (이 PC에만 저장)'
+          : '주요 품질 이슈'
       }
       actions={
         <div className="flex gap-2">
-          {editing ? (
+          {editing && canEdit ? (
             <>
               <button
                 type="button"
@@ -133,15 +148,17 @@ export function WeeklyIssuePanel({
             <button
               type="button"
               onClick={startEdit}
-              className="rounded-lg border border-line px-2.5 py-1 text-xs text-muted hover:text-ink"
+              className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-xs text-muted hover:text-ink"
+              title={canEdit ? '편집' : '관리자 로그인 후 편집'}
             >
+              {canEdit ? <Pencil size={12} aria-hidden /> : <Lock size={12} aria-hidden />}
               편집
             </button>
           )}
         </div>
       }
     >
-      {editing ? (
+      {editing && canEdit ? (
         <div className="space-y-4">
           {draft.map((issue, idx) => (
             <div key={issue.id} className="rounded-xl border border-line bg-canvas/50 p-3">
