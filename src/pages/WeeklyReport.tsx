@@ -21,6 +21,7 @@ import {
   periodKeyFromPeriod,
   saveWeeklyIssues,
   saveWorst5Thresholds,
+  syncWeeklyIssues,
   WEEKLY_REPORT_ORGS,
 } from '../lib/weeklyReport'
 import {
@@ -39,6 +40,8 @@ import {
   type WeeklyReportPeriodState,
 } from '../lib/weeklyReportPeriod'
 import type { WeeklyReportMetric, WeeklyReportOrgId, InspectionRecord } from '../types'
+import { useToast } from '../context/ToastContext'
+import { isCloudSyncEnabled } from '../lib/supabase'
 
 type PeriodMode = WeeklyReportPeriodMode
 
@@ -139,6 +142,7 @@ function resolveWeeklyReportPeriod(
 
 export function WeeklyReport() {
   const { records } = useData()
+  const { pushToast } = useToast()
   const anchor = new Date()
   const [searchParams, setSearchParams] = useSearchParams()
   const [initialPeriod] = useState(() =>
@@ -157,6 +161,7 @@ export function WeeklyReport() {
   const [worst5Thresholds, setWorst5Thresholds] = useState(() =>
     loadWorst5Thresholds(),
   )
+  const [issuesSaving, setIssuesSaving] = useState(false)
 
   const monthlyView = useMemo(
     () => buildMonthlyReportView(records, metric, anchor),
@@ -229,6 +234,21 @@ export function WeeklyReport() {
     setIssues(weeklyDetail.issues)
   }, [weeklyDetail])
 
+  // PC 간 공유: 원격(Supabase) 이슈를 불러와 반영
+  const periodKey = periodKeyFromPeriod(weeklyDetail.period)
+  useEffect(() => {
+    if (!isCloudSyncEnabled()) return
+    let cancelled = false
+    ;(async () => {
+      const synced = await syncWeeklyIssues(periodKey)
+      if (cancelled || !synced) return
+      setIssues(synced)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [periodKey])
+
   const handleMonthSelect = useCallback(
     (monthKey: string) => {
       const { year: y, month: m } = parseMonthKey(monthKey)
@@ -276,12 +296,32 @@ export function WeeklyReport() {
   }, [])
 
   const handleSaveIssues = useCallback(
-    (next: typeof issues) => {
+    async (next: typeof issues) => {
       const key = periodKeyFromPeriod(weeklyDetail.period)
-      saveWeeklyIssues(key, next)
       setIssues(next)
+      setIssuesSaving(true)
+      try {
+        const result = await saveWeeklyIssues(key, next)
+        if (!result.ok) {
+          pushToast(
+            `이슈는 이 PC에만 저장되었습니다. 공유 저장 실패: ${result.error ?? '알 수 없음'}`,
+            'error',
+          )
+          return
+        }
+        if (result.synced) {
+          pushToast('주간 ISSUE를 저장했습니다. 다른 PC에서도 동일하게 보입니다.', 'success')
+        } else {
+          pushToast(
+            '이 PC에만 저장되었습니다. 공유 저장소를 설정하면 다른 PC에서도 볼 수 있습니다.',
+            'info',
+          )
+        }
+      } finally {
+        setIssuesSaving(false)
+      }
     },
-    [weeklyDetail.period],
+    [weeklyDetail.period, pushToast],
   )
 
   const handleAiGenerateIssues = useCallback(() => {
@@ -520,6 +560,7 @@ export function WeeklyReport() {
                 issues={issues}
                 onSave={handleSaveIssues}
                 onAiGenerate={handleAiGenerateIssues}
+                saving={issuesSaving}
               />
             </div>
 

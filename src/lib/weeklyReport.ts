@@ -7,6 +7,7 @@ import {
 import { toEntityId } from './entityId'
 import { buildProductDetailHref } from './productDetailNav'
 import { failRatePpm } from './format'
+import { getSupabase, isCloudSyncEnabled } from './supabase'
 import type {
   InspectionRecord,
   MonthlyOrgMetric,
@@ -500,7 +501,7 @@ export function loadWeeklyIssues(periodKey: string): WeeklyIssue[] | null {
   }
 }
 
-export function saveWeeklyIssues(periodKey: string, issues: WeeklyIssue[]) {
+function saveWeeklyIssuesLocal(periodKey: string, issues: WeeklyIssue[]) {
   try {
     const raw = localStorage.getItem(ISSUE_STORAGE_KEY)
     const all = raw ? (JSON.parse(raw) as Record<string, WeeklyIssue[]>) : {}
@@ -509,6 +510,77 @@ export function saveWeeklyIssues(periodKey: string, issues: WeeklyIssue[]) {
   } catch {
     /* ignore */
   }
+}
+
+/** 로컬 캐시 + (설정 시) Supabase 공유 저장 */
+export async function saveWeeklyIssues(
+  periodKey: string,
+  issues: WeeklyIssue[],
+): Promise<{ ok: boolean; synced: boolean; error?: string }> {
+  saveWeeklyIssuesLocal(periodKey, issues)
+  const remote = await pushWeeklyIssuesRemote(periodKey, issues)
+  return remote
+}
+
+export async function fetchWeeklyIssuesRemote(
+  periodKey: string,
+): Promise<WeeklyIssue[] | null> {
+  const supabase = getSupabase()
+  if (!supabase) return null
+  const { data, error } = await supabase
+    .from('weekly_report_issues')
+    .select('issues')
+    .eq('period_key', periodKey)
+    .maybeSingle()
+  if (error) {
+    console.warn('[weekly-issues] fetch failed', error.message)
+    return null
+  }
+  if (!data?.issues || !Array.isArray(data.issues)) return null
+  return data.issues as WeeklyIssue[]
+}
+
+export async function pushWeeklyIssuesRemote(
+  periodKey: string,
+  issues: WeeklyIssue[],
+): Promise<{ ok: boolean; synced: boolean; error?: string }> {
+  const supabase = getSupabase()
+  if (!supabase) {
+    return { ok: true, synced: false }
+  }
+  const { error } = await supabase.from('weekly_report_issues').upsert(
+    {
+      period_key: periodKey,
+      issues,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'period_key' },
+  )
+  if (error) {
+    console.warn('[weekly-issues] save failed', error.message)
+    return { ok: false, synced: false, error: error.message }
+  }
+  return { ok: true, synced: true }
+}
+
+/**
+ * 원격 우선으로 동기화.
+ * - 원격에 있으면 로컬 캐시 갱신 후 반환
+ * - 원격 없고 로컬만 있으면 원격으로 업로드(다른 PC로 이전)
+ */
+export async function syncWeeklyIssues(
+  periodKey: string,
+): Promise<WeeklyIssue[] | null> {
+  const remote = await fetchWeeklyIssuesRemote(periodKey)
+  if (remote) {
+    saveWeeklyIssuesLocal(periodKey, remote)
+    return remote
+  }
+  const local = loadWeeklyIssues(periodKey)
+  if (local && isCloudSyncEnabled()) {
+    await pushWeeklyIssuesRemote(periodKey, local)
+  }
+  return local
 }
 
 export function buildWeeklyReportDetail(

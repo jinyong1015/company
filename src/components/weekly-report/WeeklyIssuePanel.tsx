@@ -25,10 +25,12 @@ export function WeeklyIssuePanel({
   issues,
   onSave,
   onAiGenerate,
+  saving = false,
 }: {
   issues: WeeklyIssue[]
-  onSave: (issues: WeeklyIssue[]) => void
+  onSave: (issues: WeeklyIssue[]) => void | Promise<void>
   onAiGenerate: () => WeeklyIssue[]
+  saving?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(() => cloneIssues(issues))
@@ -49,7 +51,7 @@ export function WeeklyIssuePanel({
     setEditing(false)
   }
 
-  const save = () => {
+  const save = async () => {
     const saved = draft
       .map((i, idx) => ({
         ...i,
@@ -60,7 +62,7 @@ export function WeeklyIssuePanel({
       }))
       .filter((i) => i.title || i.bullets.length > 0)
 
-    onSave(saved)
+    await onSave(saved)
     setEditing(false)
   }
 
@@ -110,10 +112,11 @@ export function WeeklyIssuePanel({
               </button>
               <button
                 type="button"
-                onClick={save}
-                className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-white"
+                onClick={() => void save()}
+                disabled={saving}
+                className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-white disabled:opacity-60"
               >
-                저장
+                {saving ? '저장 중…' : '저장'}
               </button>
             </>
           ) : (
