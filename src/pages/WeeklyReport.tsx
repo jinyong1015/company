@@ -229,25 +229,40 @@ export function WeeklyReport() {
   ])
 
   const [issues, setIssues] = useState(weeklyDetail.issues)
+  const [issuesHydratedKey, setIssuesHydratedKey] = useState<string | null>(null)
 
+  const periodKey = periodKeyFromPeriod(weeklyDetail.period)
+
+  // 기간이 바뀌면 일단 로컬/자동 이슈를 보여주고, 이어서 원격 동기화
   useEffect(() => {
     setIssues(weeklyDetail.issues)
-  }, [weeklyDetail])
+    setIssuesHydratedKey(null)
+  }, [periodKey]) // eslint-disable-line react-hooks/exhaustive-deps -- period 변경 시에만 초기화
 
-  // PC 간 공유: 원격(Supabase) 이슈를 불러와 반영
-  const periodKey = periodKeyFromPeriod(weeklyDetail.period)
+  // PC 간 공유: 원격(Supabase) 이슈를 불러와 반영 (원격이 있으면 항상 우선)
   useEffect(() => {
-    if (!isCloudSyncEnabled()) return
+    if (!isCloudSyncEnabled()) {
+      setIssuesHydratedKey(periodKey)
+      return
+    }
     let cancelled = false
     ;(async () => {
       const synced = await syncWeeklyIssues(periodKey)
-      if (cancelled || !synced) return
-      setIssues(synced)
+      if (cancelled) return
+      if (synced) setIssues(synced)
+      setIssuesHydratedKey(periodKey)
     })()
     return () => {
       cancelled = true
     }
   }, [periodKey])
+
+  // weeklyDetail이 같은 기간에서 재계산되어도, 이미 원격 반영된 이슈는 덮어쓰지 않음
+  useEffect(() => {
+    if (issuesHydratedKey === periodKey) return
+    if (isCloudSyncEnabled()) return
+    setIssues(weeklyDetail.issues)
+  }, [weeklyDetail, periodKey, issuesHydratedKey])
 
   const handleMonthSelect = useCallback(
     (monthKey: string) => {
@@ -313,7 +328,7 @@ export function WeeklyReport() {
           pushToast('주간 ISSUE를 저장했습니다. 다른 PC에서도 동일하게 보입니다.', 'success')
         } else {
           pushToast(
-            '이 PC에만 저장되었습니다. 공유 저장소를 설정하면 다른 PC에서도 볼 수 있습니다.',
+            '이 PC에만 저장되었습니다. (공유 연결 실패 — 네트워크·Supabase 설정을 확인해 주세요.)',
             'info',
           )
         }
@@ -561,6 +576,8 @@ export function WeeklyReport() {
                 onSave={handleSaveIssues}
                 onAiGenerate={handleAiGenerateIssues}
                 saving={issuesSaving}
+                cloudSync={isCloudSyncEnabled()}
+                syncReady={issuesHydratedKey === periodKey}
               />
             </div>
 

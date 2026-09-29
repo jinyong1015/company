@@ -26,11 +26,15 @@ export function WeeklyIssuePanel({
   onSave,
   onAiGenerate,
   saving = false,
+  cloudSync = false,
+  syncReady = true,
 }: {
   issues: WeeklyIssue[]
   onSave: (issues: WeeklyIssue[]) => void | Promise<void>
   onAiGenerate: () => WeeklyIssue[]
   saving?: boolean
+  cloudSync?: boolean
+  syncReady?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(() => cloneIssues(issues))
@@ -90,7 +94,13 @@ export function WeeklyIssuePanel({
   return (
     <Panel
       title="주간 ISSUE"
-      description="주요 품질 이슈 · 원인 · 개선조치"
+      description={
+        cloudSync
+          ? syncReady
+            ? '주요 품질 이슈 · PC 간 공유 저장 연결됨'
+            : '주요 품질 이슈 · 공유 데이터 불러오는 중…'
+          : '주요 품질 이슈 · 원인 · 개선조치 (이 PC에만 저장)'
+      }
       actions={
         <div className="flex gap-2">
           {editing ? (

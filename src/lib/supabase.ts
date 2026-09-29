@@ -1,15 +1,13 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from './supabaseConfig'
 
 let client: SupabaseClient | null = null
 
-/** Supabase 미설정 시 null — 로컬 저장만 사용 */
+/** Supabase 클라이언트 (URL·publishable 키 기본값 내장) */
 export function getSupabase(): SupabaseClient | null {
-  if (!url || !anonKey) return null
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null
   if (!client) {
-    client = createClient(url, anonKey, {
+    client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     })
   }
@@ -17,5 +15,5 @@ export function getSupabase(): SupabaseClient | null {
 }
 
 export function isCloudSyncEnabled() {
-  return Boolean(url && anonKey)
+  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY)
 }
