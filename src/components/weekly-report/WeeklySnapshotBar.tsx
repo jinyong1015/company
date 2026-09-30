@@ -1,6 +1,9 @@
 import { Camera, History, Trash2, X } from 'lucide-react'
 import type { WeeklyReportSnapshotMeta } from '../../lib/weeklyReportSnapshot'
-import { formatSnapshotTime } from '../../lib/weeklyReportSnapshot'
+import {
+  formatSnapshotPeriodKey,
+  formatSnapshotTime,
+} from '../../lib/weeklyReportSnapshot'
 
 export function WeeklySnapshotBar({
   isAdmin,
@@ -41,7 +44,7 @@ export function WeeklySnapshotBar({
             {active
               ? `확정본 보는 중 · ${formatSnapshotTime(active.createdAt)}`
               : cloudReady
-                ? '현재 화면을 확정본으로 저장하거나, 이전 확정본을 불러옵니다.'
+                ? '선택 월의 확정본을 모두 보거나, 현재 화면을 확정 저장합니다.'
                 : '공유 저장소 연결 후 사용할 수 있습니다.'}
           </p>
         </div>
@@ -87,7 +90,7 @@ export function WeeklySnapshotBar({
         {loadingList ? (
           <p className="text-xs text-muted">스냅샷 목록 불러오는 중…</p>
         ) : snapshots.length === 0 ? (
-          <p className="text-xs text-muted">이 기간에 저장된 확정본이 없습니다.</p>
+          <p className="text-xs text-muted">이 월에 저장된 확정본이 없습니다.</p>
         ) : (
           <ul className="space-y-1.5">
             {snapshots.map((item) => {
@@ -96,7 +99,9 @@ export function WeeklySnapshotBar({
                 <li
                   key={item.id}
                   className={`flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 text-xs ${
-                    selected ? 'bg-accent/10 ring-1 ring-accent/30' : 'bg-canvas/60'
+                    selected
+                      ? 'bg-accent/10 ring-1 ring-accent/30'
+                      : 'bg-canvas/60'
                   }`}
                 >
                   <button
@@ -104,8 +109,12 @@ export function WeeklySnapshotBar({
                     onClick={() => onSelect(item.id)}
                     className="min-w-0 flex-1 text-left"
                   >
-                    <span className="block font-medium text-ink">{item.title}</span>
+                    <span className="block font-medium text-ink">
+                      {item.title}
+                    </span>
                     <span className="mt-0.5 block text-muted">
+                      {formatSnapshotPeriodKey(item.periodKey)}
+                      {' · '}
                       {formatSnapshotTime(item.createdAt)}
                       {item.note ? ` · ${item.note}` : ''}
                     </span>

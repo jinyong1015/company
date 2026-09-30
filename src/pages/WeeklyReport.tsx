@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CalendarRange } from 'lucide-react'
+import { CalendarRange, Maximize2 } from 'lucide-react'
 import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
 import { MonthlyTrendSection } from '../components/weekly-report/MonthlyTrendSection'
+import { WeeklyFullscreenOverlay } from '../components/weekly-report/WeeklyFullscreenOverlay'
 import { WeeklyIssuePanel } from '../components/weekly-report/WeeklyIssuePanel'
 import { WeeklyProductionTable } from '../components/weekly-report/WeeklyProductionTable'
 import { WeeklySnapshotBar } from '../components/weekly-report/WeeklySnapshotBar'
@@ -180,6 +181,8 @@ export function WeeklyReport() {
   const [snapshotSaving, setSnapshotSaving] = useState(false)
   const [activeSnapshot, setActiveSnapshot] =
     useState<WeeklyReportSnapshotRecord | null>(null)
+  const [productionFullscreen, setProductionFullscreen] = useState(false)
+  const [worst5Fullscreen, setWorst5Fullscreen] = useState(false)
   // clear 시 React state와 Router searchParams가 한 틱 어긋나면
   // URL snapshotId 자동 로드 effect가 스냅샷을 다시 불러오는 것을 막는다.
   const clearingSnapshotRef = useRef(false)
@@ -289,7 +292,7 @@ export function WeeklyReport() {
     setIssues(weeklyDetail.issues)
   }, [weeklyDetail, periodKey, issuesHydratedKey])
 
-  // 기간 변경 시 스냅샷 보기 해제 + 목록 로드
+  // 기간(주차·지정기간) 변경 시 스냅샷 보기만 해제
   // (첫 마운트에서는 URL snapshotId를 유지해 상세에서 복귀할 수 있게 함)
   const periodKeyRef = useRef<string | null>(null)
   useEffect(() => {
@@ -310,7 +313,10 @@ export function WeeklyReport() {
         { replace: true },
       )
     }
+  }, [periodKey, setSearchParams])
 
+  // 선택 월 기준 스냅샷 목록 (해당 월 주차·조회기간이 월에 겹치는 확정본 전부)
+  useEffect(() => {
     if (!isCloudSyncEnabled()) {
       setSnapshotList([])
       setSnapshotListLoading(false)
@@ -319,7 +325,7 @@ export function WeeklyReport() {
     let cancelled = false
     setSnapshotListLoading(true)
     ;(async () => {
-      const result = await listWeeklyReportSnapshots(periodKey)
+      const result = await listWeeklyReportSnapshots(selectedMonthKey)
       if (cancelled) return
       setSnapshotListLoading(false)
       setSnapshotList(result.ok ? result.items : [])
@@ -327,7 +333,7 @@ export function WeeklyReport() {
     return () => {
       cancelled = true
     }
-  }, [periodKey, setSearchParams])
+  }, [selectedMonthKey])
 
   const handleMonthSelect = useCallback(
     (monthKey: string) => {
@@ -381,10 +387,10 @@ export function WeeklyReport() {
       return
     }
     setSnapshotListLoading(true)
-    const result = await listWeeklyReportSnapshots(periodKey)
+    const result = await listWeeklyReportSnapshots(selectedMonthKey)
     setSnapshotListLoading(false)
     setSnapshotList(result.ok ? result.items : [])
-  }, [periodKey])
+  }, [selectedMonthKey])
 
   const handleSaveSnapshot = useCallback(async () => {
     if (!isAdmin) {
@@ -668,6 +674,31 @@ export function WeeklyReport() {
     [customProductionLabelKey, rangeStart, rangeEnd],
   )
 
+  const editableCustomPeriodLabel =
+    !viewingSnapshot && customProductionLabelKey
+      ? {
+          label: customProductionLabel,
+          defaultLabel: defaultCustomProductionLabel,
+          queryPeriodTitle: formatProductionQueryPeriodTitle(
+            rangeStart,
+            rangeEnd,
+          ),
+          onChange: handleCustomProductionLabelChange,
+        }
+      : undefined
+
+  const productionDescription = viewingSnapshot
+    ? '확정본에 저장된 실적'
+    : '전주 대비 주차별 실적 비교'
+
+  const closeProductionFullscreen = useCallback(() => {
+    setProductionFullscreen(false)
+  }, [])
+
+  const closeWorst5Fullscreen = useCallback(() => {
+    setWorst5Fullscreen(false)
+  }, [])
+
   if (!records.length) {
     return (
       <div className="space-y-4">
@@ -837,27 +868,21 @@ export function WeeklyReport() {
               <div className="space-y-5 min-w-0">
                 <Panel
                   title="주간 생산/검사 실적"
-                  description={
-                    viewingSnapshot
-                      ? '확정본에 저장된 실적'
-                      : '전주 대비 주차별 실적 비교'
+                  description={productionDescription}
+                  actions={
+                    <button
+                      type="button"
+                      className="btn inline-flex items-center gap-1.5 text-xs"
+                      onClick={() => setProductionFullscreen(true)}
+                    >
+                      <Maximize2 size={14} strokeWidth={2.25} aria-hidden />
+                      전체화면 보기
+                    </button>
                   }
                 >
                   <WeeklyProductionTable
                     rows={shownProductionRows}
-                    editableCustomPeriodLabel={
-                      !viewingSnapshot && customProductionLabelKey
-                        ? {
-                            label: customProductionLabel,
-                            defaultLabel: defaultCustomProductionLabel,
-                            queryPeriodTitle: formatProductionQueryPeriodTitle(
-                              rangeStart,
-                              rangeEnd,
-                            ),
-                            onChange: handleCustomProductionLabelChange,
-                          }
-                        : undefined
-                    }
+                    editableCustomPeriodLabel={editableCustomPeriodLabel}
                   />
                 </Panel>
                 <WeeklyIssuePanel
@@ -872,11 +897,71 @@ export function WeeklyReport() {
                 />
               </div>
 
-              <div className="min-w-0 space-y-4">
-                <p className="text-sm font-semibold text-ink">부적합 WORST 5</p>
+              <div className="min-w-0">
+                <Panel
+                  title="부적합 WORST 5"
+                  bodyClassName="!space-y-5 !bg-canvas/50 !p-3"
+                  actions={
+                    <button
+                      type="button"
+                      className="btn inline-flex items-center gap-1.5 text-xs"
+                      onClick={() => setWorst5Fullscreen(true)}
+                    >
+                      <Maximize2 size={14} strokeWidth={2.25} aria-hidden />
+                      전체화면 보기
+                    </button>
+                  }
+                >
+                  {WEEKLY_REPORT_ORGS.map((org) => (
+                    <Worst5Card
+                      key={org.id}
+                      title={org.label}
+                      color={org.color}
+                      minQty={shownWorst5Thresholds[org.id]}
+                      onMinQtyChange={
+                        viewingSnapshot
+                          ? undefined
+                          : (value) =>
+                              handleWorst5ThresholdChange(org.id, value)
+                      }
+                      items={shownWorst5[org.id] ?? []}
+                      period={worst5LinkPeriod}
+                      snapshotId={activeSnapshot?.id ?? null}
+                    />
+                  ))}
+                </Panel>
+              </div>
+            </div>
+
+            <WeeklyFullscreenOverlay
+              open={productionFullscreen}
+              title="주간 생산/검사 실적"
+              description={productionDescription}
+              onClose={closeProductionFullscreen}
+              centerContent
+            >
+              <div className="mx-auto w-full max-w-5xl text-[15px] sm:text-base [&_table]:min-w-0 [&_td]:py-3.5 [&_th]:py-3">
+                <WeeklyProductionTable
+                  rows={shownProductionRows}
+                  editableCustomPeriodLabel={editableCustomPeriodLabel}
+                />
+              </div>
+            </WeeklyFullscreenOverlay>
+
+            <WeeklyFullscreenOverlay
+              open={worst5Fullscreen}
+              title="부적합 WORST 5"
+              description={
+                viewingSnapshot
+                  ? '확정본에 저장된 WORST 5'
+                  : '조직별 부적합률 상위 품번'
+              }
+              onClose={closeWorst5Fullscreen}
+            >
+              <div className="grid gap-4 lg:grid-cols-3">
                 {WEEKLY_REPORT_ORGS.map((org) => (
                   <Worst5Card
-                    key={org.id}
+                    key={`fs-${org.id}`}
                     title={org.label}
                     color={org.color}
                     minQty={shownWorst5Thresholds[org.id]}
@@ -888,10 +973,11 @@ export function WeeklyReport() {
                     items={shownWorst5[org.id] ?? []}
                     period={worst5LinkPeriod}
                     snapshotId={activeSnapshot?.id ?? null}
+                    variant="fullscreen"
                   />
                 ))}
               </div>
-            </div>
+            </WeeklyFullscreenOverlay>
           </>
         ) : null}
       </div>

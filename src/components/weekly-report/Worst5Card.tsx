@@ -100,6 +100,7 @@ export function Worst5Card({
   items,
   period,
   snapshotId,
+  variant = 'default',
 }: {
   title: string
   color: string
@@ -108,7 +109,10 @@ export function Worst5Card({
   items: WorstProductItem[]
   period: WeeklyReportPeriodState
   snapshotId?: string | null
+  variant?: 'default' | 'fullscreen'
 }) {
+  const isFullscreen = variant === 'fullscreen'
+
   const chartData = useMemo(
     () =>
       items.map((item) => ({
@@ -132,17 +136,38 @@ export function Worst5Card({
     return Math.max(44, Math.min(56, sample.length * 8 + 10))
   }, [yMax])
 
+  const chartHeight = isFullscreen
+    ? Math.max(280, items.length * 44 + 72)
+    : Math.max(220, items.length * 34 + 56)
+
+  const labelFontSize = isFullscreen ? 11 : 9
+  const valueFontSize = isFullscreen ? 12 : 10
+  const tableText = isFullscreen ? 'text-sm' : 'text-xs'
+  const cellPad = isFullscreen ? 'px-2.5 py-3' : 'px-2 py-2.5'
+
   return (
-    <section className="rounded-2xl border border-line bg-white p-4">
+    <section
+      className={`rounded-2xl border border-line/90 bg-white shadow-sm ${
+        isFullscreen ? 'p-5' : 'p-4'
+      }`}
+    >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-ink">{title}</h3>
+        <h3
+          className={`font-semibold text-ink ${
+            isFullscreen ? 'text-base' : 'text-sm'
+          }`}
+        >
+          {title}
+        </h3>
         {onMinQtyChange ? (
           <MinQtyThresholdControl
             minQty={minQty}
             onChange={onMinQtyChange}
           />
         ) : (
-          <span className="text-[11px] text-muted">검수량 ≥ {minQty.toLocaleString()}</span>
+          <span className="text-[11px] text-muted">
+            검수량 ≥ {minQty.toLocaleString()}
+          </span>
         )}
       </div>
 
@@ -151,10 +176,16 @@ export function Worst5Card({
           검수량 {minQty.toLocaleString()}EA 이상 조건에 맞는 품번이 없습니다.
         </p>
       ) : (
-        <div className="grid-split items-stretch">
+        <div
+          className={
+            isFullscreen
+              ? 'flex flex-col gap-4'
+              : 'grid grid-cols-1 items-stretch gap-3 min-[560px]:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]'
+          }
+        >
           <div
-            className="w-full overflow-visible pr-1"
-            style={{ height: Math.max(220, items.length * 34 + 56) }}
+            className="min-w-0 w-full overflow-visible pr-1"
+            style={{ height: chartHeight }}
           >
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -165,7 +196,7 @@ export function Worst5Card({
                 <CartesianGrid stroke="#eef1f5" vertical={false} />
                 <XAxis
                   dataKey="label"
-                  tick={{ fontSize: 9, fill: '#5b6577' }}
+                  tick={{ fontSize: labelFontSize, fill: '#5b6577' }}
                   axisLine={false}
                   tickLine={false}
                   interval={0}
@@ -176,7 +207,7 @@ export function Worst5Card({
                   padding={{ left: 8, right: 8 }}
                 />
                 <YAxis
-                  tick={{ fontSize: 10, fill: '#5b6577' }}
+                  tick={{ fontSize: valueFontSize, fill: '#5b6577' }}
                   axisLine={false}
                   tickLine={false}
                   width={yAxisWidth}
@@ -196,7 +227,7 @@ export function Worst5Card({
                 <Bar
                   dataKey="ratePercent"
                   radius={[4, 4, 0, 0]}
-                  maxBarSize={48}
+                  maxBarSize={isFullscreen ? 56 : 48}
                   isAnimationActive={false}
                 >
                   {chartData.map((entry) => (
@@ -207,7 +238,11 @@ export function Worst5Card({
                     position="top"
                     offset={4}
                     formatter={(v: unknown) => `${Number(v).toFixed(2)}%`}
-                    style={{ fontSize: 10, fontWeight: 600, fill: '#334155' }}
+                    style={{
+                      fontSize: valueFontSize,
+                      fontWeight: 600,
+                      fill: '#334155',
+                    }}
                   />
                 </Bar>
               </BarChart>
@@ -216,7 +251,7 @@ export function Worst5Card({
 
           <div className="flex min-w-0 flex-col justify-center">
             <div className="overflow-hidden rounded-lg border border-line">
-              <table className="w-full table-fixed text-xs">
+              <table className={`w-full table-fixed ${tableText}`}>
                 <colgroup>
                   <col className="w-9" />
                   <col />
@@ -231,7 +266,9 @@ export function Worst5Card({
                     <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">
                       부적합률
                     </th>
-                    <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">PPM</th>
+                    <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">
+                      PPM
+                    </th>
                     <th className="whitespace-nowrap px-2 py-2 text-left font-semibold">
                       주요 부적합
                     </th>
@@ -243,10 +280,12 @@ export function Worst5Card({
                       key={item.product}
                       className="border-b border-line/50 last:border-b-0 hover:bg-canvas/40"
                     >
-                      <td className="px-2 py-2.5 text-center font-semibold text-ink/70">
+                      <td
+                        className={`${cellPad} text-center font-semibold text-ink/70`}
+                      >
                         {item.rank}
                       </td>
-                      <td className="px-2 py-2.5">
+                      <td className={cellPad}>
                         <Link
                           to={buildWeeklyReportProductLink(item.product, period, {
                             snapshotId,
@@ -257,13 +296,15 @@ export function Worst5Card({
                           {item.product}
                         </Link>
                       </td>
-                      <td className="num whitespace-nowrap px-2 py-2.5 text-right font-semibold text-danger">
+                      <td
+                        className={`num whitespace-nowrap ${cellPad} text-right font-semibold text-danger`}
+                      >
                         {formatPpmAsPercent(item.failRate)}
                       </td>
-                      <td className="num px-2 py-2.5 text-right text-ink/80">
+                      <td className={`num ${cellPad} text-right text-ink/80`}>
                         {item.failRate.toLocaleString()}
                       </td>
-                      <td className="px-2 py-2.5">
+                      <td className={cellPad}>
                         <span
                           className="block truncate text-ink/75"
                           title={item.mainDefect}

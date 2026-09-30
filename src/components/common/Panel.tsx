@@ -6,6 +6,7 @@ export function Panel({
   actions,
   children,
   className = '',
+  bodyClassName = '',
   style,
 }: {
   title?: string
@@ -13,6 +14,7 @@ export function Panel({
   actions?: ReactNode
   children: ReactNode
   className?: string
+  bodyClassName?: string
   style?: CSSProperties
 }) {
   return (
@@ -26,7 +28,7 @@ export function Panel({
           {actions}
         </div>
       )}
-      <div className="min-w-0 p-5">{children}</div>
+      <div className={`min-w-0 p-5 ${bodyClassName}`}>{children}</div>
     </section>
   )
 }

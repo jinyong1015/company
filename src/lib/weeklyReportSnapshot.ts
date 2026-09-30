@@ -73,8 +73,47 @@ export function formatSnapshotTime(iso: string) {
   }
 }
 
+/** `2026-09-W3` / `custom:2026-09-01:2026-09-07` 표시용 */
+export function formatSnapshotPeriodKey(periodKey: string) {
+  if (periodKey.startsWith('custom:')) {
+    const [, start, end] = periodKey.split(':')
+    if (!start || !end) return periodKey
+    return start === end ? start : `${start} ~ ${end}`
+  }
+  const m = periodKey.match(/^(\d{4})-(\d{2})-W(\d+)$/)
+  if (m) return `${Number(m[2])}월 ${m[3]}주차`
+  return periodKey
+}
+
+function monthDateRange(monthKey: string) {
+  const [y, m] = monthKey.split('-').map(Number)
+  if (!y || !m) return null
+  const start = `${monthKey}-01`
+  const lastDay = new Date(y, m, 0).getDate()
+  const end = `${monthKey}-${String(lastDay).padStart(2, '0')}`
+  return { start, end }
+}
+
+/** 스냅샷 period_key가 선택 월에 속하는가 (주차 키 또는 조회기간 겹침) */
+export function periodKeyBelongsToMonth(periodKey: string, monthKey: string) {
+  if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey)) return false
+  if (periodKey.startsWith(`${monthKey}-W`)) return true
+  if (periodKey.startsWith('custom:')) {
+    const [, start, end] = periodKey.split(':')
+    const range = monthDateRange(monthKey)
+    if (!start || !end || !range) return false
+    return start <= range.end && end >= range.start
+  }
+  return false
+}
+
+/**
+ * 선택 월의 스냅샷 목록.
+ * - 주차 키 `YYYY-MM-Wn` → 해당 월
+ * - `custom:start:end` → 조회기간이 해당 월과 겹치면 포함
+ */
 export async function listWeeklyReportSnapshots(
-  periodKey: string,
+  monthKey: string,
 ): Promise<{ ok: boolean; items: WeeklyReportSnapshotMeta[]; error?: string }> {
   if (!isCloudSyncEnabled()) {
     return { ok: false, items: [], error: '공유 저장소가 설정되지 않았습니다.' }
@@ -83,21 +122,47 @@ export async function listWeeklyReportSnapshots(
   if (!supabase) {
     return { ok: false, items: [], error: '공유 저장소에 연결할 수 없습니다.' }
   }
-
-  const { data, error } = await supabase
-    .from('weekly_report_snapshots')
-    .select('id, period_key, title, note, created_at')
-    .eq('period_key', periodKey)
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    return { ok: false, items: [], error: error.message }
+  if (!/^\d{4}-\d{2}$/.test(monthKey)) {
+    return { ok: false, items: [], error: '월 키가 올바르지 않습니다.' }
   }
 
-  return {
-    ok: true,
-    items: ((data ?? []) as DbRow[]).map(mapMeta),
+  const selectCols = 'id, period_key, title, note, created_at'
+  const [weekResult, customResult] = await Promise.all([
+    supabase
+      .from('weekly_report_snapshots')
+      .select(selectCols)
+      .like('period_key', `${monthKey}-W%`)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('weekly_report_snapshots')
+      .select(selectCols)
+      .like('period_key', 'custom:%')
+      .order('created_at', { ascending: false }),
+  ])
+
+  if (weekResult.error) {
+    return { ok: false, items: [], error: weekResult.error.message }
   }
+  if (customResult.error) {
+    return { ok: false, items: [], error: customResult.error.message }
+  }
+
+  const byId = new Map<string, WeeklyReportSnapshotMeta>()
+  for (const row of (weekResult.data ?? []) as DbRow[]) {
+    byId.set(row.id, mapMeta(row))
+  }
+  for (const row of (customResult.data ?? []) as DbRow[]) {
+    const meta = mapMeta(row)
+    if (periodKeyBelongsToMonth(meta.periodKey, monthKey)) {
+      byId.set(meta.id, meta)
+    }
+  }
+
+  const items = [...byId.values()].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  )
+
+  return { ok: true, items }
 }
 
 export async function fetchWeeklyReportSnapshot(
