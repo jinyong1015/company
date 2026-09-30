@@ -543,7 +543,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     }
     if (!inspector || !product || qty === null) {
       quality.requiredMissing += 1
-      issues.push('필수값 누락')
+      issues.push('필수값 누락(날짜, 검사원, 품번, 검수량)')
       blocking = true
     }
     if (qty === null || (headerMap.pass && pass === null) || (headerMap.fail && fail === null)) {
@@ -554,7 +554,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     if (workType && !ALLOWED_WORK_TYPES.includes(workType)) {
       quality.invalidWorkType += 1
       quality.workTypeInconsistent += 1
-      issues.push(`작업구분 오류(${workType})`)
+      issues.push('작업구분 오류(검사작업 이외 작업)')
       blocking = true
     }
     if (!workType) {
@@ -677,12 +677,12 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
   })
 
   const qualityChecks: QualityCheckItem[] = [
-    { label: '필수값 누락', count: quality.requiredMissing, severity: 'error' },
+    { label: '필수값 누락(날짜, 검사원, 품번, 검수량)', count: quality.requiredMissing, severity: 'error' },
     { label: '중복', count: quality.duplicate, severity: 'error' },
     { label: '잘못된 날짜', count: quality.invalidDate, severity: 'error' },
     { label: '잘못된 숫자', count: quality.invalidNumber, severity: 'error' },
     { label: '검수량 0', count: quality.zeroQty, severity: 'error' },
-    { label: '작업구분 오류', count: quality.invalidWorkType, severity: 'error' },
+    { label: '작업구분 오류(검사작업 이외 작업)', count: quality.invalidWorkType, severity: 'error' },
     { label: '#N/A 값', count: quality.naValue, severity: 'error' },
     { label: '제품 유형 누락', count: quality.productTypeMissing, severity: 'error' },
     { label: '합격+부적합 ≠ 검수량', count: quality.qtyMismatch, severity: 'warn' },
