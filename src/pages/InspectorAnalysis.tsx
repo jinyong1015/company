@@ -261,10 +261,7 @@ export function InspectorAnalysis() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="검사자 분석"
-        description="소속 → 검사자 → 품번 순으로 검사량과 효율을 확인합니다."
-      />
+      <PageHeader title="검사자 분석" />
 
       <QtyTop10Chart
         items={topItems}

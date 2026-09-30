@@ -193,11 +193,11 @@ export function InspectionData() {
         }
       />
 
-      <div className="card border-warn/30 px-4 py-3 text-sm text-muted">
-        {isAdmin
-          ? '관리자 모드: 행을 더블클릭하거나 수정 버튼으로 검사 DATA를 편집할 수 있습니다.'
-          : '일반 모드: 조회만 가능합니다. 수정을 원하면 설정 → 관리자 모드에서 로그인해 주세요.'}
-      </div>
+      {isAdmin ? (
+        <div className="card border-warn/30 px-4 py-3 text-sm text-muted">
+          관리자 모드: 행을 더블클릭하거나 수정 버튼으로 검사 DATA를 편집할 수 있습니다.
+        </div>
+      ) : null}
 
       <SortSearchBar
         query={query}

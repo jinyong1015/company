@@ -211,10 +211,7 @@ export function CostAnalysis() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="비용 분석"
-        description="폐기비용을 품번·불량·금형·설비·검사자 기준으로 비교합니다."
-      />
+      <PageHeader title="비용 분석" />
 
       <QtyTop10Chart
         items={topItems}

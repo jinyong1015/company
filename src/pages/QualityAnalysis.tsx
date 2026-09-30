@@ -149,10 +149,7 @@ export function QualityAnalysis() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="품질 분석"
-        description="불량 유형 TOP 10과 품번 TOP 10을 함께 확인합니다."
-      />
+      <PageHeader title="품질 분석" />
 
       <Panel title="불량 유형 TOP 10" description="아래 버튼으로 유형을 선택하세요">
         <DefectBarChart data={defectTypes} />

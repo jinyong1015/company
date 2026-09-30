@@ -60,7 +60,7 @@ export function EquipmentAnalysis() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="설비 분석" description="설비 → 품번 순으로 검사량과 품질을 확인합니다." />
+      <PageHeader title="설비 분석" />
 
       <Panel title="설비 × 불량 유형 히트맵">
         <EquipmentDefectHeatmap records={heatmapRecords} />

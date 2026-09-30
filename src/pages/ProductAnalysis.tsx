@@ -159,10 +159,7 @@ export function ProductAnalysis() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="품번 분석"
-        description="제품유형 → 품번 → 불량/금형/설비/검사자 순으로 품질을 확인합니다."
-      />
+      <PageHeader title="품번 분석" />
 
       <QtyTop10Chart
         items={topItems}

@@ -720,11 +720,7 @@ export function WeeklyReport() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="주간업무 보고"
-        description="월별 품질·부적합 추세와 주차별 상세 현황을 한 화면에서 확인합니다."
-      />
-
+      <PageHeader title="주간업무 보고" />
       <MonthlyTrendSection
         view={shownMonthlyView}
         metric={metric}

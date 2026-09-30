@@ -19,7 +19,6 @@ import { PageHeader } from "../components/common/PageHeader";
 import { ResponsiveGrid } from "../components/common/ResponsiveGrid";
 import { useData } from "../context/DataContext";
 import {
-  groupLabel,
   analysisGroupColor,
   ANALYSIS_GROUP_TOTAL_LINE_COLOR,
   type AnalysisGroupId,
@@ -677,7 +676,7 @@ function QualityTrendChart({
 }
 
 export function Dashboard() {
-  const { analytics, hasUploadedData, meta } = useData();
+  const { analytics } = useData();
   const { filters, setAnalysisGroup } = useFilters();
   const {
     kpis,
@@ -715,15 +714,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="대시보드"
-        description={
-          hasUploadedData
-            ? `${meta.fileName} · ${groupLabel(filters.analysisGroup)} 기준 품질 현황`
-            : `${groupLabel(filters.analysisGroup)} 기준 품질 현황`
-        }
-      />
-
+      <PageHeader title="대시보드" />
       <ResponsiveGrid variant="kpi">
         {kpis.map((item) => (
           <KpiCard key={item.id} item={item} />

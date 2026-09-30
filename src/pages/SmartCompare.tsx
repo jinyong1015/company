@@ -148,10 +148,7 @@ export function SmartCompare() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="스마트 비교"
-        description="품번 기간 비교와 기간·품번별 검사자 UPH를 비교합니다."
-      />
+      <PageHeader title="스마트 비교" />
 
       <Panel
         title="품번 기간 비교"

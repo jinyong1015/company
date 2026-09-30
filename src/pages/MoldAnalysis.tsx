@@ -50,10 +50,7 @@ export function MoldAnalysis() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="금형 분석"
-        description="금형 → 설비 순으로 작업 이력과 품질을 확인합니다."
-      />
+      <PageHeader title="금형 분석" />
       <SortSearchBar
         query={query}
         onQuery={(v) => {

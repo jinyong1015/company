@@ -112,10 +112,7 @@ export function WorkerAnalysis() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="성형 작업자 분석"
-        description="성형 작업자 → 품번 순으로 실적과 불량 현황을 확인합니다."
-      />
+      <PageHeader title="성형 작업자 분석" />
 
       <QtyTop10Chart
         items={topItems}
