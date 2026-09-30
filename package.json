@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "node scripts/bundle-admin-api.mjs && tsc -b && vite build",
     "lint": "oxlint",
-    "test:ai-ask": "tsx scripts/_ai-ask-regression-runner.ts",
     "preview": "vite preview",
     "admin:hash": "node scripts/hash-admin-password.mjs",
     "admin:bundle-api": "node scripts/bundle-admin-api.mjs"

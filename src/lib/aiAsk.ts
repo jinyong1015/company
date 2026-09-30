@@ -3352,7 +3352,6 @@ function tryAnswerFollowUp(
     const rank = parseRankPick(text, n) ?? 1
     const productName =
       prior.productNames[rank - 1] ?? prior.productNames[0]!
-    const wantEquip = includesAny(n, ['설비'])
     const wantMold = includesAny(n, ['금형'])
     const wantLot = includesAny(n, ['lot', '로트', '롯트'])
     const map = new Map<
