@@ -122,14 +122,7 @@ export function ProductPhotoPanel({ productKey }: { productKey: string }) {
   const cloudOff = !isCloudSyncEnabled()
 
   return (
-    <Panel
-      title="제품 사진"
-      description={
-        isAdmin
-          ? '품번당 사진 1장 · 업로드 전 자동 압축'
-          : '품번당 등록된 제품 사진'
-      }
-    >
+    <Panel title="제품 사진">
       {cloudOff ? (
         <p className="text-sm text-muted">
           클라우드 저장소가 설정되지 않아 사진을 사용할 수 없습니다.
