@@ -130,22 +130,35 @@ function ProductAxisTick({
           width={photoSize}
           height={photoSize}
         >
-          <img
-            src={url}
-            alt=""
-            title={product}
-            width={photoSize}
-            height={photoSize}
+          <div
             style={{
               width: photoSize,
               height: photoSize,
-              objectFit: 'cover',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
               borderRadius: 4,
               border: '1px solid #e2e8f0',
-              display: 'block',
+              background: '#f8fafc',
+              boxSizing: 'border-box',
             }}
-            referrerPolicy="no-referrer"
-          />
+          >
+            <img
+              src={url}
+              alt=""
+              title={product}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '100%',
+                width: 'auto',
+                height: 'auto',
+                objectFit: 'contain',
+                display: 'block',
+              }}
+              referrerPolicy="no-referrer"
+            />
+          </div>
         </foreignObject>
       ) : null}
       <text

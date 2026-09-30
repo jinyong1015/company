@@ -65,12 +65,12 @@ function IssueProductThumb({
 
   return (
     <div
-      className={`shrink-0 overflow-hidden rounded-lg border border-line bg-canvas ${box}`}
+      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-lg border border-line bg-canvas ${box}`}
     >
       <img
         src={url}
         alt={`${productKey} 제품 사진`}
-        className="h-full w-full object-cover"
+        className="max-h-full max-w-full object-contain"
         loading="lazy"
       />
     </div>
