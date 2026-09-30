@@ -31,9 +31,11 @@ type StoredChat = {
 const CHAT_STORAGE_KEY = 'qualitics-ai-chatbot-conversation'
 
 const quickQuestions = [
-  '부적합률이 높은 품번 TOP 5',
-  '폐기비용이 높은 품번 TOP 5',
-  '검수량이 많은 검사자 TOP 5',
+  '이번 주 부적합률 TOP5 보여줘',
+  '지난주랑 이번 주 부적합률 비교해줘',
+  '2공장 검수량 1000개 이상 · 부적합률 5% 넘는 품번',
+  '최근 8주 부적합률 추이 보여줘',
+  '이번 주 품질 이슈를 보고용으로 정리해줘',
 ]
 
 function messageTime() {
@@ -236,9 +238,52 @@ export function AiChatbot({ popupMode = false }: { popupMode?: boolean }) {
             <div className="max-w-[84%]">
               <p className="mb-1 text-[11px] text-muted">Qualitics AI</p>
               <div className="rounded-2xl rounded-tl-sm bg-surface px-3.5 py-3 text-[13px] leading-5 text-ink shadow-sm">
-                안녕하세요! 👋
+                안녕하세요! Qualitics AI입니다.
                 <br />
-                품질 데이터에 대해 궁금한 점을 질문해 주세요.
+                업로드된 검사 DATA를 기준으로 품질 현황을 표·차트로 바로 답해 드려요.
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent text-white">
+              <Bot size={17} />
+            </div>
+            <div className="max-w-[88%]">
+              <p className="mb-1 text-[11px] text-muted">Qualitics AI · 질문 팁</p>
+              <div className="rounded-2xl rounded-tl-sm bg-surface px-3.5 py-3 text-[12px] leading-relaxed text-ink shadow-sm">
+                <p className="mb-2 text-[13px] font-semibold">이렇게 물으면 더 정확해요</p>
+                <ul className="space-y-1.5 text-muted">
+                  <li>
+                    <span className="font-medium text-ink">기간</span>
+                    {' — '}이번 주 / 지난주 / 이번 달 / 최근 8주 / 8월 1일~10일
+                  </li>
+                  <li>
+                    <span className="font-medium text-ink">범위</span>
+                    {' — '}본사·1공장, 2공장(구지), SEAL, 유압·GROMMET
+                  </li>
+                  <li>
+                    <span className="font-medium text-ink">지표</span>
+                    {' — '}부적합률 · 부적합수량 · 검수량 · 폐기비용
+                    <br />
+                    <span className="text-[11px]">
+                      ※ %p(포인트 차이)와 %(상대 증감률)은 다르게 답합니다
+                    </span>
+                  </li>
+                  <li>
+                    <span className="font-medium text-ink">형식</span>
+                    {' — '}TOP5 / WORST5 / 표+막대 / 선그래프 / 원그래프
+                  </li>
+                  <li>
+                    <span className="font-medium text-ink">이어서</span>
+                    {' — '}「TOP10으로」「2공장만」「1위 자세히」「막대로 바꿔줘」
+                  </li>
+                </ul>
+                <p className="mt-2.5 rounded-lg bg-canvas px-2.5 py-2 text-[11px] leading-relaxed text-muted">
+                  예: 「이번 주 2공장 부적합률 TOP5 막대로」
+                  <br />
+                  예: 「지난주 대비 부적합률이 몇 %p 올랐어?」
+                </p>
               </div>
             </div>
           </div>
@@ -303,7 +348,7 @@ export function AiChatbot({ popupMode = false }: { popupMode?: boolean }) {
                   ask(input)
                 }
               }}
-              placeholder="품질 데이터에 대해 질문해 보세요"
+              placeholder=""
               className="max-h-24 min-h-9 flex-1 resize-none bg-transparent py-2 text-[13px] leading-5 outline-none placeholder:text-[#999]"
             />
             <button

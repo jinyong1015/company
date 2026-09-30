@@ -23,6 +23,22 @@ export function formatPpmDelta(diff: number) {
   return `${sign}${Math.round(diff).toLocaleString()} ppm`
 }
 
+/** ppm 차이 → 퍼센트포인트 (%p). 부적합률 비교 시 %와 구분 */
+export function formatPpmDeltaPp(diff: number) {
+  const pp = (Number(diff) || 0) / 10_000
+  const sign = pp > 0 ? '+' : pp < 0 ? '' : ''
+  return `${sign}${parseFloat(pp.toFixed(2))}%p`
+}
+
+/** 증감률 (%). prev=0이면 N/A */
+export function formatGrowthPercent(prev: number, cur: number) {
+  if (!Number.isFinite(prev) || !Number.isFinite(cur)) return '-'
+  if (prev === 0) return cur === 0 ? '0%' : 'N/A'
+  const pct = ((cur - prev) / Math.abs(prev)) * 100
+  const sign = pct > 0 ? '+' : ''
+  return `${sign}${parseFloat(pct.toFixed(1))}%`
+}
+
 /** 폐기비용(원) — 소수점 없이 정수 표기 */
 export function roundWon(n: number | undefined | null) {
   return Math.round(Number(n) || 0)

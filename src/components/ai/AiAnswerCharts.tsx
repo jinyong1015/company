@@ -11,9 +11,12 @@ import {
   Pie,
   PieChart,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from 'recharts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -44,9 +47,11 @@ function AiBarBlock({
   data,
   format,
   valueLabel,
+  layout = 'vertical',
 }: Extract<AiBlock, { type: 'bar' }>) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
+  const horizontal = layout === 'horizontal'
 
   useEffect(() => {
     const el = hostRef.current
@@ -68,43 +73,73 @@ function AiBarBlock({
   }
   const compact = width > 0 && width < 520
   const tiltLabels =
+    !horizontal &&
     compact &&
     (data.length >= 4 || data.some((item) => String(item.name).length > 8))
+  const chartHeight = horizontal
+    ? Math.max(260, data.length * 36 + 48)
+    : tiltLabels
+      ? 310
+      : 280
 
   return (
     <div ref={hostRef} className="rounded-xl border border-line p-3">
       <p className="text-sm font-medium">{title}</p>
-      <div className={`mt-2 w-full ${tiltLabels ? 'h-[310px]' : 'h-[280px]'}`}>
+      <div className="mt-2 w-full" style={{ height: chartHeight }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={data}
+            layout={horizontal ? 'vertical' : 'horizontal'}
             margin={{
-              top: 28,
-              right: compact ? 2 : 12,
-              left: compact ? -8 : 8,
+              top: horizontal ? 8 : 28,
+              right: compact ? 16 : 20,
+              left: horizontal ? (compact ? 8 : 12) : compact ? -8 : 8,
               bottom: tiltLabels ? 24 : 8,
             }}
           >
-            <CartesianGrid stroke="#eef1f5" vertical={false} />
-            <XAxis
-              dataKey="name"
-              tick={{ fill: '#5b6577', fontSize: compact ? 10 : 11 }}
-              axisLine={false}
-              tickLine={false}
-              interval={0}
-              angle={tiltLabels ? -35 : 0}
-              textAnchor={tiltLabels ? 'end' : 'middle'}
-              height={tiltLabels ? 66 : 36}
-              tickMargin={8}
-              tickFormatter={(v) => shortName(String(v), compact ? 10 : 14)}
-            />
-            <YAxis
-              tick={{ fill: '#5b6577', fontSize: compact ? 10 : 11 }}
-              axisLine={false}
-              tickLine={false}
-              width={compact ? 48 : 56}
-              tickFormatter={(v) => formatAiBarTopLabel(Number(v), format)}
-            />
+            <CartesianGrid stroke="#eef1f5" horizontal={!horizontal} vertical={horizontal} />
+            {horizontal ? (
+              <>
+                <XAxis
+                  type="number"
+                  tick={{ fill: '#5b6577', fontSize: compact ? 10 : 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v) => formatAiBarTopLabel(Number(v), format)}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={compact ? 88 : 120}
+                  tick={{ fill: '#5b6577', fontSize: compact ? 10 : 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v) => shortName(String(v), compact ? 12 : 16)}
+                />
+              </>
+            ) : (
+              <>
+                <XAxis
+                  dataKey="name"
+                  tick={{ fill: '#5b6577', fontSize: compact ? 10 : 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval={0}
+                  angle={tiltLabels ? -35 : 0}
+                  textAnchor={tiltLabels ? 'end' : 'middle'}
+                  height={tiltLabels ? 66 : 36}
+                  tickMargin={8}
+                  tickFormatter={(v) => shortName(String(v), compact ? 10 : 14)}
+                />
+                <YAxis
+                  tick={{ fill: '#5b6577', fontSize: compact ? 10 : 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={compact ? 48 : 56}
+                  tickFormatter={(v) => formatAiBarTopLabel(Number(v), format)}
+                />
+              </>
+            )}
             <Tooltip
               contentStyle={tipStyle()}
               formatter={(value) => [
@@ -112,10 +147,15 @@ function AiBarBlock({
                 valueLabel ?? '값',
               ]}
             />
-            <Bar dataKey="value" fill={BAR_COLOR} radius={[4, 4, 0, 0]} maxBarSize={42}>
+            <Bar
+              dataKey="value"
+              fill={BAR_COLOR}
+              radius={horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]}
+              maxBarSize={horizontal ? 22 : 42}
+            >
               <LabelList
                 dataKey="value"
-                position="top"
+                position={horizontal ? 'right' : 'top'}
                 offset={6}
                 fill="#0f172a"
                 fontSize={11}
@@ -128,7 +168,11 @@ function AiBarBlock({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <p className="mt-1 text-center text-[11px] text-muted">하단: 제품명 · 상단: 수치</p>
+      <p className="mt-1 text-center text-[11px] text-muted">
+        {horizontal
+          ? '왼쪽: 항목명 · 오른쪽: 수치'
+          : '하단: 제품명 · 상단: 수치'}
+      </p>
     </div>
   )
 }
@@ -650,6 +694,8 @@ function AiMultiBarBlock({
   xKey,
   series,
   format = 'count',
+  stacked = false,
+  percentStacked = false,
 }: Extract<AiBlock, { type: 'multiBar' }>) {
   if (!data.length) {
     return (
@@ -659,18 +705,25 @@ function AiMultiBarBlock({
       </div>
     )
   }
+  const valueFormat: AiValueFormat = percentStacked
+    ? 'percent'
+    : (format as AiValueFormat)
   const tilt = data.length > 14
-  const showLabels = data.length <= 24
+  const showLabels = !stacked && data.length <= 24
   const dense = data.length > 12 || series.length > 2
-  const axisWidth = yAxisPlotWidth(data, series, format as AiValueFormat)
+  const axisWidth = yAxisPlotWidth(data, series, valueFormat)
   return (
     <div className="rounded-xl border border-line p-3">
       <p className="text-sm font-medium">{title}</p>
+      {percentStacked ? (
+        <p className="mt-0.5 text-xs text-muted">각 항목 합계 = 100%</p>
+      ) : null}
       <div className="mt-2 h-[320px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={data}
             margin={{ top: showLabels ? 32 : 16, right: 16, left: 12, bottom: tilt ? 28 : 8 }}
+            stackOffset={percentStacked ? 'expand' : undefined}
           >
             <CartesianGrid stroke="#eef1f5" vertical={false} />
             <XAxis
@@ -690,14 +743,19 @@ function AiMultiBarBlock({
               tickLine={false}
               width={axisWidth}
               padding={{ top: 8, bottom: 4 }}
+              domain={percentStacked ? [0, 1] : undefined}
               tickFormatter={(v) =>
-                formatAiBarTopLabel(Number(v), format as AiValueFormat)
+                percentStacked
+                  ? `${Math.round(Number(v) * 100)}%`
+                  : formatAiBarTopLabel(Number(v), valueFormat)
               }
             />
             <Tooltip
               contentStyle={tipStyle()}
               formatter={(value, name) => [
-                formatAiBarTopLabel(Number(value ?? 0), format as AiValueFormat),
+                percentStacked
+                  ? `${Math.round(Number(value ?? 0) * 1000) / 10}%`
+                  : formatAiBarTopLabel(Number(value ?? 0), valueFormat),
                 String(name),
               ]}
             />
@@ -708,7 +766,10 @@ function AiMultiBarBlock({
                 dataKey={s.key}
                 name={s.label}
                 fill={s.color}
-                radius={[3, 3, 0, 0]}
+                stackId={stacked || percentStacked ? 'stack' : undefined}
+                radius={
+                  stacked || percentStacked ? [0, 0, 0, 0] : [3, 3, 0, 0]
+                }
                 maxBarSize={series.length > 1 ? 28 : 36}
               >
                 {showLabels ? (
@@ -722,13 +783,81 @@ function AiMultiBarBlock({
                     formatter={(v: unknown) => {
                       const n = Number(v ?? 0)
                       if (!Number.isFinite(n)) return ''
-                      return formatAiBarTopLabel(n, format as AiValueFormat)
+                      return formatAiBarTopLabel(n, valueFormat)
                     }}
                   />
                 ) : null}
               </Bar>
             ))}
           </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
+function AiScatterBlock({
+  title,
+  data,
+  xLabel,
+  yLabel,
+  xFormat = 'qty',
+  yFormat = 'ppm',
+}: Extract<AiBlock, { type: 'scatter' }>) {
+  if (!data.length) {
+    return (
+      <div className="rounded-xl border border-line p-3">
+        <p className="text-sm font-medium">{title}</p>
+        <p className="mt-2 text-sm text-muted">표시할 데이터가 없습니다.</p>
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-xl border border-line p-3">
+      <p className="text-sm font-medium">{title}</p>
+      <p className="mt-0.5 text-xs text-muted">
+        X: {xLabel} · Y: {yLabel}
+      </p>
+      <div className="mt-2 h-[320px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <ScatterChart margin={{ top: 16, right: 20, bottom: 12, left: 12 }}>
+            <CartesianGrid stroke="#eef1f5" />
+            <XAxis
+              type="number"
+              dataKey="x"
+              name={xLabel}
+              tick={{ fill: '#5b6577', fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v) => formatAiBarTopLabel(Number(v), xFormat)}
+            />
+            <YAxis
+              type="number"
+              dataKey="y"
+              name={yLabel}
+              tick={{ fill: '#5b6577', fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+              width={56}
+              tickFormatter={(v) => formatAiBarTopLabel(Number(v), yFormat)}
+            />
+            <ZAxis range={[60, 60]} />
+            <Tooltip
+              contentStyle={tipStyle()}
+              cursor={{ strokeDasharray: '3 3' }}
+              formatter={(value, name) => {
+                const fmt = name === xLabel ? xFormat : yFormat
+                return [formatAiBarTopLabel(Number(value ?? 0), fmt), String(name)]
+              }}
+              labelFormatter={(_, payload) => {
+                const row = payload?.[0]?.payload as
+                  | { name?: string }
+                  | undefined
+                return row?.name ?? ''
+              }}
+            />
+            <Scatter name="관측" data={data} fill={BAR_COLOR} />
+          </ScatterChart>
         </ResponsiveContainer>
       </div>
     </div>
@@ -889,6 +1018,7 @@ export function AiAnswerBlocks({ blocks }: { blocks: AiBlock[] }) {
         if (block.type === 'line') return <AiLineBlock key={key} {...block} />
         if (block.type === 'multiBar') return <AiMultiBarBlock key={key} {...block} />
         if (block.type === 'composed') return <AiComposedBlock key={key} {...block} />
+        if (block.type === 'scatter') return <AiScatterBlock key={key} {...block} />
         if (block.type === 'table') return <AiTableBlock key={key} {...block} />
         return null
       })}
