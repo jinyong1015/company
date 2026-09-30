@@ -338,7 +338,7 @@ export function ErrorData() {
                     key={r.id}
                     onClick={() => setSelected(r)}
                     onDoubleClick={() => requestEdit(r)}
-                    className={`pd-row-selectable ${isAdmin ? 'pd-row-editable' : ''} ${
+                    className={`pd-row-selectable ${
                       selected?.id === r.id ? 'pd-row-selected' : ''
                     }`}
                   >

@@ -677,7 +677,7 @@ function QualityTrendChart({
 }
 
 export function Dashboard() {
-  const { analytics, hasUploadedData, meta, records } = useData();
+  const { analytics, hasUploadedData, meta } = useData();
   const { filters, setAnalysisGroup } = useFilters();
   const {
     kpis,
