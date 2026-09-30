@@ -39,9 +39,11 @@ function toDateInput(d: Date) {
 function WorkerDetailBackNav({
   productName,
   productHref,
+  periodRange,
 }: {
   productName?: string
   productHref?: string
+  periodRange?: { start: string; end: string } | null
 }) {
   const toProduct = Boolean(productName && productHref)
 
@@ -86,12 +88,38 @@ function WorkerDetailBackNav({
           </span>
         ) : null}
 
+        {periodRange ? (
+          <span className="hidden shrink-0 rounded-xl border border-line bg-canvas px-3 py-2 text-right sm:block">
+            <span className="block text-[10px] font-semibold tracking-wide text-muted uppercase">
+              조회기간
+            </span>
+            <span className="num mt-0.5 block text-xs font-semibold text-ink">
+              {periodRange.start} ~ {periodRange.end}
+            </span>
+          </span>
+        ) : null}
+
         <ChevronRight
           size={20}
           className="shrink-0 text-muted/60 transition group-hover:translate-x-0.5 group-hover:text-accent"
           aria-hidden
         />
       </Link>
+      {(toProduct || periodRange) && (
+        <p className="mt-2 px-1 text-center text-xs font-medium text-muted sm:hidden">
+          {toProduct ? (
+            <span>
+              품번 <span className="font-semibold text-ink">{productName}</span>
+            </span>
+          ) : null}
+          {toProduct && periodRange ? <span className="mx-1.5">·</span> : null}
+          {periodRange ? (
+            <span className="num">
+              조회기간 {periodRange.start} ~ {periodRange.end}
+            </span>
+          ) : null}
+        </p>
+      )}
     </nav>
   )
 }
@@ -230,19 +258,25 @@ export function WorkerDetail() {
   const hasSelection = Boolean(activeProduct)
 
   const backNavProduct = productFromUrl || ''
-  const backNavProps = backNavProduct
-    ? {
-        productName: backNavProduct,
-        productHref: buildProductDetailReturnHref(
-          toEntityId('prd', backNavProduct),
-          searchParams,
-          {
-            worker: name,
-            workerId: id ?? toEntityId('wrk', name),
-          },
-        ),
-      }
-    : {}
+  const periodRange = urlDateRange
+    ? { start: urlDateRange.startDate, end: urlDateRange.endDate }
+    : null
+  const backNavProps = {
+    ...(backNavProduct
+      ? {
+          productName: backNavProduct,
+          productHref: buildProductDetailReturnHref(
+            toEntityId('prd', backNavProduct),
+            searchParams,
+            {
+              worker: name,
+              workerId: id ?? toEntityId('wrk', name),
+            },
+          ),
+        }
+      : {}),
+    periodRange,
+  }
 
   const visibleProducts = useMemo(() => {
     const q = productQuery.trim().toLowerCase()

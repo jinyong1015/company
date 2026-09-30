@@ -180,6 +180,9 @@ export function WeeklyReport() {
   const [snapshotSaving, setSnapshotSaving] = useState(false)
   const [activeSnapshot, setActiveSnapshot] =
     useState<WeeklyReportSnapshotRecord | null>(null)
+  // clear 시 React state와 Router searchParams가 한 틱 어긋나면
+  // URL snapshotId 자동 로드 effect가 스냅샷을 다시 불러오는 것을 막는다.
+  const clearingSnapshotRef = useRef(false)
 
   const monthlyView = useMemo(
     () => buildMonthlyReportView(records, metric, anchor),
@@ -211,7 +214,9 @@ export function WeeklyReport() {
     saveWeeklyReportPeriod(periodState)
     const nextParams = buildWeeklyReportSearchParams(periodState)
     const snapshotId = searchParams.get('snapshotId')
-    if (snapshotId) nextParams.set('snapshotId', snapshotId)
+    if (snapshotId && !clearingSnapshotRef.current) {
+      nextParams.set('snapshotId', snapshotId)
+    }
     if (!weeklyReportPeriodParamsEqual(searchParams, nextParams)) {
       setSearchParams(nextParams, { replace: true })
     }
@@ -293,6 +298,7 @@ export function WeeklyReport() {
     periodKeyRef.current = periodKey
 
     if (changed) {
+      clearingSnapshotRef.current = true
       setActiveSnapshot(null)
       setSearchParams(
         (prev) => {
@@ -490,12 +496,18 @@ export function WeeklyReport() {
   // URL snapshotId → 확정본 자동 로드 (상세에서 복귀 시)
   useEffect(() => {
     const id = searchParams.get('snapshotId')?.trim()
-    if (!id) return
+    if (!id) {
+      clearingSnapshotRef.current = false
+      if (activeSnapshot) setActiveSnapshot(null)
+      return
+    }
+    if (clearingSnapshotRef.current) return
     if (activeSnapshot?.id === id) return
     void handleSelectSnapshot(id, { silent: true })
-  }, [searchParams, activeSnapshot?.id, handleSelectSnapshot])
+  }, [searchParams, activeSnapshot, handleSelectSnapshot])
 
   const clearActiveSnapshot = useCallback(() => {
+    clearingSnapshotRef.current = true
     setActiveSnapshot(null)
     setSearchParams(
       (prev) => {
