@@ -98,7 +98,7 @@ type AxisTickProps = {
   x?: number
   y?: number
   index?: number
-  payload?: { value?: string }
+  payload?: { value?: string | number }
   photoUrls: Record<string, string>
   chartData: Array<WorstProductItem & { label: string }>
   photoSize: number
@@ -297,7 +297,14 @@ export function Worst5Card({
                   dataKey="label"
                   tick={(props) => (
                     <ProductAxisTick
-                      {...(props as AxisTickProps)}
+                      x={typeof props.x === 'number' ? props.x : Number(props.x) || 0}
+                      y={typeof props.y === 'number' ? props.y : Number(props.y) || 0}
+                      index={typeof props.index === 'number' ? props.index : 0}
+                      payload={
+                        props.payload
+                          ? { value: props.payload.value as string | number | undefined }
+                          : undefined
+                      }
                       photoUrls={photoUrls}
                       chartData={chartData}
                       photoSize={photoSize}
