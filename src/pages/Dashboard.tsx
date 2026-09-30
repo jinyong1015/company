@@ -17,7 +17,6 @@ import { KpiCard } from "../components/kpi/KpiCard";
 import { Panel } from "../components/common/Panel";
 import { PageHeader } from "../components/common/PageHeader";
 import { ResponsiveGrid } from "../components/common/ResponsiveGrid";
-import { EquipmentDefectHeatmap } from "../components/charts/EquipmentDefectHeatmap";
 import { useData } from "../context/DataContext";
 import {
   groupLabel,
@@ -26,9 +25,7 @@ import {
   type AnalysisGroupId,
 } from "../lib/groups";
 import { useFilters } from "../context/FilterContext";
-import { downloadExcel } from "../lib/download";
 import { buildProductDetailHref } from "../lib/productDetailNav";
-import { filterRecords } from "../lib/analyze";
 import { formatPercent, formatPpm, formatWon } from "../lib/format";
 import type {
   DailyTrend,
@@ -36,7 +33,7 @@ import type {
   GroupTrendSeries,
   ProductRow,
 } from "../types";
-import { AlertTriangle, FileSpreadsheet, Trophy } from "lucide-react";
+import { AlertTriangle, Trophy } from "lucide-react";
 
 const trendMetrics = [
   { id: "qty", label: "검수량" },
@@ -716,11 +713,6 @@ export function Dashboard() {
     return dailyTrends.map((d) => ({ ...d }));
   }, [showGrouped, groupTrends, dailyTrends, metric]);
 
-  const heatmapRecords = useMemo(
-    () => filterRecords(records, filters, true),
-    [records, filters],
-  );
-
   return (
     <div className="space-y-5">
       <PageHeader
@@ -729,27 +721,6 @@ export function Dashboard() {
           hasUploadedData
             ? `${meta.fileName} · ${groupLabel(filters.analysisGroup)} 기준 품질 현황`
             : `${groupLabel(filters.analysisGroup)} 기준 품질 현황`
-        }
-        actions={
-          <button
-            type="button"
-            onClick={() =>
-              downloadExcel(
-                "대시보드.xlsx",
-                groupSummaries.map((g) => ({
-                  그룹: g.label,
-                  검수량: g.qty,
-                  부적합률_ppm: g.failRate,
-                  부적합수량: g.fail,
-                  폐기비용: g.scrapCost,
-                })),
-              )
-            }
-            className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-2 text-sm hover:bg-canvas"
-          >
-            <FileSpreadsheet size={15} />
-            Excel 다운로드
-          </button>
         }
       />
 
@@ -817,10 +788,6 @@ export function Dashboard() {
           />
         </div>
       </section>
-
-      <Panel title="설비 × 불량 유형 히트맵">
-        <EquipmentDefectHeatmap records={heatmapRecords} />
-      </Panel>
 
       <ProductDefectTop10
         products={products}
