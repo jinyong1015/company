@@ -28,6 +28,7 @@ import { Panel } from "../components/common/Panel";
 import { ResponsiveGrid } from "../components/common/ResponsiveGrid";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { DefectPieChart } from "../components/charts/DefectCharts";
+import { ProductPhotoPanel } from "../components/product/ProductPhotoPanel";
 import { useData } from "../context/DataContext";
 import {
   cloneFilterState,
@@ -558,6 +559,8 @@ function ProductDetailBody({
           </div>
         ))}
       </ResponsiveGrid>
+
+      <ProductPhotoPanel productKey={name} />
 
       <ResponsiveGrid variant="split">
         <Panel

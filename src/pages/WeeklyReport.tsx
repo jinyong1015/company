@@ -157,6 +157,14 @@ export function WeeklyReport() {
   const { records } = useData()
   const { isAdmin, openLogin } = useAdmin()
   const { pushToast } = useToast()
+  const productOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const r of records) {
+      const name = r.product?.trim()
+      if (name && name !== '미지정') set.add(name)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [records])
   const anchor = new Date()
   const [searchParams, setSearchParams] = useSearchParams()
   const [initialPeriod] = useState(() =>
@@ -883,6 +891,7 @@ export function WeeklyReport() {
                 </Panel>
                 <WeeklyIssuePanel
                   issues={shownIssues}
+                  productOptions={productOptions}
                   onSave={handleSaveIssues}
                   onAiGenerate={handleAiGenerateIssues}
                   saving={issuesSaving}

@@ -12,6 +12,8 @@ import {
   YAxis,
 } from 'recharts'
 import { formatPpm, formatPpmAsPercent } from '../../lib/format'
+import { getProductPhotoUrlMap } from '../../lib/productPhotos'
+import { isCloudSyncEnabled } from '../../lib/supabase'
 import { buildWeeklyReportProductLink } from '../../lib/weeklyReport'
 import type { WeeklyReportPeriodState } from '../../lib/weeklyReportPeriod'
 import type { WorstProductItem } from '../../types'
@@ -92,6 +94,73 @@ function MinQtyThresholdControl({
   )
 }
 
+type AxisTickProps = {
+  x?: number
+  y?: number
+  index?: number
+  payload?: { value?: string }
+  photoUrls: Record<string, string>
+  chartData: Array<WorstProductItem & { label: string }>
+  photoSize: number
+  fontSize: number
+}
+
+/** 막대 아래 · 품번 라벨 위에 제품 사진 (있을 때만) */
+function ProductAxisTick({
+  x = 0,
+  y = 0,
+  index = 0,
+  payload,
+  photoUrls,
+  chartData,
+  photoSize,
+  fontSize,
+}: AxisTickProps) {
+  const item = chartData[index]
+  const product = item?.product?.trim() ?? ''
+  const url = product ? photoUrls[product] : undefined
+  const label = String(payload?.value ?? item?.label ?? '')
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      {url ? (
+        <foreignObject
+          x={-photoSize / 2}
+          y={2}
+          width={photoSize}
+          height={photoSize}
+        >
+          <img
+            src={url}
+            alt=""
+            title={product}
+            width={photoSize}
+            height={photoSize}
+            style={{
+              width: photoSize,
+              height: photoSize,
+              objectFit: 'cover',
+              borderRadius: 4,
+              border: '1px solid #e2e8f0',
+              display: 'block',
+            }}
+            referrerPolicy="no-referrer"
+          />
+        </foreignObject>
+      ) : null}
+      <text
+        x={0}
+        y={url ? photoSize + 14 : 12}
+        textAnchor="middle"
+        fill="#5b6577"
+        fontSize={fontSize}
+      >
+        {label}
+      </text>
+    </g>
+  )
+}
+
 export function Worst5Card({
   title,
   color,
@@ -112,6 +181,28 @@ export function Worst5Card({
   variant?: 'default' | 'fullscreen'
 }) {
   const isFullscreen = variant === 'fullscreen'
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+
+  const productKeys = useMemo(() => {
+    const keys = items.map((i) => i.product.trim()).filter(Boolean)
+    return [...new Set(keys)].sort()
+  }, [items])
+  const productKeysSignature = productKeys.join('\u0001')
+
+  useEffect(() => {
+    if (!isCloudSyncEnabled() || !productKeys.length) {
+      setPhotoUrls({})
+      return
+    }
+    let cancelled = false
+    void getProductPhotoUrlMap(productKeys).then((map) => {
+      if (!cancelled) setPhotoUrls(map)
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productKeysSignature])
 
   const chartData = useMemo(
     () =>
@@ -136,9 +227,17 @@ export function Worst5Card({
     return Math.max(44, Math.min(56, sample.length * 8 + 10))
   }, [yMax])
 
+  const photoSize = isFullscreen ? 56 : 48
+  const hasAnyPhoto = useMemo(
+    () => items.some((item) => Boolean(photoUrls[item.product.trim()])),
+    [items, photoUrls],
+  )
+  const xAxisHeight = hasAnyPhoto ? photoSize + 32 : 42
+  const topMargin = 18
+
   const chartHeight = isFullscreen
-    ? Math.max(280, items.length * 44 + 72)
-    : Math.max(220, items.length * 34 + 56)
+    ? Math.max(300, items.length * 44 + 72) + (hasAnyPhoto ? photoSize + 8 : 0)
+    : Math.max(240, items.length * 34 + 56) + (hasAnyPhoto ? photoSize + 8 : 0)
 
   const labelFontSize = isFullscreen ? 11 : 9
   const valueFontSize = isFullscreen ? 12 : 10
@@ -190,20 +289,26 @@ export function Worst5Card({
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={chartData}
-                margin={{ top: 18, right: 8, left: 4, bottom: 4 }}
+                margin={{ top: topMargin, right: 8, left: 4, bottom: 4 }}
                 barCategoryGap="18%"
               >
                 <CartesianGrid stroke="#eef1f5" vertical={false} />
                 <XAxis
                   dataKey="label"
-                  tick={{ fontSize: labelFontSize, fill: '#5b6577' }}
+                  tick={(props) => (
+                    <ProductAxisTick
+                      {...(props as AxisTickProps)}
+                      photoUrls={photoUrls}
+                      chartData={chartData}
+                      photoSize={photoSize}
+                      fontSize={labelFontSize}
+                    />
+                  )}
                   axisLine={false}
                   tickLine={false}
                   interval={0}
-                  angle={0}
-                  textAnchor="middle"
-                  height={42}
-                  tickMargin={8}
+                  height={xAxisHeight}
+                  tickMargin={hasAnyPhoto ? 0 : 8}
                   padding={{ left: 8, right: 8 }}
                 />
                 <YAxis
