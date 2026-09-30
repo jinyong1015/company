@@ -269,13 +269,13 @@ export function WeeklyReport() {
 
   const periodKey = periodKeyFromPeriod(weeklyDetail.period)
 
-  // 기간이 바뀌면 일단 로컬/자동 이슈를 보여주고, 이어서 원격 동기화
+  // 기간이 바뀌면 일단 자동 이슈를 보여주고, 이어서 원격 동기화
   useEffect(() => {
     setIssues(weeklyDetail.issues)
     setIssuesHydratedKey(null)
   }, [periodKey]) // eslint-disable-line react-hooks/exhaustive-deps -- period 변경 시에만 초기화
 
-  // PC 간 공유: 원격(Supabase) 이슈를 불러와 반영 (원격이 있으면 항상 우선)
+  // 원격(Supabase)만 Source of Truth. 있으면 반영, 없으면 자동 이슈 유지(로컬 재업로드 없음)
   useEffect(() => {
     if (!isCloudSyncEnabled()) {
       setIssuesHydratedKey(periodKey)
@@ -285,15 +285,19 @@ export function WeeklyReport() {
     ;(async () => {
       const synced = await syncWeeklyIssues(periodKey)
       if (cancelled) return
-      if (synced) setIssues(synced)
+      if (synced) {
+        setIssues(synced)
+      } else {
+        setIssues(weeklyDetail.issues)
+      }
       setIssuesHydratedKey(periodKey)
     })()
     return () => {
       cancelled = true
     }
-  }, [periodKey])
+  }, [periodKey]) // eslint-disable-line react-hooks/exhaustive-deps -- period 변경 시 원격 조회
 
-  // weeklyDetail이 같은 기간에서 재계산되어도, 이미 원격 반영된 이슈는 덮어쓰지 않음
+  // 클라우드 미사용: weeklyDetail 재계산 시 이슈 반영
   useEffect(() => {
     if (issuesHydratedKey === periodKey) return
     if (isCloudSyncEnabled()) return

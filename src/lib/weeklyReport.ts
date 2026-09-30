@@ -495,7 +495,9 @@ export function loadWeeklyIssues(periodKey: string): WeeklyIssue[] | null {
     const raw = localStorage.getItem(ISSUE_STORAGE_KEY)
     if (!raw) return null
     const all = JSON.parse(raw) as Record<string, WeeklyIssue[]>
-    return all[periodKey] ?? null
+    const issues = all[periodKey]
+    if (!issues || !Array.isArray(issues) || issues.length === 0) return null
+    return issues
   } catch {
     return null
   }
@@ -505,21 +507,37 @@ function saveWeeklyIssuesLocal(periodKey: string, issues: WeeklyIssue[]) {
   try {
     const raw = localStorage.getItem(ISSUE_STORAGE_KEY)
     const all = raw ? (JSON.parse(raw) as Record<string, WeeklyIssue[]>) : {}
-    all[periodKey] = issues
+    if (issues.length === 0) {
+      delete all[periodKey]
+    } else {
+      all[periodKey] = issues
+    }
     localStorage.setItem(ISSUE_STORAGE_KEY, JSON.stringify(all))
   } catch {
     /* ignore */
   }
 }
 
-/** 로컬 캐시 + (설정 시) Supabase 공유 저장 */
+function clearWeeklyIssuesLocal(periodKey: string) {
+  saveWeeklyIssuesLocal(periodKey, [])
+}
+
+/**
+ * 주간 ISSUE 저장.
+ * - 내용 있음 → 로컬 캐시 + Supabase upsert
+ * - 내용 없음([]) → 로컬 캐시 제거 + 원격 행 삭제 (빈 행을 남기지 않음)
+ */
 export async function saveWeeklyIssues(
   periodKey: string,
   issues: WeeklyIssue[],
 ): Promise<{ ok: boolean; synced: boolean; error?: string }> {
-  saveWeeklyIssuesLocal(periodKey, issues)
-  const remote = await pushWeeklyIssuesRemote(periodKey, issues)
-  return remote
+  const cleaned = issues.filter((i) => i.title.trim() || i.bullets.length > 0)
+  if (cleaned.length === 0) {
+    clearWeeklyIssuesLocal(periodKey)
+    return deleteWeeklyIssuesRemote(periodKey)
+  }
+  saveWeeklyIssuesLocal(periodKey, cleaned)
+  return pushWeeklyIssuesRemote(periodKey, cleaned)
 }
 
 export async function fetchWeeklyIssuesRemote(
@@ -536,7 +554,9 @@ export async function fetchWeeklyIssuesRemote(
     console.warn('[weekly-issues] fetch failed', error.message)
     return null
   }
-  if (!data?.issues || !Array.isArray(data.issues)) return null
+  if (!data || !Array.isArray(data.issues)) return null
+  // 빈 [] 행은 “저장된 이슈 없음”으로 취급 (자동 이슈 표시)
+  if (data.issues.length === 0) return null
   return data.issues as WeeklyIssue[]
 }
 
@@ -547,6 +567,9 @@ export async function pushWeeklyIssuesRemote(
   const supabase = getSupabase()
   if (!supabase) {
     return { ok: true, synced: false }
+  }
+  if (issues.length === 0) {
+    return deleteWeeklyIssuesRemote(periodKey)
   }
   const { error } = await supabase.from('weekly_report_issues').upsert(
     {
@@ -563,10 +586,28 @@ export async function pushWeeklyIssuesRemote(
   return { ok: true, synced: true }
 }
 
+async function deleteWeeklyIssuesRemote(
+  periodKey: string,
+): Promise<{ ok: boolean; synced: boolean; error?: string }> {
+  const supabase = getSupabase()
+  if (!supabase) {
+    return { ok: true, synced: false }
+  }
+  const { error } = await supabase
+    .from('weekly_report_issues')
+    .delete()
+    .eq('period_key', periodKey)
+  if (error) {
+    console.warn('[weekly-issues] delete failed', error.message)
+    return { ok: false, synced: false, error: error.message }
+  }
+  return { ok: true, synced: true }
+}
+
 /**
- * 원격 우선으로 동기화.
- * - 원격에 있으면 로컬 캐시 갱신 후 반환
- * - 원격 없고 로컬만 있으면 원격으로 업로드(다른 PC로 이전)
+ * 원격(Supabase)만 Source of Truth. 로컬은 캐시.
+ * - 원격에 내용 있음 → 로컬 캐시 갱신 후 반환
+ * - 원격 없음(또는 빈 []) → 로컬을 원격으로 올리지 않음, null 반환(자동 이슈 사용)
  */
 export async function syncWeeklyIssues(
   periodKey: string,
@@ -576,11 +617,9 @@ export async function syncWeeklyIssues(
     saveWeeklyIssuesLocal(periodKey, remote)
     return remote
   }
-  const local = loadWeeklyIssues(periodKey)
-  if (local && isCloudSyncEnabled()) {
-    await pushWeeklyIssuesRemote(periodKey, local)
-  }
-  return local
+  // 원격에 없음 → 예전 로컬이 다시 업로드되지 않도록 캐시만 정리
+  clearWeeklyIssuesLocal(periodKey)
+  return null
 }
 
 export function buildWeeklyReportDetail(
@@ -622,7 +661,9 @@ export function buildWeeklyReportDetail(
     prev.weekOfMonth,
     worst5Thresholds,
   )
-  const saved = loadWeeklyIssues(periodKey)
+  // 클라우드 사용 시 원격이 SoT — 상세 기본값은 자동 이슈.
+  // 오프라인(로컬만)일 때만 localStorage 저장본을 사용.
+  const saved = isCloudSyncEnabled() ? null : loadWeeklyIssues(periodKey)
   const detail: WeeklyReportDetail = {
     period,
     title: `${year}년 ${weekLabel(month, weekOfMonth)} 완성품 부적합 현황`,
@@ -692,7 +733,7 @@ export function buildWeeklyReportDetailByDateRange(
     prev.weekOfMonth,
     worst5Thresholds,
   )
-  const saved = loadWeeklyIssues(periodKey)
+  const saved = isCloudSyncEnabled() ? null : loadWeeklyIssues(periodKey)
   const detail: WeeklyReportDetail = {
     period,
     title: `사용자 지정 기간 완성품 부적합 현황`,
