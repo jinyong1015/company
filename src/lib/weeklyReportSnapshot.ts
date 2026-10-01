@@ -1,5 +1,7 @@
 import { getSupabase, isCloudSyncEnabled } from './supabase'
+import type { NonconformityPhotoRow } from './nonconformityPhotos'
 import type {
+  CustomerNcItem,
   InspectionRecord,
   WeeklyIssue,
   WeeklyReportDetail,
@@ -7,12 +9,22 @@ import type {
   WeeklyReportMonthlyView,
 } from '../types'
 
+/** 스냅샷에 동결 저장되는 부적합 사진 메타 (signed URL 제외) */
+export type CustomerNcPhotoSnapshot = NonconformityPhotoRow
+
 /** Supabase에 저장되는 스냅샷 본문 */
 export type WeeklyReportSnapshotPayload = {
   period: WeeklyReportDetail['period']
   title: string
   productionRows: WeeklyReportDetail['productionRows']
   issues: WeeklyIssue[]
+  /** 고객사 부적합 현황. 구버전 스냅샷에는 없을 수 있음 */
+  customerNc?: CustomerNcItem[]
+  /**
+   * 고객사 부적합 사진 (행 id → 메타). Storage 경로 포함.
+   * 확정본 시점의 사진을 보존. 구버전 스냅샷에는 없을 수 있음.
+   */
+  customerNcPhotos?: Record<string, CustomerNcPhotoSnapshot[]>
   worst5: WeeklyReportDetail['worst5']
   worst5Thresholds: WeeklyReportDetail['worst5Thresholds']
   /** 월별 현황(지표별). 구버전 스냅샷에는 없을 수 있음 */

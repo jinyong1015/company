@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { CalendarRange, Maximize2 } from 'lucide-react'
 import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
+import { CustomerNcPanel } from '../components/weekly-report/CustomerNcPanel'
 import { MonthlyTrendSection } from '../components/weekly-report/MonthlyTrendSection'
 import { WeeklyFullscreenOverlay } from '../components/weekly-report/WeeklyFullscreenOverlay'
 import { WeeklyIssuePanel } from '../components/weekly-report/WeeklyIssuePanel'
@@ -29,6 +30,11 @@ import {
   syncWeeklyIssues,
   WEEKLY_REPORT_ORGS,
 } from '../lib/weeklyReport'
+import {
+  loadCustomerNc,
+  saveCustomerNc,
+  syncCustomerNc,
+} from '../lib/weeklyReportCustomerNc'
 import { cacheWeeklySnapshotDetailRecords } from '../lib/weeklySnapshotDetailCache'
 import {
   formatProductionQueryPeriodTitle,
@@ -45,8 +51,14 @@ import {
   type WeeklyReportPeriodMode,
   type WeeklyReportPeriodState,
 } from '../lib/weeklyReportPeriod'
-import type { WeeklyReportMetric, WeeklyReportOrgId, InspectionRecord } from '../types'
+import type {
+  CustomerNcItem,
+  WeeklyReportMetric,
+  WeeklyReportOrgId,
+  InspectionRecord,
+} from '../types'
 import { isCloudSyncEnabled } from '../lib/supabase'
+import { listNonconformityPhotoRowsByIds } from '../lib/nonconformityPhotos'
 import {
   deleteWeeklyReportSnapshot,
   fetchWeeklyReportSnapshot,
@@ -184,6 +196,11 @@ export function WeeklyReport() {
     loadWorst5Thresholds(),
   )
   const [issuesSaving, setIssuesSaving] = useState(false)
+  const [customerNc, setCustomerNc] = useState<CustomerNcItem[]>([])
+  const [customerNcHydratedKey, setCustomerNcHydratedKey] = useState<
+    string | null
+  >(null)
+  const [customerNcSaving, setCustomerNcSaving] = useState(false)
   const [snapshotList, setSnapshotList] = useState<WeeklyReportSnapshotMeta[]>([])
   const [snapshotListLoading, setSnapshotListLoading] = useState(false)
   const [snapshotSaving, setSnapshotSaving] = useState(false)
@@ -191,6 +208,10 @@ export function WeeklyReport() {
     useState<WeeklyReportSnapshotRecord | null>(null)
   const [productionFullscreen, setProductionFullscreen] = useState(false)
   const [worst5Fullscreen, setWorst5Fullscreen] = useState(false)
+  const [pendingDeleteSnapshotId, setPendingDeleteSnapshotId] = useState<
+    string | null
+  >(null)
+  const [snapshotDeleting, setSnapshotDeleting] = useState(false)
   // clear 시 React state와 Router searchParams가 한 틱 어긋나면
   // URL snapshotId 자동 로드 effect가 스냅샷을 다시 불러오는 것을 막는다.
   const clearingSnapshotRef = useRef(false)
@@ -304,6 +325,31 @@ export function WeeklyReport() {
     setIssues(weeklyDetail.issues)
   }, [weeklyDetail, periodKey, issuesHydratedKey])
 
+  // 고객사 부적합 현황 — 기간 변경 시 초기화 후 원격/로컬 동기화
+  useEffect(() => {
+    setCustomerNc([])
+    setCustomerNcHydratedKey(null)
+  }, [periodKey])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!isCloudSyncEnabled()) {
+        if (cancelled) return
+        setCustomerNc(loadCustomerNc(periodKey) ?? [])
+        setCustomerNcHydratedKey(periodKey)
+        return
+      }
+      const synced = await syncCustomerNc(periodKey)
+      if (cancelled) return
+      setCustomerNc(synced)
+      setCustomerNcHydratedKey(periodKey)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [periodKey])
+
   // 기간(주차·지정기간) 변경 시 스냅샷 보기만 해제
   // (첫 마운트에서는 URL snapshotId를 유지해 상세에서 복귀할 수 있게 함)
   const periodKeyRef = useRef<string | null>(null)
@@ -361,14 +407,16 @@ export function WeeklyReport() {
     [records],
   )
 
-  // 데이터 재업로드 등으로 선택 월에 실적이 없어지면 최신 데이터 월로 이동
+  // 데이터 재업로드 등으로 선택 월에 실적이 없어진 경우에만 최신 데이터 월로 이동.
+  // selectedMonthKey를 deps에 넣으면 실적 없는 월을 골라도 즉시 되돌아가 제목이 안 바뀌는 것처럼 보인다.
   useEffect(() => {
     if (!records.length) return
     if (monthHasAnalyzableData(records, selectedMonthKey)) return
     const nextMonth = defaultMonthKey(records, new Date())
     if (nextMonth === selectedMonthKey) return
     handleMonthSelect(nextMonth)
-  }, [records, selectedMonthKey, handleMonthSelect])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- records 변경 시에만 보정
+  }, [records])
 
   const handleWeekSelect = useCallback(
     (weekOfMonth: number) => {
@@ -431,6 +479,11 @@ export function WeeklyReport() {
         weeklyDetail.worst5,
       )
 
+      const customerNcPhotos = await listNonconformityPhotoRowsByIds(
+        customerNc.map((item) => item.id),
+        periodKey,
+      )
+
       const result = await saveWeeklyReportSnapshot({
         periodKey,
         title: weeklyDetail.title,
@@ -439,6 +492,8 @@ export function WeeklyReport() {
           title: weeklyDetail.title,
           productionRows: weeklyDetail.productionRows,
           issues,
+          customerNc,
+          customerNcPhotos,
           worst5: weeklyDetail.worst5,
           worst5Thresholds: weeklyDetail.worst5Thresholds,
           monthlyByMetric,
@@ -467,6 +522,7 @@ export function WeeklyReport() {
     periodKey,
     weeklyDetail,
     issues,
+    customerNc,
     refreshSnapshotList,
     records,
     anchor,
@@ -539,13 +595,21 @@ export function WeeklyReport() {
   }, [setSearchParams])
 
   const handleDeleteSnapshot = useCallback(
-    async (id: string) => {
+    (id: string) => {
       if (!isAdmin) {
         openLogin()
         return
       }
-      const confirmed = window.confirm('이 확정본을 삭제할까요?')
-      if (!confirmed) return
+      setPendingDeleteSnapshotId(id)
+    },
+    [isAdmin, openLogin],
+  )
+
+  const handleConfirmDeleteSnapshot = useCallback(async () => {
+    const id = pendingDeleteSnapshotId
+    if (!id || snapshotDeleting) return
+    setSnapshotDeleting(true)
+    try {
       const result = await deleteWeeklyReportSnapshot(id)
       if (!result.ok) {
         pushToast(`스냅샷 삭제 실패: ${result.error ?? '알 수 없음'}`, 'error')
@@ -553,10 +617,19 @@ export function WeeklyReport() {
       }
       if (activeSnapshot?.id === id) clearActiveSnapshot()
       pushToast('확정본을 삭제했습니다.', 'success')
+      setPendingDeleteSnapshotId(null)
       await refreshSnapshotList()
-    },
-    [isAdmin, openLogin, pushToast, activeSnapshot?.id, refreshSnapshotList, clearActiveSnapshot],
-  )
+    } finally {
+      setSnapshotDeleting(false)
+    }
+  }, [
+    pendingDeleteSnapshotId,
+    snapshotDeleting,
+    pushToast,
+    activeSnapshot?.id,
+    clearActiveSnapshot,
+    refreshSnapshotList,
+  ])
 
   const handleSaveIssues = useCallback(
     async (next: typeof issues) => {
@@ -591,6 +664,53 @@ export function WeeklyReport() {
         }
       } finally {
         setIssuesSaving(false)
+      }
+    },
+    [weeklyDetail.period, pushToast, isAdmin, openLogin, activeSnapshot],
+  )
+
+  const handleSaveCustomerNc = useCallback(
+    async (next: CustomerNcItem[]) => {
+      if (!isAdmin) {
+        pushToast(
+          '고객사 부적합 현황 수정은 관리자 모드에서만 가능합니다.',
+          'info',
+        )
+        openLogin()
+        return
+      }
+      if (activeSnapshot) {
+        pushToast(
+          '스냅샷 보기 중에는 고객사 부적합 현황을 수정할 수 없습니다.',
+          'info',
+        )
+        return
+      }
+      const key = periodKeyFromPeriod(weeklyDetail.period)
+      setCustomerNc(next)
+      setCustomerNcSaving(true)
+      try {
+        const result = await saveCustomerNc(key, next)
+        if (!result.ok) {
+          pushToast(
+            `고객사 부적합은 이 PC에만 저장되었습니다. 공유 저장 실패: ${result.error ?? '알 수 없음'}`,
+            'error',
+          )
+          return
+        }
+        if (result.synced) {
+          pushToast(
+            '고객사 부적합 현황을 저장했습니다. 다른 PC에서도 동일하게 보입니다.',
+            'success',
+          )
+        } else {
+          pushToast(
+            '이 PC에만 저장되었습니다. (공유 연결 실패 — 네트워크·Supabase 설정을 확인해 주세요.)',
+            'info',
+          )
+        }
+      } finally {
+        setCustomerNcSaving(false)
       }
     },
     [weeklyDetail.period, pushToast, isAdmin, openLogin, activeSnapshot],
@@ -651,6 +771,22 @@ export function WeeklyReport() {
   const shownTitle = activeSnapshot?.payload.title ?? weeklyDetail.title
   const shownPeriod = activeSnapshot?.payload.period ?? weeklyDetail.period
   const shownIssues = activeSnapshot?.payload.issues ?? issues
+  const shownCustomerNc = viewingSnapshot
+    ? (activeSnapshot?.payload.customerNc ?? [])
+    : customerNc
+  /** 스냅샷에 customerNcPhotos 키가 있으면 동결본 사용, 없으면(구버전) 해당 period 실시간 조회 */
+  const shownCustomerNcPhotos = useMemo(() => {
+    if (!viewingSnapshot || !activeSnapshot) return undefined
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        activeSnapshot.payload,
+        'customerNcPhotos',
+      )
+    ) {
+      return undefined
+    }
+    return activeSnapshot.payload.customerNcPhotos ?? {}
+  }, [viewingSnapshot, activeSnapshot])
   const shownProductionRows =
     activeSnapshot?.payload.productionRows ?? displayProductionRows
   const shownWorst5 = activeSnapshot?.payload.worst5 ?? weeklyDetail.worst5
@@ -733,12 +869,19 @@ export function WeeklyReport() {
   return (
     <div className="space-y-5">
       <PageHeader title="주간업무 보고" />
-      <MonthlyTrendSection
-        view={shownMonthlyView}
-        metric={metric}
-        onMetricChange={setMetric}
-        selectedMonthKey={shownSelectedMonthKey}
-        onMonthSelect={viewingSnapshot ? () => undefined : handleMonthSelect}
+
+      <WeeklySnapshotBar
+        isAdmin={isAdmin}
+        cloudReady={isCloudSyncEnabled()}
+        saving={snapshotSaving}
+        loadingList={snapshotListLoading}
+        snapshots={snapshotList}
+        activeSnapshotId={activeSnapshot?.id ?? null}
+        onSave={() => void handleSaveSnapshot()}
+        onSelect={(id) => void handleSelectSnapshot(id)}
+        onClear={clearActiveSnapshot}
+        onDelete={handleDeleteSnapshot}
+        onRequestLogin={openLogin}
       />
 
       <div className="space-y-4">
@@ -858,18 +1001,38 @@ export function WeeklyReport() {
 
         {!rangeInvalid ? (
           <>
-            <WeeklySnapshotBar
-              isAdmin={isAdmin}
-              cloudReady={isCloudSyncEnabled()}
-              saving={snapshotSaving}
-              loadingList={snapshotListLoading}
-              snapshots={snapshotList}
-              activeSnapshotId={activeSnapshot?.id ?? null}
-              onSave={() => void handleSaveSnapshot()}
-              onSelect={(id) => void handleSelectSnapshot(id)}
-              onClear={clearActiveSnapshot}
-              onDelete={(id) => void handleDeleteSnapshot(id)}
+            <CustomerNcPanel
+              items={shownCustomerNc}
+              productOptions={productOptions}
+              periodKey={
+                viewingSnapshot
+                  ? shownCustomerNcPhotos !== undefined
+                    ? `snapshot:${activeSnapshot?.id ?? ''}`
+                    : (activeSnapshot?.periodKey ?? periodKey)
+                  : periodKey
+              }
+              periodLabel={
+                shownPeriod.isCustom
+                  ? `${shownPeriod.startDate} ~ ${shownPeriod.endDate}`
+                  : shownPeriod.label
+              }
+              frozenPhotos={shownCustomerNcPhotos}
+              onSave={handleSaveCustomerNc}
+              saving={customerNcSaving}
+              cloudSync={isCloudSyncEnabled()}
+              syncReady={
+                viewingSnapshot || customerNcHydratedKey === periodKey
+              }
+              canEdit={isAdmin && !viewingSnapshot}
               onRequestLogin={openLogin}
+            />
+
+            <MonthlyTrendSection
+              view={shownMonthlyView}
+              metric={metric}
+              onMetricChange={setMetric}
+              selectedMonthKey={shownSelectedMonthKey}
+              onMonthSelect={handleMonthSelect}
             />
 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -990,6 +1153,49 @@ export function WeeklyReport() {
           </>
         ) : null}
       </div>
+
+      {pendingDeleteSnapshotId ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-end justify-center bg-ink/40 p-4 backdrop-blur-[2px] sm:items-center"
+          role="presentation"
+          onClick={() => {
+            if (!snapshotDeleting) setPendingDeleteSnapshotId(null)
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-line bg-white px-8 py-8 shadow-xl sm:max-w-lg"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="snapshot-delete-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p
+              id="snapshot-delete-title"
+              className="text-center text-lg font-semibold text-ink sm:text-xl"
+            >
+              정말 삭제하시겠습니까?
+            </p>
+            <div className="mt-8 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                className="btn btn-primary py-3 text-base"
+                disabled={snapshotDeleting}
+                onClick={() => void handleConfirmDeleteSnapshot()}
+              >
+                {snapshotDeleting ? '삭제 중…' : '예'}
+              </button>
+              <button
+                type="button"
+                className="btn py-3 text-base"
+                disabled={snapshotDeleting}
+                onClick={() => setPendingDeleteSnapshotId(null)}
+              >
+                아니요
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

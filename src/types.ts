@@ -358,6 +358,24 @@ export interface WeeklyIssue {
   bullets: string[]
 }
 
+/** 주간업무 보고 · 고객사 부적합 현황 1행 */
+export interface CustomerNcItem {
+  id: string
+  order: number
+  /** 발생일 (표시용 문자열, 예: 9/22 또는 2026-09-22) */
+  occurredOn: string
+  /** 발생장소 */
+  location: string
+  /** 발생수량 (예: 3ea) */
+  quantity: string
+  /** 품번 — 제품 사진 조회용 */
+  product?: string
+  /** 부적합명 (품번 외 설명, 줄바꿈 가능) */
+  defectName: string
+  /** 조치현황 (줄바꿈 가능) */
+  actions: string
+}
+
 export interface WeeklyReportDetail {
   period: WeekPeriod
   title: string

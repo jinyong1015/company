@@ -666,7 +666,7 @@ export function buildWeeklyReportDetail(
   const saved = isCloudSyncEnabled() ? null : loadWeeklyIssues(periodKey)
   const detail: WeeklyReportDetail = {
     period,
-    title: `${year}년 ${weekLabel(month, weekOfMonth)} 완성품 부적합 현황`,
+    title: `${year}년 ${weekLabel(month, weekOfMonth)} 주간보고 현황`,
     productionRows,
     issues: [],
     worst5,
@@ -736,7 +736,7 @@ export function buildWeeklyReportDetailByDateRange(
   const saved = isCloudSyncEnabled() ? null : loadWeeklyIssues(periodKey)
   const detail: WeeklyReportDetail = {
     period,
-    title: `사용자 지정 기간 완성품 부적합 현황`,
+    title: `사용자 지정 기간 주간보고 현황`,
     productionRows,
     issues: [],
     worst5,

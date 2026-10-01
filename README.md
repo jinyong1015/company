@@ -176,6 +176,7 @@ npm run admin:hash -- "비밀번호"   # ADMIN_PASSWORD_HASH 생성
 - 최근 12개월 월별 추세 + 주간 상세(단일 페이지)
 - 주차 모드 / **사용자 지정 기간**
 - 주간 생산·검사 실적, ISSUE, 조직별 부적합 WORST 5
+- **고객사 부적합 현황** — 스냅샷 아래 표(발생일·장소·수량·부적합명·조치). 관리자 편집, 품번 사진, Supabase SoT, 스냅샷 포함
 - **전체화면 보기** — 월별·실적·ISSUE·WORST 5 오버레이
 - **확정 스냅샷** — Supabase에 저장·월별 목록·`snapshotId` 드릴다운
 - **주간 ISSUE** — Supabase가 원본(`period_key`당 1행 덮어쓰기). 저장 시에만 업로드, 빈 내용은 행 삭제. 편집 시 **품번 찾기**로 제품 사진 연결
@@ -249,7 +250,7 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 | 비용 분석 | 재무적 손실 가시화 | 폐기비용 품번 TOP · 다차원 폐기비용(원) | 현장 책임자 |
 | 성형작업자 분석 | 성형 실적·부적합 | 부적합수량 TOP · 작업자 상세(·품번 복귀) | 생산·품질관리자 |
 | AI 챗봇 | 자연어 품질 질의 | 인사/팁/추천칩 · %p·가중평균·기여·주간추이 · 조건덮어쓰기·drill-down · 현장식 해석 | 전 관리자 |
-| 주간업무 보고 | 주간 품질 보고 | 월·주·WORST 5(사진)·ISSUE(품번·사진)·스냅샷·전체화면 | 품질·검사관리자 |
+| 주간업무 보고 | 주간 품질 보고 | 월·주·고객사 부적합·WORST 5(사진)·ISSUE(품번·사진)·스냅샷·전체화면 | 품질·검사관리자 |
 | 스마트 비교 | 조건별 즉시 비교 | 품번 기간 비교 · 검사자 UPH | 품질·검사관리자 |
 | 검사 DATA | 원본 검사 이력 조회 | 정상·경고 검색·정렬·Excel · (관리자) 수정·변경 이력 | 검사·품질관리자 |
 | 오류 DATA | 오류 행 점검·수정 | 오류 전용 목록 · (관리자) 재검증 후 검사 DATA 이동 | 검사·품질관리자 |
@@ -265,8 +266,10 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 - 업로드 데이터는 `localStorage`의 `inspection-analytics-records`에 저장하고, 없으면 번들 시드 데이터로 시작합니다.
 - 전역 필터·일부 목록 조회 상태는 `sessionStorage`, 테마·AI 팝업 대화·주간 보고 일부 설정은 `localStorage`에 보관합니다.
 - **주간 ISSUE**는 Supabase `weekly_report_issues`가 원본입니다. 로컬은 캐시이며, 원격이 없을 때 로컬을 자동 재업로드하지 않습니다. 저장(관리자) 시에만 upsert하고, 빈 내용은 원격 행을 삭제합니다.
-- **제품 사진**은 Supabase Storage(`product-photos`) + DB(`product_photos`)에 두고, 주간 ISSUE·WORST 5는 품번 키로 조회만 합니다.
-- **주간 스냅샷**은 Supabase `weekly_report_snapshots`에 저장합니다.
+- **고객사 부적합 현황**은 Supabase `weekly_report_customer_nc`가 원본입니다. ISSUE와 동일하게 `period_key`당 1행·빈 내용 시 행 삭제. SQL: `supabase/weekly_report_customer_nc.sql`
+- **부적합 사진**은 Storage `nonconformity-images` + DB `nonconformity_photos`에 두고, 경로 `부적합/{품번}/부적합사진/{uuid}.jpg`로 품번별 분리합니다. 품번 변경 시 파일을 이동하고 `storage_path`를 갱신합니다. SQL: `supabase/nonconformity_photos.sql`
+- **제품 사진**은 Supabase Storage(`product-photos`) + DB(`product_photos`)에 두고, 주간 ISSUE·고객사 부적합·WORST 5는 품번 키로 조회만 합니다.
+- **주간 스냅샷**은 Supabase `weekly_report_snapshots`에 저장합니다. (ISSUE·고객사 부적합·WORST 5 등 포함)
 - **관리자 로그인·변경 이력**만 서버 API(`/api/admin/*`, `/api/inspection-data/*`)를 사용합니다. 로컬은 Vite 플러그인, 배포는 Vercel Serverless입니다.
 - 브라우저 저장 공간이 부족하면 현재 메모리 분석은 유지되지만 새로고침 후 시드 데이터로 돌아갈 수 있습니다.
 - 분석·조회만 쓸 때는 환경변수가 없어도 됩니다. 관리자 수정 기능을 쓰려면 `ADMIN_PASSWORD_HASH`·`ADMIN_SESSION_SECRET`이 필요합니다.
@@ -285,7 +288,7 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 | 라우팅 | React Router |
 | Excel | SheetJS (`xlsx`) · ExcelJS |
 | 아이콘 | Lucide React |
-| 클라우드 | Supabase (주간 ISSUE·스냅샷·제품 사진 Storage/DB) |
+| 클라우드 | Supabase (주간 ISSUE·고객사 부적합·부적합 사진·스냅샷·제품 사진 Storage/DB) |
 | 이미지 | browser-image-compression (제품 사진 업로드 전 압축) |
 | 관리자 API | Vite 플러그인(로컬) · Vercel Serverless(배포) · scrypt 비밀번호 · HttpOnly 세션 |
 
@@ -293,7 +296,7 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 
 ## 문서
 
-- [화면설계서](./화면설계서.md) — UI/UX·화면·지표·메뉴 명세 (최신 V37)
+- [화면설계서](./화면설계서.md) — UI/UX·화면·지표·메뉴 명세 (최신 V39)
 
 ---
 
