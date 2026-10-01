@@ -163,7 +163,7 @@ export function InspectionData() {
   const requestEdit = (record: InspectionRecord) => {
     if (!isAdmin) {
       pushToast('검사 DATA 수정은 관리자 모드에서만 가능합니다.', 'info')
-      openLogin()
+      openLogin('admin')
       return
     }
     setDetail(null)
@@ -292,7 +292,7 @@ export function InspectionData() {
             onEdit={() => selected && requestEdit(selected)}
             onRequestLogin={() => {
               pushToast('검사 DATA 수정은 관리자 모드에서만 가능합니다.', 'info')
-              openLogin()
+              openLogin('admin')
             }}
             lockedTitle="검사 DATA 수정은 관리자 모드에서만 가능합니다."
             label="선택 행 수정"
@@ -351,7 +351,7 @@ export function InspectionData() {
                         onEdit={() => requestEdit(r)}
                         onRequestLogin={() => {
                           pushToast('검사 DATA 수정은 관리자 모드에서만 가능합니다.', 'info')
-                          openLogin()
+                          openLogin('admin')
                         }}
                         lockedTitle="검사 DATA 수정은 관리자 모드에서만 가능합니다."
                       />

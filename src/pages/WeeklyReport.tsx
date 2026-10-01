@@ -167,7 +167,7 @@ function resolveWeeklyReportPeriod(
 
 export function WeeklyReport() {
   const { records } = useData()
-  const { isAdmin, openLogin } = useAdmin()
+  const { isAdmin, canEditWeeklyContent, openLogin } = useAdmin()
   const { pushToast } = useToast()
   const productOptions = useMemo(() => {
     const set = new Set<string>()
@@ -454,7 +454,7 @@ export function WeeklyReport() {
 
   const handleSaveSnapshot = useCallback(async () => {
     if (!isAdmin) {
-      openLogin()
+      openLogin('admin')
       return
     }
     if (activeSnapshot) {
@@ -597,7 +597,7 @@ export function WeeklyReport() {
   const handleDeleteSnapshot = useCallback(
     (id: string) => {
       if (!isAdmin) {
-        openLogin()
+        openLogin('admin')
         return
       }
       setPendingDeleteSnapshotId(id)
@@ -633,9 +633,12 @@ export function WeeklyReport() {
 
   const handleSaveIssues = useCallback(
     async (next: typeof issues) => {
-      if (!isAdmin) {
-        pushToast('주간 ISSUE 수정은 관리자 모드에서만 가능합니다.', 'info')
-        openLogin()
+      if (!canEditWeeklyContent) {
+        pushToast(
+          '주간 ISSUE 수정은 실무자 또는 관리자 로그인이 필요합니다.',
+          'info',
+        )
+        openLogin('manager')
         return
       }
       if (activeSnapshot) {
@@ -666,17 +669,23 @@ export function WeeklyReport() {
         setIssuesSaving(false)
       }
     },
-    [weeklyDetail.period, pushToast, isAdmin, openLogin, activeSnapshot],
+    [
+      weeklyDetail.period,
+      pushToast,
+      canEditWeeklyContent,
+      openLogin,
+      activeSnapshot,
+    ],
   )
 
   const handleSaveCustomerNc = useCallback(
     async (next: CustomerNcItem[]) => {
-      if (!isAdmin) {
+      if (!canEditWeeklyContent) {
         pushToast(
-          '고객사 부적합 현황 수정은 관리자 모드에서만 가능합니다.',
+          '고객사 부적합 현황 수정은 실무자 또는 관리자 로그인이 필요합니다.',
           'info',
         )
-        openLogin()
+        openLogin('manager')
         return
       }
       if (activeSnapshot) {
@@ -713,7 +722,13 @@ export function WeeklyReport() {
         setCustomerNcSaving(false)
       }
     },
-    [weeklyDetail.period, pushToast, isAdmin, openLogin, activeSnapshot],
+    [
+      weeklyDetail.period,
+      pushToast,
+      canEditWeeklyContent,
+      openLogin,
+      activeSnapshot,
+    ],
   )
 
   const handleAiGenerateIssues = useCallback(() => {
@@ -881,7 +896,7 @@ export function WeeklyReport() {
         onSelect={(id) => void handleSelectSnapshot(id)}
         onClear={clearActiveSnapshot}
         onDelete={handleDeleteSnapshot}
-        onRequestLogin={openLogin}
+        onRequestLogin={() => openLogin('admin')}
       />
 
       <div className="space-y-4">
@@ -1023,8 +1038,8 @@ export function WeeklyReport() {
               syncReady={
                 viewingSnapshot || customerNcHydratedKey === periodKey
               }
-              canEdit={isAdmin && !viewingSnapshot}
-              onRequestLogin={openLogin}
+              canEdit={canEditWeeklyContent && !viewingSnapshot}
+              onRequestLogin={() => openLogin('manager')}
             />
 
             <MonthlyTrendSection
@@ -1064,8 +1079,8 @@ export function WeeklyReport() {
                   saving={issuesSaving}
                   cloudSync={isCloudSyncEnabled()}
                   syncReady={issuesHydratedKey === periodKey}
-                  canEdit={isAdmin && !viewingSnapshot}
-                  onRequestLogin={openLogin}
+                  canEdit={canEditWeeklyContent && !viewingSnapshot}
+                  onRequestLogin={() => openLogin('manager')}
                 />
               </div>
 

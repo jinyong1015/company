@@ -120,8 +120,11 @@ function DisplayModePanel() {
 }
 
 function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
-  const { login } = useAdmin()
+  const { login, preferredLoginRole } = useAdmin()
   const { pushToast } = useToast()
+  const [loginRole, setLoginRole] = useState<'manager' | 'admin'>(
+    preferredLoginRole,
+  )
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -129,16 +132,20 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    setLoginRole(preferredLoginRole)
+  }, [preferredLoginRole])
+
+  useEffect(() => {
     const t = window.setTimeout(() => inputRef.current?.focus(), 40)
     return () => window.clearTimeout(t)
-  }, [])
+  }, [loginRole])
 
   const submit = async () => {
     if (!password.trim() || submitting) return
     setSubmitting(true)
     setError(null)
     try {
-      const result = await login(password)
+      const result = await login(password, loginRole)
       setPassword('')
       if (result.ok) {
         pushToast(result.message, 'success')
@@ -161,9 +168,10 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
           <Lock size={18} strokeWidth={2} />
         </div>
         <div>
-          <h3 className="settings-section-title">관리자 로그인</h3>
+          <h3 className="settings-section-title">실무자 / 관리자 로그인</h3>
           <p className="settings-panel-lead">
-            검사 DATA 수정을 위해 관리자 비밀번호를 입력해 주세요.
+            역할을 선택한 뒤 비밀번호를 입력해 주세요. 주간업무 보고·데이터
+            업로드는 실무자 또는 관리자만 이용할 수 있습니다.
           </p>
         </div>
       </div>
@@ -176,8 +184,40 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
           void submit()
         }}
       >
+        <div
+          className="flex gap-2 rounded-xl border border-line bg-canvas/60 p-1"
+          role="tablist"
+          aria-label="로그인 역할"
+        >
+          {(
+            [
+              { id: 'manager' as const, label: '실무자' },
+              { id: 'admin' as const, label: '관리자' },
+            ] as const
+          ).map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              role="tab"
+              aria-selected={loginRole === opt.id}
+              className={clsx(
+                'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition',
+                loginRole === opt.id
+                  ? 'bg-surface text-ink shadow-sm'
+                  : 'text-muted hover:text-ink',
+              )}
+              onClick={() => setLoginRole(opt.id)}
+              disabled={submitting}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         <label className="settings-field">
-          <span className="settings-field-label">비밀번호</span>
+          <span className="settings-field-label">
+            {loginRole === 'manager' ? '실무자 비밀번호' : '관리자 비밀번호'}
+          </span>
           <div className="admin-password-wrap">
             <input
               ref={inputRef}
@@ -188,8 +228,12 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
               autoCapitalize="off"
               autoCorrect="off"
               spellCheck={false}
-              name="admin-password"
-              placeholder="관리자 비밀번호"
+              name="staff-password"
+              placeholder={
+                loginRole === 'manager'
+                  ? '실무자 비밀번호'
+                  : '관리자 비밀번호'
+              }
               disabled={submitting}
             />
             <button
@@ -235,24 +279,36 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
 }
 
 function AdminStatusPanel() {
-  const { isAdmin, setAdminPanel, logout } = useAdmin()
+  const { isAdmin, isStaff, role, setAdminPanel, logout } = useAdmin()
   const { pushToast } = useToast()
+
+  const statusLabel =
+    role === 'admin'
+      ? '관리자 로그인 중'
+      : role === 'manager'
+        ? '실무자 로그인 중'
+        : '일반 사용자'
 
   return (
     <div className="settings-panel">
       <div className="settings-panel-intro">
         <div
-          className={clsx('settings-panel-icon', isAdmin && 'settings-panel-icon-admin')}
+          className={clsx(
+            'settings-panel-icon',
+            isStaff && 'settings-panel-icon-admin',
+          )}
           aria-hidden="true"
         >
           <ShieldCheck size={18} strokeWidth={2} />
         </div>
         <div>
-          <h3 className="settings-section-title">관리자 모드</h3>
+          <h3 className="settings-section-title">권한 · 로그인</h3>
           <p className="settings-panel-lead">
-            {isAdmin
-              ? '검사 DATA 수정 권한이 활성화되어 있습니다.'
-              : '검사 DATA를 수정하려면 관리자 인증이 필요합니다.'}
+            {role === 'admin'
+              ? '관리자 권한이 활성화되어 있습니다.'
+              : role === 'manager'
+                ? '실무자 권한이 활성화되어 있습니다. (검사 DATA 수정·사진 삭제는 관리자만)'
+                : '주간업무 보고·데이터 업로드는 실무자 또는 관리자 로그인이 필요합니다.'}
           </p>
         </div>
       </div>
@@ -260,7 +316,7 @@ function AdminStatusPanel() {
       <div
         className={clsx(
           'settings-status-card',
-          isAdmin ? 'settings-status-card-on' : 'settings-status-card-off',
+          isStaff ? 'settings-status-card-on' : 'settings-status-card-off',
         )}
       >
         <div className="settings-status-top">
@@ -268,40 +324,54 @@ function AdminStatusPanel() {
           <span
             className={clsx(
               'settings-status-badge',
-              isAdmin ? 'settings-status-badge-on' : 'settings-status-badge-off',
+              isStaff ? 'settings-status-badge-on' : 'settings-status-badge-off',
             )}
           >
             <span
               className={clsx(
                 'settings-status-dot',
-                isAdmin ? 'settings-status-dot-on' : 'settings-status-dot-off',
+                isStaff ? 'settings-status-dot-on' : 'settings-status-dot-off',
               )}
               aria-hidden="true"
             />
-            {isAdmin ? '관리자 로그인 중' : '일반 사용자'}
+            {statusLabel}
           </span>
         </div>
         <ul className="settings-capability-list">
-          <li data-allowed="true">분석 화면 조회 · Excel 다운로드</li>
-          <li data-allowed={isAdmin ? 'true' : 'false'}>검사 DATA 행 수정 · 저장</li>
-          <li data-allowed={isAdmin ? 'true' : 'false'}>변경 이력 조회</li>
+          <li data-allowed="true">분석 화면 · 기본 데이터 조회</li>
+          <li data-allowed={isStaff ? 'true' : 'false'}>
+            주간업무 보고 · 데이터 업로드
+          </li>
+          <li data-allowed={isStaff ? 'true' : 'false'}>
+            고객사 부적합 · 주간 ISSUE 작성/수정
+          </li>
+          <li data-allowed={isStaff ? 'true' : 'false'}>품번 사진 업로드·변경</li>
+          <li data-allowed={isAdmin ? 'true' : 'false'}>품번 사진 삭제</li>
+          <li data-allowed={isAdmin ? 'true' : 'false'}>검사 DATA 행 수정 · 변경 이력</li>
         </ul>
       </div>
 
       <div className="settings-admin-actions">
-        {isAdmin ? (
+        {isStaff ? (
           <button
             type="button"
             className="btn settings-logout-btn"
             onClick={() => {
               void (async () => {
                 const done = await logout()
-                if (done) pushToast('관리자 모드가 종료되었습니다.', 'info')
+                if (done) {
+                  pushToast(
+                    role === 'manager'
+                      ? '실무자 모드가 종료되었습니다.'
+                      : '관리자 모드가 종료되었습니다.',
+                    'info',
+                  )
+                }
               })()
             }}
           >
             <LogOut size={16} />
-            관리자 로그아웃
+            로그아웃
           </button>
         ) : (
           <button
@@ -310,7 +380,7 @@ function AdminStatusPanel() {
             onClick={() => setAdminPanel('login')}
           >
             <Lock size={16} />
-            관리자 로그인
+            실무자 / 관리자 로그인
           </button>
         )}
       </div>
@@ -323,7 +393,7 @@ export function SettingsModal() {
     settingsOpen,
     settingsTab,
     adminPanel,
-    isAdmin,
+    isStaff,
     setSettingsTab,
     setAdminPanel,
     closeSettings,
@@ -399,7 +469,7 @@ export function SettingsModal() {
             <h2 id={titleId} className="settings-modal-title">
               설정
             </h2>
-            <p className="settings-modal-subtitle">화면 표시와 관리자 권한</p>
+            <p className="settings-modal-subtitle">화면 표시와 권한</p>
           </div>
           <button
             type="button"
@@ -449,8 +519,8 @@ export function SettingsModal() {
               onClick={() => selectTab('admin')}
             >
               <ShieldCheck size={15} strokeWidth={2} aria-hidden="true" />
-              관리자 모드
-              {isAdmin ? <span className="settings-tab-dot" aria-hidden="true" /> : null}
+              권한
+              {isStaff ? <span className="settings-tab-dot" aria-hidden="true" /> : null}
             </button>
           </div>
         </div>

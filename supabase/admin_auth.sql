@@ -1,4 +1,3 @@
--- 관리자 비밀번호 (초기: 0535863500)
 -- Supabase: pgcrypto는 extensions 스키마에 있음
 
 create extension if not exists pgcrypto with schema extensions;

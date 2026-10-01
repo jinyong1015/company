@@ -24,6 +24,7 @@ import { SmartCompare } from './pages/SmartCompare'
 import { AiAsk } from './pages/AiAsk'
 import { WeeklyReport } from './pages/WeeklyReport'
 import { AiChatbot } from './components/ai/AiChatbot'
+import { StaffRouteGate } from './components/admin/StaffRouteGate'
 
 export default function App() {
   return (
@@ -49,9 +50,23 @@ export default function App() {
                   <Route path="compare" element={<SmartCompare />} />
                   <Route path="data" element={<InspectionData />} />
                   <Route path="error-data" element={<ErrorData />} />
-                  <Route path="manage" element={<DataManagement />} />
+                  <Route
+                    path="manage"
+                    element={
+                      <StaffRouteGate title="데이터 업로드">
+                        <DataManagement />
+                      </StaffRouteGate>
+                    }
+                  />
                   <Route path="quality-data" element={<DataQuality />} />
-                  <Route path="weekly-report" element={<WeeklyReport />} />
+                  <Route
+                    path="weekly-report"
+                    element={
+                      <StaffRouteGate title="주간업무 보고">
+                        <WeeklyReport />
+                      </StaffRouteGate>
+                    }
+                  />
                   <Route path="ai" element={<AiAsk />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Route>

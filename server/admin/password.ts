@@ -44,10 +44,13 @@ function safeEqual(a: Buffer, b: Buffer): boolean {
   return timingSafeEqual(a, b)
 }
 
-async function verifyViaSupabase(password: string): Promise<boolean | null> {
+async function verifyViaSupabaseRpc(
+  rpcName: 'verify_admin_password' | 'verify_manager_password',
+  password: string,
+): Promise<boolean | null> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/verify_admin_password`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${rpcName}`, {
       method: 'POST',
       headers: {
         apikey: SUPABASE_ANON_KEY,
@@ -58,13 +61,13 @@ async function verifyViaSupabase(password: string): Promise<boolean | null> {
     })
     if (!res.ok) {
       const text = await res.text().catch(() => '')
-      console.warn('[admin-auth] supabase verify failed', res.status, text.slice(0, 200))
+      console.warn(`[admin-auth] ${rpcName} failed`, res.status, text.slice(0, 200))
       return null
     }
     const data = (await res.json()) as unknown
     return data === true
   } catch (err) {
-    console.warn('[admin-auth] supabase verify error', err)
+    console.warn(`[admin-auth] ${rpcName} error`, err)
     return null
   }
 }
@@ -88,11 +91,47 @@ async function verifyViaEnvHash(password: string): Promise<boolean> {
 export async function verifyAdminPassword(password: string): Promise<boolean> {
   if (!password || !password.trim()) return false
 
-  const supabaseResult = await verifyViaSupabase(password)
+  const supabaseResult = await verifyViaSupabaseRpc('verify_admin_password', password)
   if (supabaseResult === true) return true
   if (supabaseResult === false) return false
 
   return verifyViaEnvHash(password)
+}
+
+/**
+ * 실무자 비밀번호 검증.
+ * Supabase RPC `verify_manager_password`.
+ * 로컬 폴백: MANAGER_PASSWORD_HASH 또는 (미설정 시) ADMIN_PASSWORD_HASH.
+ */
+export async function verifyManagerPassword(password: string): Promise<boolean> {
+  if (!password || !password.trim()) return false
+
+  const supabaseResult = await verifyViaSupabaseRpc(
+    'verify_manager_password',
+    password,
+  )
+  if (supabaseResult === true) return true
+  if (supabaseResult === false) return false
+
+  const managerHash = process.env.MANAGER_PASSWORD_HASH?.trim()
+  if (managerHash) {
+    const parts = parsePasswordHash(managerHash)
+    if (!parts) return false
+    const derived = await hashWithSalt(password, parts.salt)
+    return safeEqual(derived, parts.hash)
+  }
+  // 로컬 개발: manager_auth SQL 전이면 관리자 해시와 동일 허용
+  return verifyViaEnvHash(password)
+}
+
+export type AuthLoginRole = 'manager' | 'admin'
+
+export async function verifyRolePassword(
+  role: AuthLoginRole,
+  password: string,
+): Promise<boolean> {
+  if (role === 'manager') return verifyManagerPassword(password)
+  return verifyAdminPassword(password)
 }
 
 export function isAdminPasswordConfigured(): boolean {

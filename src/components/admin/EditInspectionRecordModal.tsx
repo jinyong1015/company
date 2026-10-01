@@ -151,7 +151,7 @@ export function EditInspectionRecordModal({
       if (err instanceof AdminAuthError) {
         markSessionExpired()
         pushToast(err.message, 'error')
-        openLogin()
+        openLogin('admin')
         onClose()
         return
       }

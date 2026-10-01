@@ -747,7 +747,7 @@ export function CustomerNcPanel({
       type="button"
       onClick={startEdit}
       className="inline-flex items-center gap-1 rounded-lg border border-line px-2.5 py-1 text-xs text-muted hover:text-ink"
-      title={canEdit ? '편집' : '관리자 로그인 후 편집'}
+      title={canEdit ? '편집' : '실무자/관리자 로그인 후 편집'}
     >
       {canEdit ? <Pencil size={12} aria-hidden /> : <Lock size={12} aria-hidden />}
       편집

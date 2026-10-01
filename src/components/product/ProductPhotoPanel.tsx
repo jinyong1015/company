@@ -15,7 +15,7 @@ import { isCloudSyncEnabled } from '../../lib/supabase'
 type Status = 'idle' | 'loading' | 'compressing' | 'uploading'
 
 export function ProductPhotoPanel({ productKey }: { productKey: string }) {
-  const { isAdmin } = useAdmin()
+  const { canUploadProductPhoto, canDeleteProductPhoto, openLogin } = useAdmin()
   const { pushToast } = useToast()
   const inputId = useId()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -84,7 +84,10 @@ export function ProductPhotoPanel({ productKey }: { productKey: string }) {
   }
 
   const onUpload = async () => {
-    if (!pendingFile || !isAdmin) return
+    if (!pendingFile || !canUploadProductPhoto) {
+      if (!canUploadProductPhoto) openLogin('manager')
+      return
+    }
     setStatus('compressing')
     const result = await saveProductPhoto(productKey, pendingFile, (s) =>
       setStatus(s),
@@ -101,7 +104,12 @@ export function ProductPhotoPanel({ productKey }: { productKey: string }) {
   }
 
   const onDelete = async () => {
-    if (!isAdmin || !photo) return
+    if (!canDeleteProductPhoto) {
+      openLogin('admin')
+      pushToast('사진 삭제는 관리자만 가능합니다.', 'info')
+      return
+    }
+    if (!photo) return
     if (!window.confirm('등록된 사진을 삭제하시겠습니까?')) return
     setStatus('uploading')
     const result = await deleteProductPhoto(productKey)
@@ -152,7 +160,7 @@ export function ProductPhotoPanel({ productKey }: { productKey: string }) {
             </p>
           ) : null}
 
-          {isAdmin ? (
+          {canUploadProductPhoto ? (
             <div className="flex flex-wrap items-center gap-2">
               <input
                 ref={inputRef}
@@ -170,7 +178,7 @@ export function ProductPhotoPanel({ productKey }: { productKey: string }) {
                 }`}
               >
                 <ImagePlus className="h-4 w-4" aria-hidden />
-                {hasSaved || pendingFile ? '사진 변경' : '사진 선택'}
+                {hasSaved || pendingFile ? '사진 변경' : '사진 업로드'}
               </label>
 
               {pendingFile ? (
@@ -185,7 +193,7 @@ export function ProductPhotoPanel({ productKey }: { productKey: string }) {
                 </button>
               ) : null}
 
-              {hasSaved && !pendingFile ? (
+              {hasSaved && !pendingFile && canDeleteProductPhoto ? (
                 <button
                   type="button"
                   className="btn inline-flex items-center gap-1.5 text-sm text-danger"

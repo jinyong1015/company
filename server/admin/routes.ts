@@ -1,5 +1,9 @@
 import { appendChangeLog, listChangeLogs } from './audit.ts'
-import { isAdminPasswordConfigured, verifyAdminPassword } from './password.ts'
+import {
+  isAdminPasswordConfigured,
+  verifyRolePassword,
+  type AuthLoginRole,
+} from './password.ts'
 import {
   ADMIN_ABSOLUTE_MS,
   ADMIN_SESSION_COOKIE,
@@ -11,6 +15,7 @@ import {
   isSessionValid,
   readCookieValue,
   requireAdminFromCookie,
+  sessionRole,
   touchSession,
 } from './session.ts'
 
@@ -80,18 +85,35 @@ export async function handleAdminRoute(
       }
       const body = asRecord(req.body)
       const password = typeof body.password === 'string' ? body.password : ''
+      const roleRaw = typeof body.role === 'string' ? body.role.trim() : 'admin'
+      const role: AuthLoginRole =
+        roleRaw === 'manager' ? 'manager' : 'admin'
       if (!password.trim()) {
-        return fail(400, '관리자 비밀번호를 입력해 주세요.')
+        return fail(
+          400,
+          role === 'manager'
+            ? '실무자 비밀번호를 입력해 주세요.'
+            : '관리자 비밀번호를 입력해 주세요.',
+        )
       }
-      const valid = await verifyAdminPassword(password)
+      const valid = await verifyRolePassword(role, password)
       if (!valid) {
-        return fail(401, '관리자 비밀번호가 올바르지 않습니다.')
+        return fail(
+          401,
+          role === 'manager'
+            ? '실무자 비밀번호가 올바르지 않습니다.'
+            : '관리자 비밀번호가 올바르지 않습니다.',
+        )
       }
-      const session = createSessionPayload()
+      const session = createSessionPayload(role)
       return ok(
         {
           ok: true,
-          message: '관리자 모드로 로그인되었습니다.',
+          role,
+          message:
+            role === 'manager'
+              ? '실무자 모드로 로그인되었습니다.'
+              : '관리자 모드로 로그인되었습니다.',
           expiresAt: session.exp,
         },
         buildSetCookieHeader(
@@ -114,14 +136,16 @@ export async function handleAdminRoute(
     if (!isSessionValid(payload)) {
       return {
         status: 200,
-        body: { authenticated: false },
+        body: { authenticated: false, role: null },
         setCookie: token ? buildClearCookieHeader() : undefined,
       }
     }
     const refreshed = touchSession(payload)
+    const role = sessionRole(refreshed)
     return ok(
       {
         authenticated: true,
+        role,
         expiresAt: refreshed.exp,
         sessionId: refreshed.sid,
       },

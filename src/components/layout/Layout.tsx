@@ -16,7 +16,7 @@ import {
   Settings,
   Users,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { GlobalFilterSection } from "../filters/GlobalFilterSection";
 import { useAdmin } from "../../context/AdminContext";
 import { AiChatbot } from "../ai/AiChatbot";
@@ -59,6 +59,9 @@ const nav = [
 
 const hideGlobalFilters = ["/manage", "/ai", "/weekly-report", "/data", "/error-data"];
 
+/** 실무자/관리자 로그인 필요한 메뉴 */
+const staffOnlyPaths = new Set(["/weekly-report", "/manage"]);
+
 const primaryNav = nav.filter((item) => item.group !== "인사이트");
 const insightNav = nav.filter((item) => item.group === "인사이트");
 
@@ -70,11 +73,22 @@ function isPathActive(pathname: string, to: string) {
 
 function TopNavigation() {
   const { pathname } = useLocation();
+  const { isStaff, openLogin } = useAdmin();
   const navigationRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(primaryNav.length);
   const [moreOpen, setMoreOpen] = useState(false);
+
+  const guardStaffNav = (
+    event: MouseEvent,
+    to: string,
+  ) => {
+    if (!staffOnlyPaths.has(to) || isStaff) return;
+    event.preventDefault();
+    openLogin("manager");
+    setMoreOpen(false);
+  };
 
   useEffect(() => {
     const navigation = navigationRef.current;
@@ -181,6 +195,7 @@ function TopNavigation() {
             to={item.to}
             end={item.end}
             className={({ isActive }) => chipClass(isActive)}
+            onClick={(event) => guardStaffNav(event, item.to)}
           >
             {renderChipContent(item)}
           </NavLink>
@@ -224,6 +239,7 @@ function TopNavigation() {
                         : "text-ink hover:bg-canvas"
                     }`
                   }
+                  onClick={(event) => guardStaffNav(event, item.to)}
                 >
                   {renderChipContent(item, 16, true)}
                 </NavLink>
@@ -259,7 +275,7 @@ function TopNavigation() {
 }
 
 export function Layout() {
-  const { isAdmin, openSettings } = useAdmin();
+  const { isStaff, role, openSettings, openLogin } = useAdmin();
   const { pathname } = useLocation();
   const showFilters = !hideGlobalFilters.includes(pathname);
 
@@ -292,6 +308,12 @@ export function Layout() {
               <Link
                 to="/manage"
                 className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-surface px-3.5 text-sm font-medium text-ink shadow-sm transition hover:border-accent/40 hover:bg-accent-soft"
+                onClick={(event) => {
+                  if (!isStaff) {
+                    event.preventDefault();
+                    openLogin("manager");
+                  }
+                }}
               >
                 <Plus size={16} />
                 <span className="hidden md:inline">데이터 업로드</span>
@@ -300,15 +322,25 @@ export function Layout() {
                 type="button"
                 onClick={() => openSettings("display")}
                 className="header-settings-btn inline-flex h-11 items-center gap-2 rounded-full border border-line bg-surface px-3.5 text-sm font-medium text-ink shadow-sm transition hover:border-accent/40 hover:bg-accent-soft"
-                aria-label={isAdmin ? "설정 (관리자 모드)" : "설정"}
+                aria-label={
+                  role === "admin"
+                    ? "설정 (관리자 모드)"
+                    : role === "manager"
+                      ? "설정 (실무자 모드)"
+                      : "설정"
+                }
                 title="설정"
               >
                 <Settings size={16} />
                 <span className="hidden md:inline">설정</span>
-                {isAdmin ? (
+                {isStaff ? (
                   <span
                     className="header-settings-admin-dot"
-                    title="관리자 로그인 중"
+                    title={
+                      role === "manager"
+                        ? "실무자 로그인 중"
+                        : "관리자 로그인 중"
+                    }
                     aria-hidden="true"
                   />
                 ) : null}

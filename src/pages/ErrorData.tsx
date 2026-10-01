@@ -160,7 +160,7 @@ export function ErrorData() {
   const requestEdit = (record: InspectionRecord) => {
     if (!isAdmin) {
       pushToast('오류 DATA 수정은 관리자 모드에서만 가능합니다.', 'info')
-      openLogin()
+      openLogin('admin')
       return
     }
     setDetail(null)
@@ -287,7 +287,7 @@ export function ErrorData() {
             onEdit={() => selected && requestEdit(selected)}
             onRequestLogin={() => {
               pushToast('오류 DATA 수정은 관리자 모드에서만 가능합니다.', 'info')
-              openLogin()
+              openLogin('admin')
             }}
             lockedTitle="오류 DATA 수정은 관리자 모드에서만 가능합니다."
             label="선택 행 수정"
@@ -351,7 +351,7 @@ export function ErrorData() {
                         onEdit={() => requestEdit(r)}
                         onRequestLogin={() => {
                           pushToast('오류 DATA 수정은 관리자 모드에서만 가능합니다.', 'info')
-                          openLogin()
+                          openLogin('admin')
                         }}
                         lockedTitle="오류 DATA 수정은 관리자 모드에서만 가능합니다."
                       />
