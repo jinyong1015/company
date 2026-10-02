@@ -171,7 +171,8 @@ export function InspectorAnalysis() {
   }
 
   const scopedRecords = useMemo(
-    () => filterRecords(records, filters, true),
+    () =>
+      filterRecords(records, filters, true, { ignoreAnalysisGroup: true }),
     [records, filters],
   )
 
@@ -297,8 +298,8 @@ export function InspectorAnalysis() {
       <PageHeader title="검사자 분석" />
 
       <SplitTop10Panel
-        title="검수량 검사자 TOP 10"
-        description={`선택 기간 · ${scopeLabel} · 검수량 상위 10명`}
+        title="검사자 검수량 TOP 10"
+        description={`선택 기간 · 전체 분석그룹 · ${scopeLabel} · 검수량 상위 10명`}
         toolbar={
           <div className="qty-filter-stack mb-3.5">
             <div className="qty-filter-row">

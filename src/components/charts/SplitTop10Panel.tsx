@@ -331,7 +331,7 @@ export function SplitTop10Panel<TRow extends SplitTop10RowBase>({
               } as CSSProperties
             }
           >
-            <div className="dash-top10-detail-card">
+            <div className="dash-top10-detail-card" key={active.id}>
               <div className="dash-top10-detail-head">
                 <span
                   className="op-prod-top-rank"
@@ -382,35 +382,46 @@ export function SplitTop10Panel<TRow extends SplitTop10RowBase>({
                 차트 순위 · {rows.length}개
               </p>
               <ul className="dash-top10-rank-list">
-                {rows.map((row) => (
-                  <li key={row.id}>
-                    <button
-                      type="button"
-                      className="dash-top10-rank-item"
-                      data-active={row.id === active.id ? "true" : undefined}
-                      onClick={() => selectRow(row.id)}
-                    >
-                      <span
-                        className="op-prod-top-rank dash-top10-rank-badge"
-                        data-tone={rankTone(row.rank)}
+                {rows.map((row) => {
+                  const isActive = row.id === active.id
+                  return (
+                    <li key={row.id}>
+                      <button
+                        type="button"
+                        className="dash-top10-rank-item"
+                        data-active={isActive ? "true" : undefined}
+                        aria-pressed={isActive}
+                        onClick={() => selectRow(row.id)}
                       >
-                        {row.rank}
-                      </span>
-                      <span className="dash-top10-rank-label">
-                        <strong>{row.name}</strong>
-                        <span>
-                          {rankMeta(row)}
-                          {showRankShare
-                            ? ` · ${formatPercent(row.sharePercent)}`
-                            : null}
+                        <span
+                          className="op-prod-top-rank dash-top10-rank-badge"
+                          data-tone={rankTone(row.rank)}
+                        >
+                          {row.rank}
                         </span>
-                      </span>
-                      <span className="dash-top10-rank-value num">
-                        {formatValue(row.value)}
-                      </span>
-                    </button>
-                  </li>
-                ))}
+                        <span className="dash-top10-rank-label">
+                          <strong>{row.name}</strong>
+                          <span>
+                            {rankMeta(row)}
+                            {showRankShare
+                              ? ` · ${formatPercent(row.sharePercent)}`
+                              : null}
+                          </span>
+                        </span>
+                        <span className="dash-top10-rank-trail">
+                          {isActive ? (
+                            <span className="dash-top10-rank-selected-chip">
+                              선택
+                            </span>
+                          ) : null}
+                          <span className="dash-top10-rank-value num">
+                            {formatValue(row.value)}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             </div>
           </aside>

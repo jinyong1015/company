@@ -1030,11 +1030,13 @@ export function filterRecords(
   records: InspectionRecord[],
   filters: FilterState,
   analyzableOnly = false,
+  options?: { ignoreAnalysisGroup?: boolean },
 ) {
   const base = analyzableOnly ? records.filter(isAnalyzable) : records;
-  const grouped = base.filter((r) =>
-    matchesAnalysisGroup(r, filters.analysisGroup),
-  );
+  const groupId = options?.ignoreAnalysisGroup
+    ? "all"
+    : filters.analysisGroup;
+  const grouped = base.filter((r) => matchesAnalysisGroup(r, groupId));
   const { start, end } = resolvePeriodRange(filters);
   return applyMultiFilters(grouped, filters).filter((r) =>
     inRange(r.date, start, end),

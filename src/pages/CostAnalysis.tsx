@@ -110,6 +110,8 @@ export function CostAnalysis() {
   const { analytics } = useData()
   const [view, setView] = useState<CostAnalysisViewState>(readViewState)
   const { dim, query, sortKey, asc, page, pageSize, topType } = view
+  /** TOP10은 분석그룹 무관 · 선택 기간 전체 집계 */
+  const topProducts = analytics.dashboardTop10Products
 
   useEffect(() => {
     savePageViewState(VIEW_STATE_KEY, view)
@@ -125,17 +127,17 @@ export function CostAnalysis() {
       grommet: 0,
       seal: 0,
     }
-    for (const p of analytics.products) {
+    for (const p of topProducts) {
       if (p.scrapCost <= 0) continue
       counts.all += 1
       if (matchesProductTypeTab(p.type, 'grommet')) counts.grommet += 1
       if (matchesProductTypeTab(p.type, 'seal')) counts.seal += 1
     }
     return counts
-  }, [analytics.products])
+  }, [topProducts])
 
   const topRows = useMemo((): CostTop10Row[] => {
-    const filtered = analytics.products.filter(
+    const filtered = topProducts.filter(
       (p) => p.scrapCost > 0 && matchesProductTypeTab(p.type, topType),
     )
     const total = filtered.reduce((s, p) => s + p.scrapCost, 0)
@@ -151,7 +153,7 @@ export function CostAnalysis() {
         href: buildProductDetailHref(p.id, 'cost'),
         product: p,
       }))
-  }, [analytics.products, topType])
+  }, [topProducts, topType])
 
   const productKeys = useMemo(
     () => [...new Set(topRows.map((r) => r.name.trim()).filter(Boolean))].sort(),
@@ -255,8 +257,8 @@ export function CostAnalysis() {
       <PageHeader title="비용 분석" />
 
       <SplitTop10Panel
-        title="폐기비용 품번 TOP 10"
-        description={`선택 기간 · ${tabLabel} · 폐기비용 상위 10개 품번`}
+        title="품번 폐기비용 TOP 10"
+        description={`선택 기간 · 전체 분석그룹 · ${tabLabel} · 폐기비용 상위 10개 품번`}
         toolbar={
           <div
             className="qty-type-tabs mb-3.5"
