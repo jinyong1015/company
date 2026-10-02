@@ -376,6 +376,30 @@ export interface CustomerNcItem {
   actions: string
 }
 
+/** 주간업무 보고 · 승인서류 제출현황 1행 (주간 ISSUE와 동일 구조, 품번·사진 없음) */
+export interface ApprovalDocItem {
+  id: string
+  order: number
+  title: string
+  bullets: string[]
+}
+
+/** 주간업무 보고 · 측정현황 1행 (승인서류·주간 ISSUE와 동일 구조) */
+export interface MeasurementStatusItem {
+  id: string
+  order: number
+  title: string
+  bullets: string[]
+}
+
+/** 주간업무 보고 · 정보공유 및 대외일정 1행 (측정현황과 동일 구조) */
+export interface InfoShareItem {
+  id: string
+  order: number
+  title: string
+  bullets: string[]
+}
+
 export interface WeeklyReportDetail {
   period: WeekPeriod
   title: string

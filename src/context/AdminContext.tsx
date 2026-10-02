@@ -25,7 +25,7 @@ type AdminContextValue = {
   isStaff: boolean
   /** 주간보고·데이터 업로드 접근 */
   canAccessStaffMenus: boolean
-  /** 주간 ISSUE·고객사 부적합 작성/수정/삭제 */
+  /** 주간 ISSUE·고객사 부적합·승인서류·측정현황·정보공유 작성/수정/삭제 */
   canEditWeeklyContent: boolean
   /** 품번 상세 사진 업로드·변경 */
   canUploadProductPhoto: boolean

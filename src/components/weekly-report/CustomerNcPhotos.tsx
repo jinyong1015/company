@@ -119,12 +119,12 @@ export function CustomerNcPhotos({
             />
             <label
               htmlFor={inputId}
-              className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1 text-xs text-muted hover:text-ink"
+              className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-line bg-white px-4 py-2.5 text-sm font-medium text-ink shadow-sm transition hover:border-accent hover:text-accent"
             >
-              <ImagePlus size={12} aria-hidden />
+              <ImagePlus size={18} aria-hidden />
               사진 추가
             </label>
-            <span className="text-[11px] text-muted">
+            <span className="text-xs text-muted">
               미리보기만 · 현황 저장 시 DB 반영
             </span>
           </>

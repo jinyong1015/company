@@ -257,7 +257,7 @@ function CustomerNcTable({
         const photos = ncPhotosMap[item.id] ?? []
         const pending = pendingByNc[item.id] ?? []
         const deletedIds = deletedByNc[item.id] ?? []
-        const orderLabel = `.${idx + 1})`
+        const orderLabel = productKey || undefined
         const showPhotos =
           showEditCols ||
           photos.some((p) => !deletedIds.includes(p.id)) ||
@@ -810,7 +810,7 @@ export function CustomerNcPanel({
   return (
     <>
       <Panel
-        title="1. 고객사 부적합 현황"
+        title="고객사 부적합 현황"
         description={description}
         actions={
           <div className="flex flex-wrap gap-2">

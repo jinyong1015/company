@@ -521,7 +521,7 @@ export function WeeklyIssuePanel({
   return (
     <>
       <Panel
-        title="주간 ISSUE"
+        title="WORST 주간 ISSUE"
         description={description}
         actions={
           <div className="flex flex-wrap gap-2">
@@ -542,7 +542,7 @@ export function WeeklyIssuePanel({
 
       <WeeklyFullscreenOverlay
         open={fullscreen}
-        title="주간 ISSUE"
+        title="WORST 주간 ISSUE"
         description={description}
         onClose={() => setFullscreen(false)}
       >

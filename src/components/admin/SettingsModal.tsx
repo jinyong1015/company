@@ -343,7 +343,7 @@ function AdminStatusPanel() {
             주간업무 보고 · 데이터 업로드
           </li>
           <li data-allowed={isStaff ? 'true' : 'false'}>
-            고객사 부적합 · 주간 ISSUE 작성/수정
+            고객사 부적합 · 승인서류 · 측정현황 · 정보공유 · WORST 주간 ISSUE 작성/수정
           </li>
           <li data-allowed={isStaff ? 'true' : 'false'}>품번 사진 업로드·변경</li>
           <li data-allowed={isAdmin ? 'true' : 'false'}>품번 사진 삭제</li>

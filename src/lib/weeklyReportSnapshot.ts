@@ -1,8 +1,11 @@
 import { getSupabase, isCloudSyncEnabled } from './supabase'
 import type { NonconformityPhotoRow } from './nonconformityPhotos'
 import type {
+  ApprovalDocItem,
   CustomerNcItem,
   InspectionRecord,
+  InfoShareItem,
+  MeasurementStatusItem,
   WeeklyIssue,
   WeeklyReportDetail,
   WeeklyReportMetric,
@@ -25,6 +28,12 @@ export type WeeklyReportSnapshotPayload = {
    * 확정본 시점의 사진을 보존. 구버전 스냅샷에는 없을 수 있음.
    */
   customerNcPhotos?: Record<string, CustomerNcPhotoSnapshot[]>
+  /** 승인서류 제출현황. 구버전 스냅샷에는 없을 수 있음 */
+  approvalDocs?: ApprovalDocItem[]
+  /** 측정현황. 구버전 스냅샷에는 없을 수 있음 */
+  measurementStatus?: MeasurementStatusItem[]
+  /** 정보공유 및 대외일정. 구버전 스냅샷에는 없을 수 있음 */
+  infoShare?: InfoShareItem[]
   worst5: WeeklyReportDetail['worst5']
   worst5Thresholds: WeeklyReportDetail['worst5Thresholds']
   /** 월별 현황(지표별). 구버전 스냅샷에는 없을 수 있음 */

@@ -1,6 +1,5 @@
 -- 실무자(manager) 비밀번호
 -- Supabase SQL Editor에서 실행
--- 초기 비밀번호: 0535863500
 -- 관리자(admin_auth)와 별도 행·RPC. 로그인 시 역할(실무자/관리자)을 선택한다.
 
 create extension if not exists pgcrypto with schema extensions;

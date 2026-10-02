@@ -3,11 +3,15 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { CalendarRange, Maximize2 } from 'lucide-react'
 import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
+import { ApprovalDocPanel } from '../components/weekly-report/ApprovalDocPanel'
 import { CustomerNcPanel } from '../components/weekly-report/CustomerNcPanel'
+import { InfoSharePanel } from '../components/weekly-report/InfoSharePanel'
+import { MeasurementStatusPanel } from '../components/weekly-report/MeasurementStatusPanel'
 import { MonthlyTrendSection } from '../components/weekly-report/MonthlyTrendSection'
 import { WeeklyFullscreenOverlay } from '../components/weekly-report/WeeklyFullscreenOverlay'
 import { WeeklyIssuePanel } from '../components/weekly-report/WeeklyIssuePanel'
 import { WeeklyProductionTable } from '../components/weekly-report/WeeklyProductionTable'
+import { WeeklySectionHeading } from '../components/weekly-report/WeeklySectionHeading'
 import { WeeklySnapshotBar } from '../components/weekly-report/WeeklySnapshotBar'
 import { Worst5Card } from '../components/weekly-report/Worst5Card'
 import { useData } from '../context/DataContext'
@@ -31,10 +35,25 @@ import {
   WEEKLY_REPORT_ORGS,
 } from '../lib/weeklyReport'
 import {
+  loadApprovalDocs,
+  saveApprovalDocs,
+  syncApprovalDocs,
+} from '../lib/weeklyReportApprovalDocs'
+import {
   loadCustomerNc,
   saveCustomerNc,
   syncCustomerNc,
 } from '../lib/weeklyReportCustomerNc'
+import {
+  loadInfoShare,
+  saveInfoShare,
+  syncInfoShare,
+} from '../lib/weeklyReportInfoShare'
+import {
+  loadMeasurementStatus,
+  saveMeasurementStatus,
+  syncMeasurementStatus,
+} from '../lib/weeklyReportMeasurementStatus'
 import { cacheWeeklySnapshotDetailRecords } from '../lib/weeklySnapshotDetailCache'
 import {
   formatProductionQueryPeriodTitle,
@@ -52,7 +71,10 @@ import {
   type WeeklyReportPeriodState,
 } from '../lib/weeklyReportPeriod'
 import type {
+  ApprovalDocItem,
   CustomerNcItem,
+  InfoShareItem,
+  MeasurementStatusItem,
   WeeklyReportMetric,
   WeeklyReportOrgId,
   InspectionRecord,
@@ -201,6 +223,22 @@ export function WeeklyReport() {
     string | null
   >(null)
   const [customerNcSaving, setCustomerNcSaving] = useState(false)
+  const [approvalDocs, setApprovalDocs] = useState<ApprovalDocItem[]>([])
+  const [approvalDocsHydratedKey, setApprovalDocsHydratedKey] = useState<
+    string | null
+  >(null)
+  const [approvalDocsSaving, setApprovalDocsSaving] = useState(false)
+  const [measurementStatus, setMeasurementStatus] = useState<
+    MeasurementStatusItem[]
+  >([])
+  const [measurementStatusHydratedKey, setMeasurementStatusHydratedKey] =
+    useState<string | null>(null)
+  const [measurementStatusSaving, setMeasurementStatusSaving] = useState(false)
+  const [infoShare, setInfoShare] = useState<InfoShareItem[]>([])
+  const [infoShareHydratedKey, setInfoShareHydratedKey] = useState<
+    string | null
+  >(null)
+  const [infoShareSaving, setInfoShareSaving] = useState(false)
   const [snapshotList, setSnapshotList] = useState<WeeklyReportSnapshotMeta[]>([])
   const [snapshotListLoading, setSnapshotListLoading] = useState(false)
   const [snapshotSaving, setSnapshotSaving] = useState(false)
@@ -344,6 +382,81 @@ export function WeeklyReport() {
       if (cancelled) return
       setCustomerNc(synced)
       setCustomerNcHydratedKey(periodKey)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [periodKey])
+
+  // 승인서류 제출현황 — 기간 변경 시 초기화 후 원격/로컬 동기화
+  useEffect(() => {
+    setApprovalDocs([])
+    setApprovalDocsHydratedKey(null)
+  }, [periodKey])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!isCloudSyncEnabled()) {
+        if (cancelled) return
+        setApprovalDocs(loadApprovalDocs(periodKey) ?? [])
+        setApprovalDocsHydratedKey(periodKey)
+        return
+      }
+      const synced = await syncApprovalDocs(periodKey)
+      if (cancelled) return
+      setApprovalDocs(synced)
+      setApprovalDocsHydratedKey(periodKey)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [periodKey])
+
+  // 측정현황 — 기간 변경 시 초기화 후 원격/로컬 동기화
+  useEffect(() => {
+    setMeasurementStatus([])
+    setMeasurementStatusHydratedKey(null)
+  }, [periodKey])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!isCloudSyncEnabled()) {
+        if (cancelled) return
+        setMeasurementStatus(loadMeasurementStatus(periodKey) ?? [])
+        setMeasurementStatusHydratedKey(periodKey)
+        return
+      }
+      const synced = await syncMeasurementStatus(periodKey)
+      if (cancelled) return
+      setMeasurementStatus(synced)
+      setMeasurementStatusHydratedKey(periodKey)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [periodKey])
+
+  // 정보공유 및 대외일정 — 기간 변경 시 초기화 후 원격/로컬 동기화
+  useEffect(() => {
+    setInfoShare([])
+    setInfoShareHydratedKey(null)
+  }, [periodKey])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!isCloudSyncEnabled()) {
+        if (cancelled) return
+        setInfoShare(loadInfoShare(periodKey) ?? [])
+        setInfoShareHydratedKey(periodKey)
+        return
+      }
+      const synced = await syncInfoShare(periodKey)
+      if (cancelled) return
+      setInfoShare(synced)
+      setInfoShareHydratedKey(periodKey)
     })()
     return () => {
       cancelled = true
@@ -494,6 +607,9 @@ export function WeeklyReport() {
           issues,
           customerNc,
           customerNcPhotos,
+          approvalDocs,
+          measurementStatus,
+          infoShare,
           worst5: weeklyDetail.worst5,
           worst5Thresholds: weeklyDetail.worst5Thresholds,
           monthlyByMetric,
@@ -523,6 +639,9 @@ export function WeeklyReport() {
     weeklyDetail,
     issues,
     customerNc,
+    approvalDocs,
+    measurementStatus,
+    infoShare,
     refreshSnapshotList,
     records,
     anchor,
@@ -635,7 +754,7 @@ export function WeeklyReport() {
     async (next: typeof issues) => {
       if (!canEditWeeklyContent) {
         pushToast(
-          '주간 ISSUE 수정은 실무자 또는 관리자 로그인이 필요합니다.',
+          'WORST 주간 ISSUE 수정은 실무자 또는 관리자 로그인이 필요합니다.',
           'info',
         )
         openLogin('manager')
@@ -658,7 +777,7 @@ export function WeeklyReport() {
           return
         }
         if (result.synced) {
-          pushToast('주간 ISSUE를 저장했습니다. 다른 PC에서도 동일하게 보입니다.', 'success')
+          pushToast('WORST 주간 ISSUE를 저장했습니다. 다른 PC에서도 동일하게 보입니다.', 'success')
         } else {
           pushToast(
             '이 PC에만 저장되었습니다. (공유 연결 실패 — 네트워크·Supabase 설정을 확인해 주세요.)',
@@ -731,6 +850,162 @@ export function WeeklyReport() {
     ],
   )
 
+  const handleSaveApprovalDocs = useCallback(
+    async (next: ApprovalDocItem[]) => {
+      if (!canEditWeeklyContent) {
+        pushToast(
+          '승인서류 제출현황 수정은 실무자 또는 관리자 로그인이 필요합니다.',
+          'info',
+        )
+        openLogin('manager')
+        return
+      }
+      if (activeSnapshot) {
+        pushToast(
+          '스냅샷 보기 중에는 승인서류 제출현황을 수정할 수 없습니다.',
+          'info',
+        )
+        return
+      }
+      const key = periodKeyFromPeriod(weeklyDetail.period)
+      setApprovalDocs(next)
+      setApprovalDocsSaving(true)
+      try {
+        const result = await saveApprovalDocs(key, next)
+        if (!result.ok) {
+          pushToast(
+            `승인서류 제출현황은 이 PC에만 저장되었습니다. 공유 저장 실패: ${result.error ?? '알 수 없음'}`,
+            'error',
+          )
+          return
+        }
+        if (result.synced) {
+          pushToast(
+            '승인서류 제출현황을 저장했습니다. 다른 PC에서도 동일하게 보입니다.',
+            'success',
+          )
+        } else {
+          pushToast(
+            '이 PC에만 저장되었습니다. (공유 연결 실패 — 네트워크·Supabase 설정을 확인해 주세요.)',
+            'info',
+          )
+        }
+      } finally {
+        setApprovalDocsSaving(false)
+      }
+    },
+    [
+      weeklyDetail.period,
+      pushToast,
+      canEditWeeklyContent,
+      openLogin,
+      activeSnapshot,
+    ],
+  )
+
+  const handleSaveMeasurementStatus = useCallback(
+    async (next: MeasurementStatusItem[]) => {
+      if (!canEditWeeklyContent) {
+        pushToast(
+          '측정현황 수정은 실무자 또는 관리자 로그인이 필요합니다.',
+          'info',
+        )
+        openLogin('manager')
+        return
+      }
+      if (activeSnapshot) {
+        pushToast('스냅샷 보기 중에는 측정현황을 수정할 수 없습니다.', 'info')
+        return
+      }
+      const key = periodKeyFromPeriod(weeklyDetail.period)
+      setMeasurementStatus(next)
+      setMeasurementStatusSaving(true)
+      try {
+        const result = await saveMeasurementStatus(key, next)
+        if (!result.ok) {
+          pushToast(
+            `측정현황은 이 PC에만 저장되었습니다. 공유 저장 실패: ${result.error ?? '알 수 없음'}`,
+            'error',
+          )
+          return
+        }
+        if (result.synced) {
+          pushToast(
+            '측정현황을 저장했습니다. 다른 PC에서도 동일하게 보입니다.',
+            'success',
+          )
+        } else {
+          pushToast(
+            '이 PC에만 저장되었습니다. (공유 연결 실패 — 네트워크·Supabase 설정을 확인해 주세요.)',
+            'info',
+          )
+        }
+      } finally {
+        setMeasurementStatusSaving(false)
+      }
+    },
+    [
+      weeklyDetail.period,
+      pushToast,
+      canEditWeeklyContent,
+      openLogin,
+      activeSnapshot,
+    ],
+  )
+
+  const handleSaveInfoShare = useCallback(
+    async (next: InfoShareItem[]) => {
+      if (!canEditWeeklyContent) {
+        pushToast(
+          '정보공유 및 대외일정 수정은 실무자 또는 관리자 로그인이 필요합니다.',
+          'info',
+        )
+        openLogin('manager')
+        return
+      }
+      if (activeSnapshot) {
+        pushToast(
+          '스냅샷 보기 중에는 정보공유 및 대외일정을 수정할 수 없습니다.',
+          'info',
+        )
+        return
+      }
+      const key = periodKeyFromPeriod(weeklyDetail.period)
+      setInfoShare(next)
+      setInfoShareSaving(true)
+      try {
+        const result = await saveInfoShare(key, next)
+        if (!result.ok) {
+          pushToast(
+            `정보공유 및 대외일정은 이 PC에만 저장되었습니다. 공유 저장 실패: ${result.error ?? '알 수 없음'}`,
+            'error',
+          )
+          return
+        }
+        if (result.synced) {
+          pushToast(
+            '정보공유 및 대외일정을 저장했습니다. 다른 PC에서도 동일하게 보입니다.',
+            'success',
+          )
+        } else {
+          pushToast(
+            '이 PC에만 저장되었습니다. (공유 연결 실패 — 네트워크·Supabase 설정을 확인해 주세요.)',
+            'info',
+          )
+        }
+      } finally {
+        setInfoShareSaving(false)
+      }
+    },
+    [
+      weeklyDetail.period,
+      pushToast,
+      canEditWeeklyContent,
+      openLogin,
+      activeSnapshot,
+    ],
+  )
+
   const handleAiGenerateIssues = useCallback(() => {
     return buildAutoWeeklyIssues(weeklyDetail)
   }, [weeklyDetail])
@@ -789,6 +1064,15 @@ export function WeeklyReport() {
   const shownCustomerNc = viewingSnapshot
     ? (activeSnapshot?.payload.customerNc ?? [])
     : customerNc
+  const shownApprovalDocs = viewingSnapshot
+    ? (activeSnapshot?.payload.approvalDocs ?? [])
+    : approvalDocs
+  const shownMeasurementStatus = viewingSnapshot
+    ? (activeSnapshot?.payload.measurementStatus ?? [])
+    : measurementStatus
+  const shownInfoShare = viewingSnapshot
+    ? (activeSnapshot?.payload.infoShare ?? [])
+    : infoShare
   /** 스냅샷에 customerNcPhotos 키가 있으면 동결본 사용, 없으면(구버전) 해당 period 실시간 조회 */
   const shownCustomerNcPhotos = useMemo(() => {
     if (!viewingSnapshot || !activeSnapshot) return undefined
@@ -1016,6 +1300,7 @@ export function WeeklyReport() {
 
         {!rangeInvalid ? (
           <>
+            <WeeklySectionHeading title="1. 고객사 부적합 현황" />
             <CustomerNcPanel
               items={shownCustomerNc}
               productOptions={productOptions}
@@ -1041,6 +1326,21 @@ export function WeeklyReport() {
               canEdit={canEditWeeklyContent && !viewingSnapshot}
               onRequestLogin={() => openLogin('manager')}
             />
+
+            <WeeklySectionHeading title="2. 승인서류 제출현황" />
+            <ApprovalDocPanel
+              items={shownApprovalDocs}
+              onSave={handleSaveApprovalDocs}
+              saving={approvalDocsSaving}
+              cloudSync={isCloudSyncEnabled()}
+              syncReady={
+                viewingSnapshot || approvalDocsHydratedKey === periodKey
+              }
+              canEdit={canEditWeeklyContent && !viewingSnapshot}
+              onRequestLogin={() => openLogin('manager')}
+            />
+
+            <WeeklySectionHeading title="3. 사내 부적합 현황" />
 
             <MonthlyTrendSection
               view={shownMonthlyView}
@@ -1119,6 +1419,32 @@ export function WeeklyReport() {
                 </Panel>
               </div>
             </div>
+
+            <WeeklySectionHeading title="4. 측정현황" />
+            <MeasurementStatusPanel
+              items={shownMeasurementStatus}
+              onSave={handleSaveMeasurementStatus}
+              saving={measurementStatusSaving}
+              cloudSync={isCloudSyncEnabled()}
+              syncReady={
+                viewingSnapshot || measurementStatusHydratedKey === periodKey
+              }
+              canEdit={canEditWeeklyContent && !viewingSnapshot}
+              onRequestLogin={() => openLogin('manager')}
+            />
+
+            <WeeklySectionHeading title="정보공유 및 대외일정" />
+            <InfoSharePanel
+              items={shownInfoShare}
+              onSave={handleSaveInfoShare}
+              saving={infoShareSaving}
+              cloudSync={isCloudSyncEnabled()}
+              syncReady={
+                viewingSnapshot || infoShareHydratedKey === periodKey
+              }
+              canEdit={canEditWeeklyContent && !viewingSnapshot}
+              onRequestLogin={() => openLogin('manager')}
+            />
 
             <WeeklyFullscreenOverlay
               open={productionFullscreen}
