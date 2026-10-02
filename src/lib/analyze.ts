@@ -1076,6 +1076,9 @@ export function analyzeRecords(
   const periodAllGroups = applyMultiFilters(analyzable, filters).filter((r) =>
     inRange(r.date, start, end),
   );
+  const prevAllGroups = applyMultiFilters(analyzable, filters).filter((r) =>
+    inRange(r.date, prev.start, prev.end),
+  );
   const groupSummaries: GroupSummary[] = ANALYSIS_GROUPS.map((g) => {
     const list = periodAllGroups.filter((r) => matchesAnalysisGroup(r, g.id));
     const qty = sum(list, "qty");
@@ -1106,6 +1109,7 @@ export function analyzeRecords(
   const defectTypes = buildDefectTypes(source, compare);
   const inspectors = buildInspectors(source);
   const products = buildProducts(source, compare);
+  const dashboardTop10Products = buildProducts(periodAllGroups, prevAllGroups);
   const workerProductUph = buildWorkerProductUph(source);
   const workers = buildWorkers(source, workerProductUph);
   const inspectorProductUph = buildInspectorProductUph(source);
@@ -1135,6 +1139,7 @@ export function analyzeRecords(
     defectTypes,
     inspectors,
     products,
+    dashboardTop10Products,
     workers,
     workerProductUph,
     inspectorProductUph,

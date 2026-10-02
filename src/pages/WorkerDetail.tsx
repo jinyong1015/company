@@ -1,5 +1,5 @@
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ChevronRight, HardHat, Package } from 'lucide-react'
+import { AlertTriangle, Coins, HardHat, Package, PackageX } from 'lucide-react'
 import {
   Bar,
   BarChart,
@@ -15,6 +15,14 @@ import {
 import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
 import { ResponsiveGrid } from '../components/common/ResponsiveGrid'
+import {
+  DetailBackNav,
+  DetailHero,
+  DetailKpiStrip,
+  DetailProductPicker,
+  DetailSnapshotBanner,
+} from '../components/detail/DetailChrome'
+import { DEFECT_TYPE_COLORS } from '../lib/defectColors'
 import { useData } from '../context/DataContext'
 import { cloneFilterState, useFilters, type FilterState } from '../context/FilterContext'
 import { filterRecords, buildPeriodTrends, resolvePeriodRange } from '../lib/analyze'
@@ -46,81 +54,24 @@ function WorkerDetailBackNav({
   periodRange?: { start: string; end: string } | null
 }) {
   const toProduct = Boolean(productName && productHref)
-
   return (
-    <nav aria-label="성형 작업자 상세 돌아가기" className="sticky top-16 z-10">
-      <Link
-        to={toProduct ? productHref! : '/workers'}
-        className="group flex items-center gap-3 rounded-2xl border-2 border-accent/50 bg-white p-3 shadow-[0_8px_24px_rgba(59,130,246,0.12)] ring-1 ring-accent/20 transition hover:border-accent hover:bg-accent/[0.03] hover:shadow-[0_12px_28px_rgba(59,130,246,0.18)] sm:gap-4 sm:p-4"
-      >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-white shadow-sm transition group-hover:bg-blue-600 sm:h-12 sm:w-12">
-          <ArrowLeft size={20} strokeWidth={2.5} aria-hidden />
-        </span>
-
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/25 sm:h-12 sm:w-12">
-          {toProduct ? (
-            <Package size={20} strokeWidth={2.25} aria-hidden />
-          ) : (
-            <HardHat size={20} strokeWidth={2.25} aria-hidden />
-          )}
-        </span>
-
-        <span className="min-w-0 flex-1">
-          <span className="block text-[11px] font-bold tracking-[0.12em] text-accent uppercase">
-            돌아가기
-          </span>
-          <span className="mt-0.5 block truncate text-base font-bold text-ink transition group-hover:text-accent sm:text-lg">
-            {toProduct ? productName : '성형 작업자 분석'}
-          </span>
-          {toProduct ? (
-            <span className="mt-0.5 block text-xs text-muted">품번 상세</span>
-          ) : null}
-        </span>
-
-        {toProduct ? (
-          <span className="hidden shrink-0 rounded-xl border border-line bg-canvas px-3 py-2 text-right sm:block">
-            <span className="block text-[10px] font-semibold tracking-wide text-muted uppercase">
-              품번
-            </span>
-            <span className="mt-0.5 block max-w-[12rem] truncate text-xs font-semibold text-ink">
-              {productName}
-            </span>
-          </span>
-        ) : null}
-
-        {periodRange ? (
-          <span className="hidden shrink-0 rounded-xl border border-line bg-canvas px-3 py-2 text-right sm:block">
-            <span className="block text-[10px] font-semibold tracking-wide text-muted uppercase">
-              조회기간
-            </span>
-            <span className="num mt-0.5 block text-xs font-semibold text-ink">
-              {periodRange.start} ~ {periodRange.end}
-            </span>
-          </span>
-        ) : null}
-
-        <ChevronRight
-          size={20}
-          className="shrink-0 text-muted/60 transition group-hover:translate-x-0.5 group-hover:text-accent"
-          aria-hidden
-        />
-      </Link>
-      {(toProduct || periodRange) && (
-        <p className="mt-2 px-1 text-center text-xs font-medium text-muted sm:hidden">
-          {toProduct ? (
-            <span>
-              품번 <span className="font-semibold text-ink">{productName}</span>
-            </span>
-          ) : null}
-          {toProduct && periodRange ? <span className="mx-1.5">·</span> : null}
-          {periodRange ? (
-            <span className="num">
-              조회기간 {periodRange.start} ~ {periodRange.end}
-            </span>
-          ) : null}
-        </p>
-      )}
-    </nav>
+    <DetailBackNav
+      to={toProduct ? productHref! : '/workers'}
+      label={toProduct ? productName! : '성형 작업자 분석'}
+      ariaLabel="성형 작업자 상세 돌아가기"
+      Icon={toProduct ? Package : HardHat}
+      metas={[
+        ...(toProduct ? [{ label: '품번', value: productName! }] : []),
+        ...(periodRange
+          ? [
+              {
+                label: '조회기간',
+                value: `${periodRange.start} ~ ${periodRange.end}`,
+              },
+            ]
+          : []),
+      ]}
+    />
   )
 }
 
@@ -299,24 +250,9 @@ export function WorkerDetail() {
     [filtered, effectiveFilters],
   )
 
-  const snapshotBanner =
-    usingSnapshot && snapshotStatus === 'loading' ? (
-      <div className="card border-accent/30 px-4 py-3 text-sm text-muted">
-        스냅샷 원본 DATA를 불러오는 중…
-      </div>
-    ) : usingSnapshot && snapshotStatus === 'missing' ? (
-      <div className="card border-warn/40 px-4 py-3 text-sm text-muted">
-        이 스냅샷에는 상세용 원본 DATA가 없습니다. 주간보고에서 스냅샷을 다시 저장해 주세요.
-      </div>
-    ) : usingSnapshot && snapshotStatus === 'error' ? (
-      <div className="card border-danger/40 px-4 py-3 text-sm text-danger">
-        {snapshotError ?? '스냅샷 DATA를 불러오지 못했습니다.'}
-      </div>
-    ) : usingSnapshot && snapshotStatus === 'ready' ? (
-      <div className="card border-accent/30 px-4 py-3 text-sm text-muted">
-        스냅샷 확정본 기준 조회 · 현재 업로드 DATA와 무관합니다.
-      </div>
-    ) : null
+  const snapshotBanner = usingSnapshot ? (
+    <DetailSnapshotBanner status={snapshotStatus} error={snapshotError} />
+  ) : null
 
   if (!name) {
     return (
@@ -341,7 +277,8 @@ export function WorkerDetail() {
       <div className="space-y-5">
         <WorkerDetailBackNav {...backNavProps} />
         {snapshotBanner}
-        <PageHeader
+        <DetailHero
+          eyebrow="성형 작업자 상세"
           title={name}
           description="선택한 기간/분석 그룹에 이 성형 작업자의 DATA가 없습니다."
         />
@@ -439,188 +376,54 @@ export function WorkerDetail() {
     <div className="space-y-5">
       <WorkerDetailBackNav {...backNavProps} />
       {snapshotBanner}
-      <PageHeader
+      <DetailHero
+        eyebrow="성형 작업자 상세"
         title={row.name}
         description={`성형 작업자 · 선택한 기간/분석 그룹 기준 · ${scopeLabel}`}
+        chips={['성형 작업자', scopeLabel]}
       />
 
-      <Panel
-        title="작업 품번 선택"
-        description="카드를 클릭하면 아래 KPI·차트가 해당 품번 기준으로 바뀝니다."
-      >
-        {!productOptions.length ? (
-          <p className="text-sm text-muted">해당 기간에 작업한 품번이 없습니다.</p>
-        ) : (
-          <>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-accent/40 bg-accent/5 px-3 py-2.5">
-              <p className="text-sm text-ink">
-                <span className="font-medium text-accent">작업 품번을 선택</span>
-                해 실적수량·불량률을 확인하세요.
-              </p>
-              <p className="text-xs text-muted">
-                현재{' '}
-                <span className="font-semibold text-accent">
-                  {hasSelection ? activeProduct : `전체 (${productOptions.length})`}
-                </span>
-              </p>
-            </div>
-
-            <div className="mb-3 flex flex-wrap items-end gap-3">
-              <label className="min-w-[200px] flex-1 text-xs font-medium text-muted">
-                품번 검색
-                <input
-                  type="search"
-                  value={productQuery}
-                  onChange={(e) => setProductQuery(e.target.value)}
-                  placeholder="품번명으로 찾기"
-                  className="mt-1.5 w-full rounded-full border border-line bg-white px-3.5 py-2 text-sm font-normal text-ink outline-none focus:border-accent"
-                />
-              </label>
-              <label className="text-xs font-medium text-muted">
-                빠른 선택
-                <select
-                  id="worker-product-select"
-                  value={activeProduct}
-                  onChange={(e) => setSelectedProduct(e.target.value)}
-                  className="mt-1.5 min-w-[200px] rounded-full border border-line bg-white px-3 py-2 text-sm font-normal text-ink"
-                  aria-label="작업 품번 빠른 선택"
-                >
-                  <option value="">전체 ({productOptions.length})</option>
-                  {productOptions.map((p) => (
-                    <option key={p.product} value={p.product}>
-                      {p.product} · {p.qty.toLocaleString()} EA
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <div
-              className="grid-dense max-h-[320px] overflow-y-auto pr-1"
-              role="radiogroup"
-              aria-label="작업 품번 선택"
-            >
-              <button
-                type="button"
-                role="radio"
-                aria-checked={!hasSelection}
-                onClick={() => setSelectedProduct('')}
-                className={`group flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition ${
-                  !hasSelection
-                    ? 'border-accent bg-accent/5 shadow-sm ring-1 ring-accent/30'
-                    : 'border-line bg-white hover:border-accent/50 hover:bg-canvas'
-                }`}
-              >
-                <span
-                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                    !hasSelection ? 'border-accent' : 'border-line group-hover:border-accent/60'
-                  }`}
-                  aria-hidden
-                >
-                  {!hasSelection ? <span className="h-2 w-2 rounded-full bg-accent" /> : null}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center justify-between gap-2">
-                    <span className={`text-sm font-semibold ${!hasSelection ? 'text-accent' : 'text-ink'}`}>
-                      전체 품번
-                    </span>
-                    {!hasSelection ? (
-                      <span className="shrink-0 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-medium text-white">
-                        선택됨
-                      </span>
-                    ) : null}
-                  </span>
-                  <span className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted">
-                    <span>
-                      품번 <span className="num font-medium text-ink/80">{productOptions.length}</span>
-                    </span>
-                    <span>
-                      실적 <span className="num font-medium text-ink/80">{totalQty.toLocaleString()}</span>
-                    </span>
-                  </span>
-                </span>
-              </button>
-
-              {visibleProducts.map((p) => {
-                const active = p.product === activeProduct
-                return (
-                  <button
-                    key={p.product}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => setSelectedProduct(p.product)}
-                    className={`group flex w-full items-start gap-3 rounded-xl border px-3.5 py-3 text-left transition ${
-                      active
-                        ? 'border-accent bg-accent/5 shadow-sm ring-1 ring-accent/30'
-                        : 'border-line bg-white hover:border-accent/50 hover:bg-canvas'
-                    }`}
-                  >
-                    <span
-                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                        active ? 'border-accent' : 'border-line group-hover:border-accent/60'
-                      }`}
-                      aria-hidden
-                    >
-                      {active ? <span className="h-2 w-2 rounded-full bg-accent" /> : null}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center justify-between gap-2">
-                        <span
-                          className={`truncate text-sm font-semibold ${active ? 'text-accent' : 'text-ink'}`}
-                          title={p.product}
-                        >
-                          {p.product}
-                        </span>
-                        {active ? (
-                          <span className="shrink-0 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-medium text-white">
-                            선택됨
-                          </span>
-                        ) : (
-                          <span className="shrink-0 text-[10px] text-muted opacity-0 transition group-hover:opacity-100">
-                            클릭
-                          </span>
-                        )}
-                      </span>
-                      <span className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted">
-                        <span>
-                          실적 <span className="num font-medium text-ink/80">{p.qty.toLocaleString()}</span>
-                        </span>
-                        <span>
-                          불량률{' '}
-                          <span className="num font-medium text-ink/80">
-                            {formatPpmAsPercent(p.failRate)}
-                          </span>
-                        </span>
-                      </span>
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {productQuery.trim() && !visibleProducts.length && (
-              <p className="mt-3 text-center text-sm text-muted">
-                「{productQuery.trim()}」에 맞는 품번이 없습니다.
-              </p>
-            )}
-          </>
+      <DetailProductPicker
+        productQuery={productQuery}
+        onQueryChange={setProductQuery}
+        selectId="worker-product-select"
+        activeProduct={activeProduct}
+        onSelectProduct={setSelectedProduct}
+        productOptions={productOptions}
+        visibleProducts={visibleProducts}
+        totalQty={totalQty}
+        qtyLabel="실적"
+        renderMeta={(p) => (
+          <span className="detail-pick-meta">
+            <span>
+              실적 <strong className="num">{p.qty.toLocaleString()}</strong>
+            </span>
+            <span>
+              불량률{' '}
+              <strong className="num">{formatPpmAsPercent(p.failRate ?? 0)}</strong>
+            </span>
+          </span>
         )}
-      </Panel>
+      />
 
-      <ResponsiveGrid variant="kpi">
-        {[
-          ['실적수량', qty.toLocaleString()],
-          ['부적합수량', fail.toLocaleString()],
-          ['불량률(%)', formatPpmAsPercent(failRate)],
-          ['폐기비용', formatWon(scrapCost)],
-        ].map(([label, value]) => (
-          <div key={label} className="card px-4 py-3">
-            <p className="text-xs text-muted">{label}</p>
-            <p className="num mt-1 text-xl font-semibold">{value}</p>
-          </div>
-        ))}
-      </ResponsiveGrid>
+      <DetailKpiStrip
+        items={[
+          { label: '실적수량', value: qty.toLocaleString(), tone: 'accent', icon: Package },
+          {
+            label: '부적합수량',
+            value: fail.toLocaleString(),
+            tone: fail > 0 ? 'danger' : 'default',
+            icon: PackageX,
+          },
+          {
+            label: '불량률(%)',
+            value: formatPpmAsPercent(failRate),
+            tone: failRate > 0 ? 'danger' : 'default',
+            icon: AlertTriangle,
+          },
+          { label: '폐기비용', value: formatWon(scrapCost), tone: 'warn', icon: Coins },
+        ]}
+      />
 
       <ResponsiveGrid variant="cards">
         <Panel title={`기간별 실적수량 (${grainLabel})`}>
@@ -717,19 +520,19 @@ export function WorkerDetail() {
         description="품번을 클릭하면 해당 기간·성형 작업자 실적 기준 품번 상세로 이동합니다."
       >
         <div className="overflow-x-auto">
-          <table className="min-w-[480px] w-full text-left text-sm">
+          <table className="detail-table min-w-[480px] w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-line text-xs text-muted">
-                <th className="px-2 py-2 font-medium">품번</th>
-                <th className="px-2 py-2 font-medium">실적수량</th>
-                <th className="px-2 py-2 font-medium">부적합수량</th>
-                <th className="px-2 py-2 font-medium">불량률(%)</th>
+              <tr>
+                <th>품번</th>
+                <th>실적수량</th>
+                <th>부적합수량</th>
+                <th>불량률(%)</th>
               </tr>
             </thead>
             <tbody>
               {selectedStats.map((p) => (
-                <tr key={p.product} className="border-b border-line/70 hover:bg-canvas">
-                  <td className="px-2 py-2.5 font-medium">
+                <tr key={p.product}>
+                  <td className="font-medium">
                     <Link
                       to={productDetailHref(p.product)}
                       className="text-accent hover:underline"
@@ -737,9 +540,9 @@ export function WorkerDetail() {
                       {p.product}
                     </Link>
                   </td>
-                  <td className="num px-2 py-2.5">{p.qty.toLocaleString()}</td>
-                  <td className="num px-2 py-2.5">{p.fail.toLocaleString()}</td>
-                  <td className="num px-2 py-2.5 font-semibold">
+                  <td className="num">{p.qty.toLocaleString()}</td>
+                  <td className="num">{p.fail.toLocaleString()}</td>
+                  <td className="num font-semibold">
                     {formatPpmAsPercent(p.failRate)}
                   </td>
                 </tr>
@@ -758,25 +561,41 @@ export function WorkerDetail() {
 
       <ResponsiveGrid variant="split">
         <Panel title="담당 금형">
-          <ul className="space-y-2 text-sm">
-            {molds.slice(0, 8).map((m) => (
-              <li key={m} className="border-b border-line/60 py-1.5">
-                {m}
-              </li>
-            ))}
-            {!molds.length && <li className="text-muted">데이터 없음</li>}
-          </ul>
+          {molds.length ? (
+            <div className="detail-tags detail-tags-wrap">
+              {molds.slice(0, 12).map((m) => (
+                <span key={m} className="detail-tag detail-tag-id">
+                  {m}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted">데이터 없음</p>
+          )}
         </Panel>
         <Panel title="주요 불량 유형">
-          <ul className="space-y-2 text-sm">
-            {defects.map(([defectName, count]) => (
-              <li key={defectName} className="flex justify-between border-b border-line/60 py-1.5">
-                <span>{defectName}</span>
-                <span className="num text-muted">{count.toLocaleString()}</span>
-              </li>
-            ))}
-            {!defects.length && <li className="text-muted">데이터 없음</li>}
-          </ul>
+          {defects.length ? (
+            <div className="detail-defect-chips">
+              {defects.map(([defectName, count], index) => {
+                const color =
+                  DEFECT_TYPE_COLORS[index % DEFECT_TYPE_COLORS.length]
+                return (
+                  <span
+                    key={defectName}
+                    className="detail-defect-chip"
+                    style={{ ['--defect-chip' as string]: color }}
+                  >
+                    <span className="detail-defect-chip-name">{defectName}</span>
+                    <span className="detail-defect-chip-count">
+                      {count.toLocaleString()}
+                    </span>
+                  </span>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-muted">데이터 없음</p>
+          )}
         </Panel>
       </ResponsiveGrid>
     </div>

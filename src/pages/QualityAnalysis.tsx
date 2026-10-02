@@ -1,41 +1,30 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { ArrowDown } from 'lucide-react'
 import { PageHeader } from '../components/common/PageHeader'
-import { Panel } from '../components/common/Panel'
-import { StatusBadge } from '../components/common/StatusBadge'
-import { DefectBarChart } from '../components/charts/DefectCharts'
+import {
+  SplitTop10Panel,
+  type SplitTop10RowBase,
+} from '../components/charts/SplitTop10Panel'
 import { useData } from '../context/DataContext'
 import { useFilters } from '../context/FilterContext'
 import { filterRecords } from '../lib/analyze'
 import { toEntityId } from '../lib/entityId'
 import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
 import { buildProductDetailHref } from '../lib/productDetailNav'
-import { formatPpm, formatWon, failRatePpm } from '../lib/format'
-import type { InspectionRecord } from '../types'
-
-type TopMode = 'byDefect' | 'byProduct'
-type ProductSort = 'fail' | 'failRate' | 'qty' | 'scrapCost'
+import { formatPpm, failRatePpm } from '../lib/format'
+import { defectTypeColor } from '../lib/defectColors'
+import { getProductPhotoUrlMap } from '../lib/productPhotos'
+import { isCloudSyncEnabled } from '../lib/supabase'
+import type { DefectType, InspectionRecord } from '../types'
 
 const VIEW_STATE_KEY = 'quality-analysis'
 
 type QualityAnalysisViewState = {
   selected: string
-  topMode: TopMode
-  productSort: ProductSort
 }
 
 const defaultViewState: QualityAnalysisViewState = {
   selected: '',
-  topMode: 'byDefect',
-  productSort: 'fail',
-}
-
-function isTopMode(value: unknown): value is TopMode {
-  return value === 'byDefect' || value === 'byProduct'
-}
-
-function isProductSort(value: unknown): value is ProductSort {
-  return value === 'fail' || value === 'failRate' || value === 'qty' || value === 'scrapCost'
 }
 
 function readViewState(): QualityAnalysisViewState {
@@ -43,10 +32,6 @@ function readViewState(): QualityAnalysisViewState {
   if (!stored) return defaultViewState
   return {
     selected: typeof stored.selected === 'string' ? stored.selected : defaultViewState.selected,
-    topMode: isTopMode(stored.topMode) ? stored.topMode : defaultViewState.topMode,
-    productSort: isProductSort(stored.productSort)
-      ? stored.productSort
-      : defaultViewState.productSort,
   }
 }
 
@@ -57,13 +42,21 @@ function defectCountOf(record: InspectionRecord, defect: string) {
   return 0
 }
 
+type DefectTop10Row = SplitTop10RowBase & { defect: DefectType }
+
+type ProductTop10Row = SplitTop10RowBase & {
+  type: string
+  qty: number
+  failRate: number
+  defectCount: number
+}
+
 export function QualityAnalysis() {
   const { analytics, records } = useData()
   const { filters } = useFilters()
-  const { defectTypes, products } = analytics
+  const { defectTypes } = analytics
   const [view, setView] = useState<QualityAnalysisViewState>(readViewState)
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const { selected, topMode, productSort } = view
+  const { selected } = view
 
   useEffect(() => {
     savePageViewState(VIEW_STATE_KEY, view)
@@ -77,21 +70,28 @@ export function QualityAnalysis() {
     ? selected
     : (defectTypes[0]?.name ?? '')
 
-  useEffect(() => {
-    if (!pickerOpen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setPickerOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [pickerOpen])
-
   const scoped = useMemo(
     () => filterRecords(records, filters, true),
     [records, filters],
   )
 
-  const defectProductTop = useMemo(() => {
+  const defectTopRows = useMemo((): DefectTop10Row[] => {
+    return defectTypes.slice(0, 10).map((d, idx) => ({
+      id: d.name,
+      name: d.name,
+      rank: idx + 1,
+      value: d.share,
+      sharePercent: d.share,
+      defect: d,
+    }))
+  }, [defectTypes])
+
+  const totalDefectCount = useMemo(
+    () => defectTypes.reduce((s, d) => s + d.count, 0),
+    [defectTypes],
+  )
+
+  const defectProductTop = useMemo((): ProductTop10Row[] => {
     if (!activeDefect) return []
     const map = new Map<
       string,
@@ -101,7 +101,6 @@ export function QualityAnalysis() {
         qty: number
         fail: number
         defectCount: number
-        scrapCost: number
       }
     >()
     for (const r of scoped) {
@@ -113,278 +112,226 @@ export function QualityAnalysis() {
         qty: 0,
         fail: 0,
         defectCount: 0,
-        scrapCost: 0,
       }
       cur.qty += r.qty
       cur.fail += r.fail
       cur.defectCount += count
-      cur.scrapCost += r.scrapCost
       map.set(r.product, cur)
     }
-    return [...map.values()]
+    const all = [...map.values()]
+    const totalDefect = all.reduce((s, r) => s + r.defectCount, 0)
+    return all
       .sort((a, b) => b.defectCount - a.defectCount || b.fail - a.fail)
       .slice(0, 10)
       .map((row, i) => ({
-        ...row,
-        rank: i + 1,
-        failRate: failRatePpm(row.fail, row.qty),
         id: toEntityId('prd', row.product),
+        name: row.product,
+        rank: i + 1,
+        value: row.defectCount,
+        sharePercent:
+          totalDefect > 0
+            ? Math.round((row.defectCount / totalDefect) * 1000) / 10
+            : 0,
+        href: buildProductDetailHref(toEntityId('prd', row.product), 'quality'),
+        type: row.type,
+        qty: row.qty,
+        failRate: failRatePpm(row.fail, row.qty),
+        defectCount: row.defectCount,
       }))
   }, [scoped, activeDefect])
 
-  const productFailTop = useMemo(
-    () =>
-      [...products]
-        .sort((a, b) => b[productSort] - a[productSort])
-        .slice(0, 10),
-    [products, productSort],
-  )
-
   const activeMeta = defectTypes.find((d) => d.name === activeDefect)
+  const activeDefectIndex = Math.max(
+    0,
+    defectTypes.findIndex((d) => d.name === activeDefect),
+  )
+  const activeDefectColor = defectTypeColor(activeDefectIndex)
 
-  function pickDefect(name: string) {
-    patchView({ selected: name, topMode: 'byDefect' })
-    setPickerOpen(false)
-  }
+  const productKeys = useMemo(
+    () =>
+      [...new Set(defectProductTop.map((r) => r.name.trim()).filter(Boolean))].sort(),
+    [defectProductTop],
+  )
+  const productKeysSignature = productKeys.join('\u0001')
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!isCloudSyncEnabled() || !productKeys.length) {
+      setPhotoUrls({})
+      return
+    }
+    let cancelled = false
+    void getProductPhotoUrlMap(productKeys).then((map) => {
+      if (!cancelled) setPhotoUrls(map)
+    })
+    return () => {
+      cancelled = true
+    }
+    // productKeysSignature tracks productKeys content
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productKeysSignature])
 
   return (
     <div className="space-y-5">
       <PageHeader title="품질 분석" />
 
-      <Panel title="불량 유형 TOP 10" description="아래 버튼으로 유형을 선택하세요">
-        <DefectBarChart data={defectTypes} />
-
-        <div className="mt-4 rounded-2xl border border-line bg-canvas/50 p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-medium text-ink">불량 유형 선택</p>
-            <button
-              type="button"
-              onClick={() => setPickerOpen(true)}
-              className="rounded-full bg-ink px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-ink/90"
-            >
-              전체 유형 보기
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {defectTypes.map((d, i) => {
-              const active = d.name === activeDefect
-              return (
-                <button
-                  key={d.name}
-                  type="button"
-                  onClick={() => pickDefect(d.name)}
-                  className={`rounded-full border px-3.5 py-2 text-sm font-medium transition ${
-                    active
-                      ? 'scale-[1.03] border-accent bg-accent text-white shadow-md shadow-accent/25'
-                      : 'border-line bg-white text-ink hover:border-accent/40 hover:bg-accent-soft'
-                  }`}
-                >
-                  <span className="mr-1.5 text-xs opacity-70">{i + 1}.</span>
-                  {d.name}
-                  <span className={`ml-2 num text-xs ${active ? 'text-white/80' : 'text-muted'}`}>
-                    {d.share}%
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-          {activeMeta && (
-            <p className="mt-3 text-xs text-muted">
-              선택: <span className="font-semibold text-ink">{activeMeta.name}</span>
-              {' · '}
-              {activeMeta.count.toLocaleString()}건 · {activeMeta.share}%
-              {activeMeta.delta ? ` · ${activeMeta.delta}` : ''}
-            </p>
-          )}
-        </div>
-      </Panel>
-
-      <Panel
-        title="품번 TOP 10"
-        description={
-          topMode === 'byDefect'
-            ? activeDefect
-              ? `${activeDefect} 발생 수량 기준`
-              : '불량 유형을 선택하세요'
-            : '품번 전체 부적합 기준'
-        }
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-full border border-line bg-white p-0.5">
-              <button
-                type="button"
-                onClick={() => patchView({ topMode: 'byDefect' })}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                  topMode === 'byDefect' ? 'bg-accent text-white shadow-sm' : 'text-muted hover:text-ink'
-                }`}
-              >
-                불량 유형별
-              </button>
-              <button
-                type="button"
-                onClick={() => patchView({ topMode: 'byProduct' })}
-                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                  topMode === 'byProduct' ? 'bg-accent text-white shadow-sm' : 'text-muted hover:text-ink'
-                }`}
-              >
-                품번 기준 불량
-              </button>
+      <section className="quality-drilldown">
+        <header className="quality-drilldown-rail">
+          <div className="quality-drilldown-step is-active">
+            <span className="quality-drilldown-step-num">1</span>
+            <div>
+              <p className="quality-drilldown-step-title">불량 유형 선택</p>
+              <p className="quality-drilldown-step-desc">
+                오른쪽 순위에서 유형을 고르세요
+              </p>
             </div>
-            {topMode === 'byProduct' && (
-              <select
-                value={productSort}
-                onChange={(e) => patchView({ productSort: e.target.value as ProductSort })}
-                className="rounded-full border border-line bg-white px-3 py-1.5 text-xs"
-              >
-                <option value="fail">부적합수량</option>
-                <option value="failRate">부적합률</option>
-                <option value="qty">검수량</option>
-                <option value="scrapCost">폐기비용</option>
-              </select>
-            )}
-            {topMode === 'byDefect' && (
-              <button
-                type="button"
-                onClick={() => setPickerOpen(true)}
-                className="rounded-full border border-accent/30 bg-accent-soft px-3 py-1.5 text-xs font-semibold text-accent hover:bg-accent hover:text-white"
-              >
-                유형 변경
-              </button>
-            )}
           </div>
-        }
-      >
-        {topMode === 'byDefect' ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-[820px] w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-line text-xs text-muted">
-                  <th className="px-2 py-2 font-medium">순위</th>
-                  <th className="px-2 py-2 font-medium">품번</th>
-                  <th className="px-2 py-2 font-medium">제품유형</th>
-                  <th className="px-2 py-2 font-medium">{activeDefect || '불량'} 수량</th>
-                  <th className="px-2 py-2 font-medium">검수량</th>
-                  <th className="px-2 py-2 font-medium">부적합률</th>
-                  <th className="px-2 py-2 font-medium">폐기비용</th>
-                </tr>
-              </thead>
-              <tbody>
-                {defectProductTop.map((row) => (
-                  <tr key={row.id} className="border-b border-line/70 hover:bg-canvas">
-                    <td className="num px-2 py-2.5 text-muted">{row.rank}</td>
-                    <td className="px-2 py-2.5 font-medium">
-                      <Link
-                        to={buildProductDetailHref(row.id, 'quality')}
-                        className="text-accent hover:underline"
-                      >
-                        {row.product}
-                      </Link>
-                    </td>
-                    <td className="px-2 py-2.5">{row.type}</td>
-                    <td className="num px-2 py-2.5 font-semibold">{row.defectCount.toLocaleString()}</td>
-                    <td className="num px-2 py-2.5">{row.qty.toLocaleString()}</td>
-                    <td className="num px-2 py-2.5">{formatPpm(row.failRate)}</td>
-                    <td className="num px-2 py-2.5">{formatWon(row.scrapCost)}</td>
-                  </tr>
-                ))}
-                {!defectProductTop.length && (
-                  <tr>
-                    <td colSpan={7} className="px-2 py-8 text-center text-muted">
-                      {activeDefect
-                        ? `선택한 기간에 ${activeDefect} 발생 품번이 없습니다.`
-                        : '표시할 불량 유형이 없습니다.'}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {productFailTop.map((p, i) => (
-              <Link
-                key={p.id}
-                to={buildProductDetailHref(p.id, 'quality')}
-                className="flex items-center justify-between rounded-xl bg-canvas/70 px-3 py-2.5 transition hover:bg-accent-soft"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="num mt-0.5 w-5 text-xs text-muted">{i + 1}</span>
-                  <div>
-                    <p className="text-sm font-medium">{p.name}</p>
-                    <p className="num text-xs text-muted">
-                      부적합 {p.fail.toLocaleString()} · {formatPpm(p.failRate)} · {p.mainDefect}
-                    </p>
-                  </div>
-                </div>
-                <StatusBadge status={p.status} />
-              </Link>
-            ))}
-            {!productFailTop.length && (
-              <p className="py-8 text-center text-sm text-muted">표시할 품번이 없습니다.</p>
-            )}
-          </div>
-        )}
-      </Panel>
-
-      {pickerOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-4 backdrop-blur-[2px] sm:items-center"
-          onClick={() => setPickerOpen(false)}
-          role="presentation"
-        >
+          <div className="quality-drilldown-rail-line" aria-hidden />
           <div
-            className="max-h-[80vh] w-full max-w-lg overflow-hidden rounded-2xl border border-line bg-white shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="불량 유형 선택"
+            className="quality-drilldown-step"
+            data-filled={activeDefect ? 'true' : undefined}
           >
-            <div className="flex items-center justify-between border-b border-line px-5 py-4">
-              <div>
-                <p className="text-sm font-semibold text-ink">불량 유형 선택</p>
-                <p className="text-xs text-muted">유형을 고르면 품번 TOP 10이 갱신됩니다</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPickerOpen(false)}
-                className="rounded-full border border-line px-3 py-1 text-xs hover:bg-canvas"
-              >
-                닫기
-              </button>
-            </div>
-            <div className="max-h-[60vh] space-y-2 overflow-y-auto p-4">
-              {defectTypes.map((d, i) => {
-                const active = d.name === activeDefect
-                return (
-                  <button
-                    key={d.name}
-                    type="button"
-                    onClick={() => pickDefect(d.name)}
-                    className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition ${
-                      active
-                        ? 'border-accent bg-accent text-white shadow-md shadow-accent/20'
-                        : 'border-line bg-white hover:border-accent/40 hover:bg-accent-soft'
-                    }`}
-                  >
-                    <span className="font-medium">
-                      <span className={`mr-2 text-xs ${active ? 'text-white/70' : 'text-muted'}`}>
-                        {i + 1}.
-                      </span>
-                      {d.name}
-                    </span>
-                    <span className={`num text-sm ${active ? 'text-white/85' : 'text-muted'}`}>
-                      {d.count.toLocaleString()} · {d.share}%
-                    </span>
-                  </button>
-                )
-              })}
-              {!defectTypes.length && (
-                <p className="py-6 text-center text-sm text-muted">선택할 불량 유형이 없습니다.</p>
-              )}
+            <span className="quality-drilldown-step-num">2</span>
+            <div>
+              <p className="quality-drilldown-step-title">품번 TOP 10 확인</p>
+              <p className="quality-drilldown-step-desc">
+                선택한 유형이 많이 난 품번
+              </p>
             </div>
           </div>
+        </header>
+
+        <SplitTop10Panel
+          className="quality-drilldown-panel"
+          title="불량 유형 TOP 10"
+          description="발생 비중 기준 상위 10개 · 유형을 선택하면 아래 품번 순위가 바뀝니다"
+          actions={
+            <div className="quality-defect-total" aria-label="전체 종합 불량 발생량">
+              <span className="quality-defect-total-label">전체 종합 발생량</span>
+              <strong className="quality-defect-total-value num">
+                {totalDefectCount.toLocaleString('ko-KR')}
+                <span className="quality-defect-total-unit">건</span>
+              </strong>
+            </div>
+          }
+          rows={defectTopRows}
+          getBarColor={(_row, index) => defectTypeColor(index)}
+          valueLabel="비중"
+          formatValue={(n) => `${Number(n)}%`}
+          emptyMessage="표시할 불량 유형 데이터가 없습니다."
+          detailKicker="선택 유형"
+          detailMeta={(row) =>
+            row.defect.delta
+              ? `발생 ${row.defect.count.toLocaleString('ko-KR')}건 · ${row.defect.delta}`
+              : `발생 ${row.defect.count.toLocaleString('ko-KR')}건`
+          }
+          rankMeta={(row) => `${row.defect.count.toLocaleString('ko-KR')}건`}
+          showRankShare={false}
+          metrics={[
+            {
+              label: '비중',
+              value: (row) => `${row.sharePercent}%`,
+            },
+            {
+              label: '발생량',
+              value: (row) => `${row.defect.count.toLocaleString('ko-KR')}건`,
+            },
+            {
+              label: '순위',
+              value: (row) => `${row.rank}위`,
+            },
+            {
+              label: '변화',
+              value: (row) => row.defect.delta || '-',
+            },
+          ]}
+          activeId={activeDefect || null}
+          onActiveChange={(id) => patchView({ selected: id })}
+          xAxisAngle={0}
+        />
+
+        <div
+          className="quality-drilldown-bridge"
+          style={{ ['--defect-color' as string]: activeDefectColor }}
+        >
+          <span className="quality-drilldown-bridge-icon" aria-hidden>
+            <ArrowDown size={16} />
+          </span>
+          <div className="quality-drilldown-bridge-body">
+            <p className="quality-drilldown-bridge-kicker">
+              선택 유형 기준 드릴다운
+            </p>
+            <p className="quality-drilldown-bridge-text">
+              <strong style={{ color: activeDefectColor }}>
+                {activeDefect || '유형 미선택'}
+              </strong>
+              {activeMeta ? (
+                <span>
+                  {' '}
+                  · {activeMeta.count.toLocaleString('ko-KR')}건 ·{' '}
+                  {activeMeta.share}%
+                </span>
+              ) : null}
+              <span> 발생 품번 TOP 10</span>
+            </p>
+          </div>
         </div>
-      )}
+
+        <SplitTop10Panel
+          className="quality-drilldown-panel quality-drilldown-panel--products"
+          style={{ ['--defect-color' as string]: activeDefectColor }}
+          title="품번 TOP 10"
+          description={`${activeDefect || '선택 유형'} 발생 수량 기준 상위 10개 품번`}
+          actions={
+            activeDefect ? (
+              <div className="quality-drilldown-filter-chip">
+                <span
+                  className="quality-drilldown-filter-swatch"
+                  style={{ background: activeDefectColor }}
+                  aria-hidden
+                />
+                <span className="quality-drilldown-filter-label">필터</span>
+                <strong>{activeDefect}</strong>
+              </div>
+            ) : null
+          }
+          rows={defectProductTop}
+          barColor={activeDefectColor}
+          photoUrls={photoUrls}
+          valueLabel={`${activeDefect || '불량'} 수량`}
+          formatValue={(n) => Math.round(n).toLocaleString('ko-KR')}
+          emptyMessage={
+            activeDefect
+              ? `선택한 기간에 ${activeDefect} 발생 품번이 없습니다.`
+              : '표시할 불량 유형이 없습니다.'
+          }
+          detailKicker="선택 품번"
+          detailMeta={(row) =>
+            `${row.type} · 전체 대비 ${row.sharePercent}%`
+          }
+          rankMeta={(row) => `${row.type} · ${row.sharePercent}%`}
+          showRankShare={false}
+          xAxisAngle={0}
+          metrics={[
+            {
+              label: `${activeDefect || '불량'} 수량`,
+              value: (row) => row.defectCount.toLocaleString('ko-KR'),
+            },
+            {
+              label: '비중',
+              value: (row) => `${row.sharePercent}%`,
+            },
+            {
+              label: '검수량',
+              value: (row) => row.qty.toLocaleString('ko-KR'),
+            },
+            {
+              label: '부적합률',
+              value: (row) => formatPpm(row.failRate),
+            },
+          ]}
+        />
+      </section>
     </div>
   )
 }

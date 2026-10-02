@@ -78,10 +78,9 @@ function heatLegend(dark: boolean): string {
     : 'linear-gradient(90deg, rgb(254,243,199), rgb(154,63,29))'
 }
 
-/** 히트맵 설비 행 그룹: 미지정 → 1공장 → 성형S → 2공장 → 기타 */
+/** 히트맵 설비 행 그룹: 1공장 → 성형S → 2공장 → 기타 (미지정 제외) */
 function equipmentGroupRank(name: string): number {
   const n = name.trim()
-  if (!n || n === '미지정') return 0
   if (n.includes('1공장')) return 1
   if (/성형\s*S/i.test(n)) return 2
   if (n.includes('2공장')) return 3
@@ -102,7 +101,6 @@ function buildDisplayRows(equipmentRows: string[]): DisplayRow[] {
   }
 
   const rows: DisplayRow[] = []
-  for (const name of byRank[0]) rows.push({ kind: 'equipment', name })
   for (const name of byRank[1]) rows.push({ kind: 'equipment', name })
   for (const name of byRank[2]) rows.push({ kind: 'equipment', name })
 
@@ -137,6 +135,7 @@ export function buildEquipmentDefectMatrix(records: InspectionRecord[]) {
 
   for (const r of records) {
     const eq = r.equipment?.trim() || '미지정'
+    if (!eq || eq === '미지정') continue
     equipmentSet.add(eq)
     const defects = r.defects ?? {}
     for (const [name, raw] of Object.entries(defects)) {
@@ -155,7 +154,7 @@ export function buildEquipmentDefectMatrix(records: InspectionRecord[]) {
     .slice(0, MAX_DEFECTS)
     .map(([name]) => name)
 
-  // 미지정 → 1공장 → 성형S → 2공장 순, 그룹 내 자연 정렬
+  // 1공장 → 성형S → 2공장 순, 그룹 내 자연 정렬
   const equipmentRows = [...equipmentSet].sort(compareEquipmentName)
   const displayRows = buildDisplayRows(equipmentRows)
 

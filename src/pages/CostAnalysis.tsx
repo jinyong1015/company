@@ -1,23 +1,35 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Coins } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/common/PageHeader'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
 import {
-  QtyTop10Chart,
-  type QtyTopItem,
-  type QtyTopView,
-} from '../components/charts/QtyTop10Chart'
+  SplitTop10Panel,
+  type SplitTop10RowBase,
+} from '../components/charts/SplitTop10Panel'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
 import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
+import { toEntityId } from '../lib/entityId'
 import { buildProductDetailHref } from '../lib/productDetailNav'
 import { formatPpm, formatWon, roundWon } from '../lib/format'
+import { getProductPhotoUrlMap } from '../lib/productPhotos'
+import { isCloudSyncEnabled } from '../lib/supabase'
+import { analysisGroupColor } from '../lib/groups'
+import type { ProductRow } from '../types'
 
 type Dim = 'product' | 'defect' | 'mold' | 'equipment' | 'inspector' | 'group'
 
-const ALL_TYPES = ''
+type ProductTypeTab = 'all' | 'grommet' | 'seal'
+
 const VIEW_STATE_KEY = 'cost-analysis'
+const TOP10_ALL_TAB_BAR_COLOR = '#60a5fa'
+
+const productTypeTabs: { id: ProductTypeTab; label: string }[] = [
+  { id: 'all', label: '전체' },
+  { id: 'grommet', label: 'GROMMET' },
+  { id: 'seal', label: 'SEAL' },
+]
 
 type CostAnalysisViewState = {
   dim: Dim
@@ -26,8 +38,7 @@ type CostAnalysisViewState = {
   asc: boolean
   page: number
   pageSize: number
-  topView: QtyTopView
-  topType: string
+  topType: ProductTypeTab
 }
 
 const defaultViewState: CostAnalysisViewState = {
@@ -37,8 +48,7 @@ const defaultViewState: CostAnalysisViewState = {
   asc: false,
   page: 1,
   pageSize: 10,
-  topView: 'rank',
-  topType: ALL_TYPES,
+  topType: 'all',
 }
 
 const DIMS: Dim[] = [
@@ -53,6 +63,10 @@ const DIMS: Dim[] = [
 function readViewState(): CostAnalysisViewState {
   const stored = loadPageViewState<Partial<CostAnalysisViewState>>(VIEW_STATE_KEY)
   if (!stored) return defaultViewState
+  const topType =
+    stored.topType === 'grommet' || stored.topType === 'seal' || stored.topType === 'all'
+      ? stored.topType
+      : defaultViewState.topType
   return {
     dim:
       typeof stored.dim === 'string' && DIMS.includes(stored.dim)
@@ -67,26 +81,35 @@ function readViewState(): CostAnalysisViewState {
       typeof stored.pageSize === 'number' && stored.pageSize > 0
         ? stored.pageSize
         : defaultViewState.pageSize,
-    topView: stored.topView === 'bar' ? 'bar' : 'rank',
-    topType: typeof stored.topType === 'string' ? stored.topType : defaultViewState.topType,
+    topType,
   }
 }
 
-function toneForType(type: string): 'all' | 'seal' | 'grommet' {
-  const t = type.toLowerCase()
-  if (t.includes('seal') || t.includes('실링') || t.includes('씰')) return 'seal'
-  if (t.includes('grommet') || t.includes('그로멧') || t.includes('유압')) return 'grommet'
-  return 'all'
+function matchesProductTypeTab(type: string, tab: ProductTypeTab): boolean {
+  if (tab === 'all') return true
+  const t = (type || '').toLowerCase()
+  if (tab === 'seal') {
+    return t.includes('seal') || t.includes('실링') || t.includes('씰')
+  }
+  return t.includes('grommet') || t.includes('그로멧') || t.includes('유압')
+}
+
+function top10TabBarColor(tab: ProductTypeTab): string {
+  if (tab === 'seal') return analysisGroupColor('seal')
+  if (tab === 'grommet') return analysisGroupColor('hydraulic')
+  return TOP10_ALL_TAB_BAR_COLOR
 }
 
 function formatCostValue(n: number) {
   return roundWon(n).toLocaleString('ko-KR')
 }
 
+type CostTop10Row = SplitTop10RowBase & { product: ProductRow }
+
 export function CostAnalysis() {
   const { analytics } = useData()
   const [view, setView] = useState<CostAnalysisViewState>(readViewState)
-  const { dim, query, sortKey, asc, page, pageSize, topView, topType } = view
+  const { dim, query, sortKey, asc, page, pageSize, topType } = view
 
   useEffect(() => {
     savePageViewState(VIEW_STATE_KEY, view)
@@ -96,45 +119,61 @@ export function CostAnalysis() {
     setView((prev) => ({ ...prev, ...patch }))
   }
 
-  const typeOptions = useMemo(() => {
-    const map = new Map<string, number>()
+  const typeTabCounts = useMemo(() => {
+    const counts: Record<ProductTypeTab, number> = {
+      all: 0,
+      grommet: 0,
+      seal: 0,
+    }
     for (const p of analytics.products) {
-      const type = p.type || '미지정'
-      map.set(type, (map.get(type) ?? 0) + 1)
-    }
-    return [...map.entries()]
-      .map(([type, count]) => ({ type, count }))
-      .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type, 'ko'))
-  }, [analytics.products])
-
-  const activeTopType = typeOptions.some((t) => t.type === topType)
-    ? topType
-    : ALL_TYPES
-
-  const topItems = useMemo((): QtyTopItem[] => {
-    const list = activeTopType
-      ? analytics.products.filter((p) => (p.type || '미지정') === activeTopType)
-      : analytics.products
-    return list.map((p) => ({
-      id: p.id,
-      name: p.name,
-      meta: p.type || '미지정',
-      qty: p.scrapCost,
-      href: buildProductDetailHref(p.id, 'cost'),
-    }))
-  }, [analytics.products, activeTopType])
-
-  const topTabCounts = useMemo(() => {
-    const counts: Record<string, number> = {
-      [ALL_TYPES]: analytics.products.filter((p) => p.scrapCost > 0).length,
-    }
-    for (const t of typeOptions) {
-      counts[t.type] = analytics.products.filter(
-        (p) => (p.type || '미지정') === t.type && p.scrapCost > 0,
-      ).length
+      if (p.scrapCost <= 0) continue
+      counts.all += 1
+      if (matchesProductTypeTab(p.type, 'grommet')) counts.grommet += 1
+      if (matchesProductTypeTab(p.type, 'seal')) counts.seal += 1
     }
     return counts
-  }, [analytics.products, typeOptions])
+  }, [analytics.products])
+
+  const topRows = useMemo((): CostTop10Row[] => {
+    const filtered = analytics.products.filter(
+      (p) => p.scrapCost > 0 && matchesProductTypeTab(p.type, topType),
+    )
+    const total = filtered.reduce((s, p) => s + p.scrapCost, 0)
+    return [...filtered]
+      .sort((a, b) => b.scrapCost - a.scrapCost)
+      .slice(0, 10)
+      .map((p, idx) => ({
+        id: p.id,
+        name: p.name,
+        rank: idx + 1,
+        value: p.scrapCost,
+        sharePercent: total > 0 ? (p.scrapCost / total) * 100 : 0,
+        href: buildProductDetailHref(p.id, 'cost'),
+        product: p,
+      }))
+  }, [analytics.products, topType])
+
+  const productKeys = useMemo(
+    () => [...new Set(topRows.map((r) => r.name.trim()).filter(Boolean))].sort(),
+    [topRows],
+  )
+  const productKeysSignature = productKeys.join('\u0001')
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!isCloudSyncEnabled() || !productKeys.length) {
+      setPhotoUrls({})
+      return
+    }
+    let cancelled = false
+    void getProductPhotoUrlMap(productKeys).then((map) => {
+      if (!cancelled) setPhotoUrls(map)
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productKeysSignature])
 
   const source = useMemo(() => {
     if (dim === 'product')
@@ -208,53 +247,74 @@ export function CostAnalysis() {
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
   const safePage = Math.min(page, totalPages)
   const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
+  const tabLabel = productTypeTabs.find((t) => t.id === topType)?.label ?? '전체'
+  const barColor = top10TabBarColor(topType)
 
   return (
     <div className="space-y-5">
       <PageHeader title="비용 분석" />
 
-      <QtyTop10Chart
-        items={topItems}
+      <SplitTop10Panel
         title="폐기비용 품번 TOP 10"
-        subtitle="품번별 폐기비용 기준 상위 10개"
-        badgeLabel={activeTopType || '전체'}
-        tone={toneForType(activeTopType)}
-        view={topView}
-        onViewChange={(v) => patchView({ topView: v })}
-        emptyMessage="선택한 제품유형에 해당하는 폐기비용 데이터가 없습니다."
-        valueLabel="폐기비용"
-        valueUnit="원"
-        formatValue={formatCostValue}
-        ValueIcon={Coins}
-        typeTabs={
-          <div className="qty-type-tabs" role="tablist" aria-label="폐기비용 TOP 제품유형">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={!activeTopType}
-              className="qty-type-tab"
-              data-active={!activeTopType}
-              onClick={() => patchView({ topType: ALL_TYPES })}
-            >
-              전체
-              <span className="qty-type-tab-count">{topTabCounts[ALL_TYPES] ?? 0}</span>
-            </button>
-            {typeOptions.map((t) => (
+        description={`선택 기간 · ${tabLabel} · 폐기비용 상위 10개 품번`}
+        toolbar={
+          <div
+            className="qty-type-tabs mb-3.5"
+            role="tablist"
+            aria-label="폐기비용 TOP 제품유형"
+          >
+            {productTypeTabs.map((tab) => (
               <button
-                key={t.type}
+                key={tab.id}
                 type="button"
                 role="tab"
-                aria-selected={activeTopType === t.type}
+                aria-selected={topType === tab.id}
                 className="qty-type-tab"
-                data-active={activeTopType === t.type}
-                onClick={() => patchView({ topType: t.type })}
+                data-active={topType === tab.id}
+                onClick={() => patchView({ topType: tab.id })}
               >
-                {t.type}
-                <span className="qty-type-tab-count">{topTabCounts[t.type] ?? 0}</span>
+                {tab.label}
+                <span className="qty-type-tab-count">{typeTabCounts[tab.id]}</span>
               </button>
             ))}
           </div>
         }
+        rows={topRows}
+        barColor={barColor}
+        photoUrls={photoUrls}
+        xAxisAngle={0}
+        valueLabel="폐기비용"
+        formatValue={(n) => formatCostValue(n)}
+        emptyMessage="선택한 제품유형에 해당하는 폐기비용 데이터가 없습니다."
+        detailKicker="선택 품번"
+        detailMeta={(row) =>
+          `${row.product.type || '유형 미지정'}${
+            row.product.mainDefect ? ` · 주불량 ${row.product.mainDefect}` : ''
+          }`
+        }
+        rankMeta={(row) =>
+          `${row.product.type || '유형 미지정'}${
+            row.product.mainDefect ? ` · ${row.product.mainDefect}` : ''
+          }`
+        }
+        metrics={[
+          {
+            label: '폐기비용',
+            value: (row) => formatWon(row.product.scrapCost),
+          },
+          {
+            label: '비중',
+            value: (row) => `${Math.round(row.sharePercent * 10) / 10}%`,
+          },
+          {
+            label: '검수량',
+            value: (row) => row.product.qty.toLocaleString('ko-KR'),
+          },
+          {
+            label: '부적합률',
+            value: (row) => formatPpm(row.product.failRate),
+          },
+        ]}
       />
 
       <SortSearchBar
@@ -279,7 +339,19 @@ export function CostAnalysis() {
         onPageSize={(size) => {
           patchView({ pageSize: size, page: 1 })
         }}
-        onDownload={() => downloadExcel('비용분석.xlsx', rows)}
+        onDownload={() =>
+          downloadExcel(
+            '비용분석.xlsx',
+            rows.map((r) => ({
+              대상: r.name,
+              검수량: r.qty,
+              부적합수량: r.fail,
+              부적합률: r.failRate,
+              폐기비용: r.scrapCost,
+              증가율: r.changeRate,
+            })),
+          )
+        }
         resultTitle="비용 내역"
       >
         <div className="query-result-dim-tabs">
@@ -321,7 +393,21 @@ export function CostAnalysis() {
             <tbody>
               {pageRows.map((row) => (
                 <tr key={row.name} className="border-b border-line/70">
-                  <td className="px-2 py-3 font-medium">{row.name}</td>
+                  <td className="px-2 py-3 font-medium">
+                    {dim === 'product' ? (
+                      <Link
+                        to={buildProductDetailHref(
+                          toEntityId('prd', row.name),
+                          'cost',
+                        )}
+                        className="text-accent hover:underline"
+                      >
+                        {row.name}
+                      </Link>
+                    ) : (
+                      row.name
+                    )}
+                  </td>
                   <td className="num px-2 py-3">{formatWon(row.scrapCost)}</td>
                   <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
                   <td className="num px-2 py-3">

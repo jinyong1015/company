@@ -3,11 +3,6 @@ import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/common/PageHeader'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
-import {
-  QtyTop10Chart,
-  type QtyTopItem,
-  type QtyTopView,
-} from '../components/charts/QtyTop10Chart'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
 import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
@@ -25,8 +20,6 @@ type ProductAnalysisViewState = {
   typeFilter: string
   page: number
   pageSize: number
-  topView: QtyTopView
-  topType: string
 }
 
 const defaultViewState: ProductAnalysisViewState = {
@@ -36,8 +29,6 @@ const defaultViewState: ProductAnalysisViewState = {
   typeFilter: ALL_TYPES,
   page: 1,
   pageSize: 10,
-  topView: 'rank',
-  topType: ALL_TYPES,
 }
 
 function readViewState(): ProductAnalysisViewState {
@@ -54,8 +45,6 @@ function readViewState(): ProductAnalysisViewState {
       typeof stored.pageSize === 'number' && stored.pageSize > 0
         ? stored.pageSize
         : defaultViewState.pageSize,
-    topView: stored.topView === 'bar' ? 'bar' : 'rank',
-    topType: typeof stored.topType === 'string' ? stored.topType : defaultViewState.topType,
   }
 }
 
@@ -71,17 +60,10 @@ const sortKeys = [
   { id: 'changeRate', label: '증가율' },
 ]
 
-function toneForType(type: string): 'all' | 'seal' | 'grommet' {
-  const t = type.toLowerCase()
-  if (t.includes('seal') || t.includes('실링') || t.includes('씰')) return 'seal'
-  if (t.includes('grommet') || t.includes('그로멧') || t.includes('유압')) return 'grommet'
-  return 'all'
-}
-
 export function ProductAnalysis() {
   const { analytics } = useData()
   const [view, setView] = useState<ProductAnalysisViewState>(readViewState)
-  const { query, sortKey, asc, typeFilter, page, pageSize, topView, topType } = view
+  const { query, sortKey, asc, typeFilter, page, pageSize } = view
 
   useEffect(() => {
     savePageViewState(VIEW_STATE_KEY, view)
@@ -103,32 +85,6 @@ export function ProductAnalysis() {
   }, [analytics.products])
 
   const activeType = typeOptions.some((t) => t.type === typeFilter) ? typeFilter : ALL_TYPES
-  const activeTopType = typeOptions.some((t) => t.type === topType) ? topType : ALL_TYPES
-
-  const topItems = useMemo((): QtyTopItem[] => {
-    const list = activeTopType
-      ? analytics.products.filter((p) => (p.type || '미지정') === activeTopType)
-      : analytics.products
-    return list.map((p) => ({
-      id: p.id,
-      name: p.name,
-      meta: p.type || '미지정',
-      qty: p.qty,
-      href: buildProductDetailHref(p.id, 'products'),
-    }))
-  }, [analytics.products, activeTopType])
-
-  const topTabCounts = useMemo(() => {
-    const counts: Record<string, number> = {
-      [ALL_TYPES]: analytics.products.filter((p) => p.qty > 0).length,
-    }
-    for (const t of typeOptions) {
-      counts[t.type] = analytics.products.filter(
-        (p) => (p.type || '미지정') === t.type && p.qty > 0,
-      ).length
-    }
-    return counts
-  }, [analytics.products, typeOptions])
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -160,46 +116,6 @@ export function ProductAnalysis() {
   return (
     <div className="space-y-5">
       <PageHeader title="품번 분석" />
-
-      <QtyTop10Chart
-        items={topItems}
-        title="검사 수량 품번 TOP 10"
-        subtitle="품번별 검수량 기준 상위 10개"
-        badgeLabel={activeTopType || '전체'}
-        tone={toneForType(activeTopType)}
-        view={topView}
-        onViewChange={(v) => patchView({ topView: v })}
-        emptyMessage="선택한 제품유형에 해당하는 검수량 데이터가 없습니다."
-        typeTabs={
-          <div className="qty-type-tabs" role="tablist" aria-label="검수량 TOP 제품유형">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={!activeTopType}
-              className="qty-type-tab"
-              data-active={!activeTopType}
-              onClick={() => patchView({ topType: ALL_TYPES })}
-            >
-              전체
-              <span className="qty-type-tab-count">{topTabCounts[ALL_TYPES] ?? 0}</span>
-            </button>
-            {typeOptions.map((t) => (
-              <button
-                key={t.type}
-                type="button"
-                role="tab"
-                aria-selected={activeTopType === t.type}
-                className="qty-type-tab"
-                data-active={activeTopType === t.type}
-                onClick={() => patchView({ topType: t.type })}
-              >
-                {t.type}
-                <span className="qty-type-tab-count">{topTabCounts[t.type] ?? 0}</span>
-              </button>
-            ))}
-          </div>
-        }
-      />
 
       <SortSearchBar
         query={query}

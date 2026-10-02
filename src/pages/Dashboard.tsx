@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { createPortal } from "react-dom";
 import {
   Bar,
@@ -13,10 +12,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { KpiCard } from "../components/kpi/KpiCard";
-import { Panel } from "../components/common/Panel";
+import {
+  SplitTop10Panel,
+  type SplitTop10RowBase,
+} from "../components/charts/SplitTop10Panel";
 import { PageHeader } from "../components/common/PageHeader";
-import { ResponsiveGrid } from "../components/common/ResponsiveGrid";
 import { useData } from "../context/DataContext";
 import {
   analysisGroupColor,
@@ -25,15 +25,15 @@ import {
 } from "../lib/groups";
 import { useFilters } from "../context/FilterContext";
 import { buildProductDetailHref } from "../lib/productDetailNav";
-import { formatPercent, formatPpm, formatWon } from "../lib/format";
+import { formatPpm, formatWon } from "../lib/format";
+import { getProductPhotoUrlMap } from "../lib/productPhotos";
+import { isCloudSyncEnabled } from "../lib/supabase";
 import type {
   DailyTrend,
   GroupSummary,
   GroupTrendSeries,
   ProductRow,
 } from "../types";
-import { AlertTriangle, Trophy } from "lucide-react";
-
 const trendMetrics = [
   { id: "qty", label: "검수량" },
   { id: "failRate", label: "부적합률" },
@@ -124,8 +124,22 @@ function GroupComparisonTable({
     onSelectGroup(id);
   };
 
+  const sealSummary = subgroups.find((g) => g.id === "seal");
+  const hydraulicSummary = subgroups.find((g) => g.id === "hydraulic");
+  const plant2Summary = subgroups.find((g) => g.id === "plant2");
+  const sealQty = sealSummary?.qty ?? 0;
+  const hydraulicQty = hydraulicSummary?.qty ?? 0;
+  const plant2Qty = plant2Summary?.qty ?? 0;
+  /** GROMMET 비중 = 본사(GROMMET) + 2공장 (색은 파랑·보라로 구분 표시) */
+  const grommetQty = hydraulicQty + plant2Qty;
+  const sealShare = qtySharePct(sealQty, totalQty);
+  const grommetShare = qtySharePct(grommetQty, totalQty);
+  const hydraulicWithin =
+    grommetQty > 0 ? (hydraulicQty / grommetQty) * 100 : 0;
+  const plant2Within = grommetQty > 0 ? (plant2Qty / grommetQty) * 100 : 0;
+
   return (
-    <div className="space-y-4">
+    <div className="group-compare">
       {switchEffect ? (
         <GroupSwitchEffect
           key={switchEffect.id + switchEffect.label}
@@ -135,192 +149,236 @@ function GroupComparisonTable({
         />
       ) : null}
 
-      <div>
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-medium text-muted">검수량 비중</p>
-          <p className="num text-xs text-muted">
-            합계 {totalQty.toLocaleString()}
+      <div className="group-compare-share">
+        <div className="group-compare-share-head">
+          <p className="group-compare-share-title">검수량 비중</p>
+          <p className="group-compare-share-total num">
+            합계 {totalQty.toLocaleString("ko-KR")}
           </p>
         </div>
         <div
-          className="flex h-2.5 overflow-hidden rounded-full bg-canvas"
+          className="group-compare-share-track"
           role="img"
           aria-label="분석 그룹별 검수량 비중"
         >
-          {subgroups.map((g) => {
-            const share = qtySharePct(g.qty, totalQty);
-            if (share <= 0) return null;
-            return (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() =>
-                  selectGroup(
-                    g.id as AnalysisGroupId,
-                    g.label,
-                    analysisGroupColor(g.id),
-                  )
-                }
-                className="h-full transition-[width,opacity] duration-300 hover:opacity-90"
-                style={{
-                  width: `${share}%`,
-                  backgroundColor: analysisGroupColor(g.id),
-                  opacity:
-                    selectedGroupId === "all" || selectedGroupId === g.id
-                      ? 1
-                      : 0.35,
-                }}
-                title={`${g.label} ${share}% · 클릭하여 전환`}
-                aria-label={`${g.label} ${share}%`}
-              />
-            );
-          })}
-        </div>
-        <ul className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted">
-          {subgroups.map((g) => {
-            const share = qtySharePct(g.qty, totalQty);
-            const active =
-              selectedGroupId === "all" || selectedGroupId === g.id;
-            return (
-              <li key={g.id}>
+          {sealShare > 0 ? (
+            <button
+              type="button"
+              onClick={() =>
+                selectGroup(
+                  "seal",
+                  sealSummary?.label ?? "본사(SEAL)",
+                  analysisGroupColor("seal"),
+                )
+              }
+              className="group-compare-share-seg"
+              style={{
+                width: `${sealShare}%`,
+                backgroundColor: analysisGroupColor("seal"),
+                opacity:
+                  selectedGroupId !== "all" && selectedGroupId !== "seal"
+                    ? 0.32
+                    : 1,
+              }}
+              title={`${sealSummary?.label ?? "본사(SEAL)"} ${sealShare}% · 클릭하여 전환`}
+              aria-label={`${sealSummary?.label ?? "본사(SEAL)"} ${sealShare}%`}
+            >
+              {sealShare >= 12 ? (
+                <span className="group-compare-share-seg-label">
+                  SEAL {sealShare}%
+                </span>
+              ) : null}
+            </button>
+          ) : null}
+
+          {grommetShare > 0 ? (
+            <div
+              className="group-compare-share-group"
+              style={{ width: `${grommetShare}%` }}
+              title={`GROMMET (본사+2공장) ${grommetShare}%`}
+            >
+              {hydraulicWithin > 0 ? (
                 <button
                   type="button"
                   onClick={() =>
                     selectGroup(
-                      g.id as AnalysisGroupId,
-                      g.label,
-                      analysisGroupColor(g.id),
+                      "hydraulic",
+                      hydraulicSummary?.label ?? "본사(GROMMET)",
+                      analysisGroupColor("hydraulic"),
                     )
                   }
-                  className={`inline-flex items-center gap-1.5 transition-opacity hover:text-ink ${
-                    active ? "text-ink" : "opacity-50"
-                  }`}
+                  className="group-compare-share-seg"
+                  style={{
+                    width: `${hydraulicWithin}%`,
+                    backgroundColor: analysisGroupColor("hydraulic"),
+                    opacity:
+                      selectedGroupId !== "all" &&
+                      selectedGroupId !== "hydraulic" &&
+                      selectedGroupId !== "plant2"
+                        ? 0.32
+                        : selectedGroupId === "plant2"
+                          ? 0.55
+                          : 1,
+                  }}
+                  title={`${hydraulicSummary?.label ?? "본사(GROMMET)"} · GROMMET 합계 ${grommetShare}%`}
+                  aria-label={`${hydraulicSummary?.label ?? "본사(GROMMET)"} ${qtySharePct(hydraulicQty, totalQty)}%`}
                 >
-                  <span
-                    className="inline-block h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: analysisGroupColor(g.id) }}
-                  />
-                  <span>{g.label}</span>
-                  <span className="num">{share}%</span>
+                  {grommetShare >= 12 && hydraulicWithin >= 45 ? (
+                    <span className="group-compare-share-seg-label">
+                      GROMMET {grommetShare}%
+                    </span>
+                  ) : null}
                 </button>
-              </li>
-            );
-          })}
-        </ul>
+              ) : null}
+              {plant2Within > 0 ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    selectGroup(
+                      "plant2",
+                      plant2Summary?.label ?? "2공장",
+                      analysisGroupColor("plant2"),
+                    )
+                  }
+                  className="group-compare-share-seg"
+                  style={{
+                    width: `${plant2Within}%`,
+                    backgroundColor: analysisGroupColor("plant2"),
+                    opacity:
+                      selectedGroupId !== "all" &&
+                      selectedGroupId !== "plant2" &&
+                      selectedGroupId !== "hydraulic"
+                        ? 0.32
+                        : selectedGroupId === "hydraulic"
+                          ? 0.55
+                          : 1,
+                  }}
+                  title={`${plant2Summary?.label ?? "2공장"} · GROMMET 합계 ${grommetShare}%`}
+                  aria-label={`${plant2Summary?.label ?? "2공장"} ${qtySharePct(plant2Qty, totalQty)}%`}
+                >
+                  {grommetShare >= 12 &&
+                  hydraulicWithin < 45 &&
+                  plant2Within >= 40 ? (
+                    <span className="group-compare-share-seg-label">
+                      GROMMET {grommetShare}%
+                    </span>
+                  ) : plant2Within >= 18 ? (
+                    <span className="group-compare-share-seg-label">2공장</span>
+                  ) : null}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-[760px] w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-line text-xs text-muted">
-              <th className="px-2 py-2 font-medium">그룹</th>
-              <th className="px-2 py-2 text-right font-medium">검수량</th>
-              <th className="min-w-[140px] px-2 py-2 font-medium">부적합률</th>
-              <th className="px-2 py-2 text-right font-medium">부적합수량</th>
-              <th className="px-2 py-2 text-right font-medium">폐기비용</th>
-            </tr>
-          </thead>
-          <tbody>
-            {summaries.map((g) => {
-              const isTotal = g.id === "all";
-              const isSelected = selectedGroupId === g.id;
-              const color = isTotal
-                ? LINE_COLOR
-                : analysisGroupColor(g.id);
-              const share = isTotal ? 100 : qtySharePct(g.qty, totalQty);
-              const failBarPct =
-                !isTotal && maxFailRate > 0
+      <div className="group-compare-grid" role="listbox" aria-label="분석 그룹">
+        {summaries.map((g) => {
+          const isTotal = g.id === "all";
+          const isSelected = selectedGroupId === g.id;
+          const color = isTotal ? LINE_COLOR : analysisGroupColor(g.id);
+          const share = isTotal ? 100 : qtySharePct(g.qty, totalQty);
+          const failBarPct =
+            !isTotal && maxFailRate > 0
+              ? Math.min(100, (g.failRate / maxFailRate) * 100)
+              : isTotal
+                ? maxFailRate > 0
                   ? Math.min(100, (g.failRate / maxFailRate) * 100)
-                  : 0;
-              const isWorst = worstFailIds.has(g.id);
+                  : 0
+                : 0;
+          const isWorst = worstFailIds.has(g.id);
 
-              return (
-                <tr
-                  key={g.id}
-                  className={`cursor-pointer border-b border-line/70 transition-colors ${
-                    isSelected
-                      ? "bg-accent-soft/70"
-                      : "hover:bg-canvas/80"
-                  } ${isTotal ? "font-medium" : ""}`}
-                  onClick={() =>
-                    selectGroup(g.id as AnalysisGroupId, g.label, color)
-                  }
-                >
-                  <td className="px-2 py-2.5">
-                    <div
-                      className="flex w-full min-w-0 items-center gap-2 text-left"
-                      aria-pressed={isSelected}
-                      title={`${g.label} 분석 그룹으로 전환`}
-                    >
-                      <span
-                        className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: color }}
-                      />
-                      <span className="truncate">{g.label}</span>
-                      {isSelected ? (
-                        <span className="shrink-0 rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent">
-                          선택
-                        </span>
-                      ) : null}
-                      {isWorst ? (
-                        <span className="shrink-0 rounded-full bg-danger-soft px-1.5 py-0.5 text-[10px] font-medium text-danger">
-                          부적합률↑
-                        </span>
-                      ) : null}
+          return (
+            <button
+              key={g.id}
+              type="button"
+              role="option"
+              aria-selected={isSelected}
+              className="group-compare-card"
+              data-selected={isSelected ? "true" : undefined}
+              data-total={isTotal ? "true" : undefined}
+              data-worst={isWorst ? "true" : undefined}
+              style={{ ["--group-color" as string]: color }}
+              onClick={() =>
+                selectGroup(g.id as AnalysisGroupId, g.label, color)
+              }
+              title={`${g.label} 분석 그룹으로 전환`}
+            >
+              <div className="group-compare-card-head">
+                <span className="group-compare-swatch" aria-hidden />
+                <div className="group-compare-card-title">
+                  <strong>{g.label}</strong>
+                  <span className="group-compare-card-sub">
+                    {isTotal ? "기준 합계" : `검수 비중 ${share}%`}
+                  </span>
+                </div>
+                <div className="group-compare-badges">
+                  {isSelected ? (
+                    <span className="group-compare-badge group-compare-badge--selected">
+                      선택
+                    </span>
+                  ) : null}
+                  {isWorst ? (
+                    <span className="group-compare-badge group-compare-badge--worst">
+                      부적합률↑
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="group-compare-metrics">
+                <div className="group-compare-metric">
+                  <span className="group-compare-metric-label">검수량</span>
+                  <strong className="group-compare-metric-value num">
+                    {g.qty.toLocaleString("ko-KR")}
+                  </strong>
+                  {!isTotal ? (
+                    <div className="group-compare-bar" aria-hidden>
+                      <span style={{ width: `${share}%`, background: color }} />
                     </div>
-                  </td>
-                  <td className="px-2 py-2.5 text-right">
-                    <div className="num">{g.qty.toLocaleString()}</div>
-                    {!isTotal ? (
-                      <div className="mt-1 flex items-center justify-end gap-2">
-                        <div className="h-1 w-16 overflow-hidden rounded-full bg-canvas">
-                          <div
-                            className="h-full rounded-full"
-                            style={{
-                              width: `${share}%`,
-                              backgroundColor: color,
-                            }}
-                          />
-                        </div>
-                        <span className="num w-9 text-[11px] text-muted">
-                          {share}%
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="mt-0.5 text-[11px] font-normal text-muted">
-                        기준 합계
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-2 py-2.5">
-                    <div
-                      className={`num text-right ${isWorst ? "font-semibold text-danger" : ""}`}
-                    >
-                      {formatPpm(g.failRate)}
+                  ) : (
+                    <div className="group-compare-bar group-compare-bar--ghost" aria-hidden>
+                      <span style={{ width: "100%", background: color }} />
                     </div>
-                    {!isTotal ? (
-                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-canvas">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${failBarPct}%`,
-                            backgroundColor: isWorst ? "#ef4444" : color,
-                          }}
-                        />
-                      </div>
-                    ) : null}
-                  </td>
-                  <td className="num px-2 py-2.5 text-right">
-                    {g.fail.toLocaleString()}
-                  </td>
-                  <td className="num px-2 py-2.5 text-right">
+                  )}
+                </div>
+
+                <div className="group-compare-metric">
+                  <span className="group-compare-metric-label">부적합률</span>
+                  <strong
+                    className={`group-compare-metric-value num ${
+                      isWorst ? "is-worst" : ""
+                    }`}
+                  >
+                    {formatPpm(g.failRate)}
+                  </strong>
+                  <div className="group-compare-bar" aria-hidden>
+                    <span
+                      style={{
+                        width: `${Math.max(failBarPct, failBarPct > 0 ? 6 : 0)}%`,
+                        background: isWorst ? "var(--color-danger)" : color,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="group-compare-metric">
+                  <span className="group-compare-metric-label">부적합수량</span>
+                  <strong className="group-compare-metric-value num">
+                    {g.fail.toLocaleString("ko-KR")}
+                  </strong>
+                </div>
+
+                <div className="group-compare-metric">
+                  <span className="group-compare-metric-label">폐기비용</span>
+                  <strong className="group-compare-metric-value num">
                     {formatWon(g.scrapCost)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </strong>
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -335,25 +393,41 @@ const productSortOptions = [
 
 type ProductSortId = (typeof productSortOptions)[number]["id"];
 
-function rankTone(rank: number): "gold" | "silver" | "bronze" | "muted" {
-  if (rank === 1) return "gold";
-  if (rank === 2) return "silver";
-  if (rank === 3) return "bronze";
-  return "muted";
-}
-
-function barFill(rank: number): string {
-  if (rank === 1) return "#c2410c";
-  if (rank === 2) return "#ea580c";
-  if (rank === 3) return "#f97316";
-  return "#fdba74";
-}
-
 function formatProductSortValue(sort: ProductSortId, value: number) {
   if (sort === "failRate") return formatPpm(value);
   if (sort === "scrapCost") return formatWon(value);
   return value.toLocaleString("ko-KR");
 }
+
+type ProductTypeTab = "all" | "grommet" | "seal";
+
+const productTypeTabs: { id: ProductTypeTab; label: string }[] = [
+  { id: "all", label: "전체" },
+  { id: "grommet", label: "GROMMET" },
+  { id: "seal", label: "SEAL" },
+];
+
+function matchesProductTypeTab(type: string, tab: ProductTypeTab): boolean {
+  if (tab === "all") return true;
+  const t = (type || "").toLowerCase();
+  if (tab === "seal") {
+    return t.includes("seal") || t.includes("실링") || t.includes("씰");
+  }
+  return (
+    t.includes("grommet") || t.includes("그로멧") || t.includes("유압")
+  );
+}
+
+/** TOP10 탭별 막대색 — SEAL/GROMMET은 품질 추이 그룹색, 전체는 별도 */
+const TOP10_ALL_TAB_BAR_COLOR = "#60a5fa";
+
+function top10TabBarColor(tab: ProductTypeTab): string {
+  if (tab === "seal") return analysisGroupColor("seal");
+  if (tab === "grommet") return analysisGroupColor("hydraulic");
+  return TOP10_ALL_TAB_BAR_COLOR;
+}
+
+type ProductTop10Row = SplitTop10RowBase & { product: ProductRow };
 
 function ProductDefectTop10({
   products,
@@ -364,33 +438,78 @@ function ProductDefectTop10({
   sort: ProductSortId;
   onSortChange: (sort: ProductSortId) => void;
 }) {
-  const [hoverId, setHoverId] = useState<string | null>(null);
+  const [typeTab, setTypeTab] = useState<ProductTypeTab>("all");
 
-  const { rows, sortLabel } = useMemo(() => {
-    const ranked = [...products]
+  const filteredProducts = useMemo(
+    () => products.filter((p) => matchesProductTypeTab(p.type, typeTab)),
+    [products, typeTab],
+  );
+
+  const typeTabCounts = useMemo(() => {
+    const counts: Record<ProductTypeTab, number> = {
+      all: products.length,
+      grommet: 0,
+      seal: 0,
+    };
+    for (const p of products) {
+      if (matchesProductTypeTab(p.type, "grommet")) counts.grommet += 1;
+      if (matchesProductTypeTab(p.type, "seal")) counts.seal += 1;
+    }
+    return counts;
+  }, [products]);
+
+  const { rows, sortLabel, tabLabel } = useMemo(() => {
+    const ranked = [...filteredProducts]
       .sort((a, b) => b[sort] - a[sort])
       .slice(0, 10);
-    const total = products.reduce((s, p) => s + p[sort], 0);
-    const max = ranked[0]?.[sort] ?? 0;
+    const total = filteredProducts.reduce((s, p) => s + p[sort], 0);
+    const mapped: ProductTop10Row[] = ranked.map((p, idx) => ({
+      product: p,
+      id: p.id,
+      name: p.name,
+      rank: idx + 1,
+      value: p[sort],
+      sharePercent: total > 0 ? (p[sort] / total) * 100 : 0,
+      href: buildProductDetailHref(p.id, "dashboard"),
+    }));
     return {
       sortLabel: productSortOptions.find((o) => o.id === sort)?.label ?? "",
-      rows: ranked.map((p, idx) => ({
-        product: p,
-        rank: idx + 1,
-        value: p[sort],
-        barPercent: max > 0 ? (p[sort] / max) * 100 : 0,
-        sharePercent: total > 0 ? (p[sort] / total) * 100 : 0,
-        href: buildProductDetailHref(p.id, "dashboard"),
-      })),
+      tabLabel:
+        productTypeTabs.find((t) => t.id === typeTab)?.label ?? "전체",
+      rows: mapped,
     };
-  }, [products, sort]);
+  }, [filteredProducts, sort, typeTab]);
 
-  const hovered = rows.find((r) => r.product.id === hoverId) ?? null;
+  const barColor = top10TabBarColor(typeTab);
+
+  const productKeys = useMemo(
+    () =>
+      [...new Set(rows.map((r) => r.name.trim()).filter(Boolean))].sort(),
+    [rows],
+  );
+  const productKeysSignature = productKeys.join("\u0001");
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!isCloudSyncEnabled() || !productKeys.length) {
+      setPhotoUrls({});
+      return;
+    }
+    let cancelled = false;
+    void getProductPhotoUrlMap(productKeys).then((map) => {
+      if (!cancelled) setPhotoUrls(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // productKeysSignature tracks productKeys content
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productKeysSignature]);
 
   return (
-    <Panel
-      title="품번 기준 불량 TOP 10"
-      description={`선택 기간 · ${sortLabel} 상위 10개 품번`}
+    <SplitTop10Panel
+      title="품번 기준 TOP10"
+      description={`선택 기간 · 전체 분석그룹 · ${tabLabel} · ${sortLabel} 상위 10개 품번`}
       actions={
         <div className="flex flex-wrap items-center gap-1.5">
           {productSortOptions.map((opt) => (
@@ -406,102 +525,67 @@ function ProductDefectTop10({
           ))}
         </div>
       }
-    >
-      {rows.length === 0 ? (
-        <div className="flex min-h-[200px] items-center justify-center text-sm text-muted">
-          표시할 품번 불량 데이터가 없습니다.
+      toolbar={
+        <div
+          className="qty-type-tabs mb-3.5"
+          role="tablist"
+          aria-label="품번 TOP10 제품유형"
+        >
+          {productTypeTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={typeTab === tab.id}
+              className="qty-type-tab"
+              data-active={typeTab === tab.id}
+              onClick={() => setTypeTab(tab.id)}
+            >
+              {tab.label}
+              <span className="qty-type-tab-count">
+                {typeTabCounts[tab.id]}
+              </span>
+            </button>
+          ))}
         </div>
-      ) : (
-        <div className="flex flex-col gap-3.5">
-          <div
-            className="op-prod-top-list"
-            onMouseLeave={() => setHoverId(null)}
-          >
-            {rows.map((row) => (
-              <div
-                key={row.product.id}
-                className="op-prod-top-item"
-                data-top={row.rank <= 3 ? "true" : undefined}
-                onMouseEnter={() => setHoverId(row.product.id)}
-              >
-                <Link
-                  to={row.href}
-                  className="op-prod-top-row"
-                  data-rank={row.rank}
-                  title={`${row.product.name} 상세 보기`}
-                >
-                  <span
-                    className="op-prod-top-rank"
-                    data-tone={rankTone(row.rank)}
-                  >
-                    {row.rank}
-                  </span>
-                  <div className="op-prod-top-main">
-                    <div className="op-prod-top-row-head">
-                      <strong className="op-prod-top-name">
-                        {row.product.name}
-                      </strong>
-                      {row.product.mainDefect ? (
-                        <span className="op-prod-top-factory">
-                          {row.product.mainDefect}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="op-prod-top-track" aria-hidden>
-                      <div
-                        className="op-prod-top-fill"
-                        style={{
-                          width: `${Math.max(row.barPercent, 3)}%`,
-                          background: barFill(row.rank),
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="op-prod-top-metrics">
-                    <span className="op-prod-top-qty num">
-                      <AlertTriangle size={13} aria-hidden />
-                      {formatProductSortValue(sort, row.value)}
-                    </span>
-                    <span className="op-prod-top-share num">
-                      {formatPercent(row.sharePercent)}
-                    </span>
-                  </div>
-                </Link>
-
-                {hovered?.product.id === row.product.id ? (
-                  <div className="op-prod-top-tooltip" role="tooltip">
-                    <p>
-                      <strong>{row.rank}위</strong> · {row.product.name}
-                    </p>
-                    <p>
-                      {sortLabel}: {formatProductSortValue(sort, row.value)}
-                    </p>
-                    <p>
-                      부적합 {row.product.fail.toLocaleString("ko-KR")} ·{" "}
-                      {formatPpm(row.product.failRate)}
-                    </p>
-                    <p>
-                      검수 {row.product.qty.toLocaleString("ko-KR")} · 폐기{" "}
-                      {formatWon(row.product.scrapCost)}
-                    </p>
-                    {row.product.mainDefect ? (
-                      <p>주불량: {row.product.mainDefect}</p>
-                    ) : null}
-                    <p className="op-prod-top-tooltip-hint">
-                      클릭하여 상세 보기
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-          <p className="op-prod-top-hint inline-flex items-center gap-1.5">
-            <Trophy size={13} aria-hidden />
-            막대는 1위 대비 비율 · 우측은 전체 대비 비중
-          </p>
-        </div>
-      )}
-    </Panel>
+      }
+      rows={rows}
+      barColor={barColor}
+      photoUrls={photoUrls}
+      xAxisAngle={0}
+      valueLabel={sortLabel}
+      formatValue={(n) => formatProductSortValue(sort, n)}
+      emptyMessage="선택한 제품유형에 해당하는 품번 데이터가 없습니다."
+      detailKicker="선택 품번"
+      detailMeta={(row) =>
+        `${row.product.type || "유형 미지정"}${
+          row.product.mainDefect ? ` · 주불량 ${row.product.mainDefect}` : ""
+        }`
+      }
+      rankMeta={(row) =>
+        `${row.product.type || "유형 미지정"}${
+          row.product.mainDefect ? ` · ${row.product.mainDefect}` : ""
+        }`
+      }
+      metrics={[
+        {
+          label: sortLabel,
+          value: (row) => formatProductSortValue(sort, row.value),
+        },
+        {
+          label: "부적합률",
+          value: (row) => formatPpm(row.product.failRate),
+        },
+        {
+          label: "검수량",
+          value: (row) => row.product.qty.toLocaleString("ko-KR"),
+        },
+        {
+          label: "폐기비용",
+          value: (row) => formatWon(row.product.scrapCost),
+        },
+      ]}
+    />
   );
 }
 
@@ -679,8 +763,7 @@ export function Dashboard() {
   const { analytics } = useData();
   const { filters, setAnalysisGroup } = useFilters();
   const {
-    kpis,
-    products,
+    dashboardTop10Products,
     dailyTrends,
     groupSummaries,
     trendGrain,
@@ -715,11 +798,6 @@ export function Dashboard() {
   return (
     <div className="space-y-5">
       <PageHeader title="대시보드" />
-      <ResponsiveGrid variant="kpi">
-        {kpis.map((item) => (
-          <KpiCard key={item.id} item={item} />
-        ))}
-      </ResponsiveGrid>
 
       <section className="card dash-linked min-w-0">
         <div className="dash-linked-section">
@@ -781,7 +859,7 @@ export function Dashboard() {
       </section>
 
       <ProductDefectTop10
-        products={products}
+        products={dashboardTop10Products}
         sort={productSort}
         onSortChange={setProductSort}
       />

@@ -137,28 +137,28 @@ export function DefectPieChart({ data }: { data: DefectType[] }) {
 
   if (!chartData.length) {
     return (
-      <div className="flex h-[380px] items-center justify-center text-sm text-muted">
+      <div className="flex h-full min-h-[240px] items-center justify-center text-sm text-muted">
         불량 유형 데이터가 없습니다.
       </div>
     )
   }
 
   return (
-    <div className="flex h-[380px] w-full flex-col gap-3 sm:flex-row sm:items-center">
-      <div className="min-h-0 min-w-0 flex-1 basis-[62%]">
-        <ResponsiveContainer width="100%" height="100%" minHeight={280}>
-          <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+    <div className="flex h-full min-h-[240px] w-full flex-col gap-2.5 sm:flex-row sm:items-center">
+      <div className="min-h-0 min-w-0 flex-1 basis-[58%]">
+        <ResponsiveContainer width="100%" height="100%" minHeight={220}>
+          <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
             <Pie
               data={chartData}
               dataKey="count"
               nameKey="name"
               cx="50%"
               cy="50%"
-              innerRadius="40%"
-              outerRadius="86%"
-              paddingAngle={1.5}
+              innerRadius="42%"
+              outerRadius="84%"
+              paddingAngle={1.8}
               stroke="var(--card, #fff)"
-              strokeWidth={2}
+              strokeWidth={2.5}
               label={false}
               labelLine={false}
               isAnimationActive={false}
@@ -169,10 +169,11 @@ export function DefectPieChart({ data }: { data: DefectType[] }) {
             </Pie>
             <Tooltip
               contentStyle={{
-                border: '1px solid #e2e6ec',
-                borderRadius: 12,
-                boxShadow: 'none',
+                border: '1px solid #dbe3ee',
+                borderRadius: 14,
+                boxShadow: '0 10px 28px rgba(15, 23, 42, 0.08)',
                 fontSize: 12,
+                backgroundColor: 'rgba(255, 255, 255, 0.97)',
               }}
               formatter={(value, _n, item) => [
                 `${Number(value).toLocaleString()}건 (${item.payload.share}%)`,
@@ -182,11 +183,11 @@ export function DefectPieChart({ data }: { data: DefectType[] }) {
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <ul className="max-h-[360px] min-w-0 flex-1 basis-[38%] space-y-1.5 overflow-y-auto pr-1 text-xs sm:pl-1">
+      <ul className="max-h-full min-w-0 flex-1 basis-[42%] space-y-1.5 overflow-y-auto pr-1 text-xs sm:pl-1">
         {chartData.map((d, i) => (
           <li
             key={d.name}
-            className="flex items-center gap-2 rounded-lg border border-line/70 bg-canvas/40 px-2 py-1.5"
+            className="flex items-center gap-2 rounded-xl border border-line/60 bg-white/75 px-2.5 py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.02)]"
           >
             <span
               className="h-2.5 w-2.5 shrink-0 rounded-sm"

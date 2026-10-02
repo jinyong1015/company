@@ -4,23 +4,27 @@ import { PageHeader } from '../components/common/PageHeader'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
 import {
-  QtyTop10Chart,
-  type QtyTopItem,
-  type QtyTopView,
-} from '../components/charts/QtyTop10Chart'
+  SplitTop10Panel,
+  type SplitTop10RowBase,
+} from '../components/charts/SplitTop10Panel'
 import { useData } from '../context/DataContext'
 import { useFilters } from '../context/FilterContext'
 import { filterRecords } from '../lib/analyze'
 import { downloadExcel } from '../lib/download'
 import { toEntityId } from '../lib/entityId'
 import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
-import { PLANT_SITE_TABS, plantSiteOf } from '../lib/groups'
+import {
+  PLANT_SITE_TABS,
+  analysisGroupColor,
+  plantSiteOf,
+} from '../lib/groups'
 import type { InspectorRow } from '../types'
-import { formatPpm } from '../lib/format'
+import { failRatePpm, formatPpm, formatWon } from '../lib/format'
 
 const VIEW_STATE_KEY = 'inspector-analysis'
 const ALL_PLANTS = ''
 const ALL_TYPES = ''
+const TOP10_ALL_TAB_BAR_COLOR = '#60a5fa'
 
 type InspectorAnalysisViewState = {
   query: string
@@ -28,8 +32,7 @@ type InspectorAnalysisViewState = {
   asc: boolean
   page: number
   pageSize: number
-  topView: QtyTopView
-  /** 본사 | 2공장 | ''(전체) — 예전 제품유형 값이면 전체로 폴백 */
+  /** 본사 | 2공장 | ''(전체) */
   topPlant: string
   /** 제품유형 | ''(전체) */
   topType: string
@@ -41,15 +44,12 @@ const defaultViewState: InspectorAnalysisViewState = {
   asc: false,
   page: 1,
   pageSize: 10,
-  topView: 'rank',
   topPlant: ALL_PLANTS,
   topType: ALL_TYPES,
 }
 
 function readViewState(): InspectorAnalysisViewState {
-  const stored = loadPageViewState<
-    Partial<InspectorAnalysisViewState> & { topType?: string }
-  >(VIEW_STATE_KEY)
+  const stored = loadPageViewState<Partial<InspectorAnalysisViewState>>(VIEW_STATE_KEY)
   if (!stored) return defaultViewState
   const rawPlant =
     typeof stored.topPlant === 'string'
@@ -63,14 +63,14 @@ function readViewState(): InspectorAnalysisViewState {
     typeof stored.topType === 'string' ? stored.topType : defaultViewState.topType
   return {
     query: typeof stored.query === 'string' ? stored.query : defaultViewState.query,
-    sortKey: typeof stored.sortKey === 'string' ? stored.sortKey : defaultViewState.sortKey,
+    sortKey:
+      typeof stored.sortKey === 'string' ? stored.sortKey : defaultViewState.sortKey,
     asc: typeof stored.asc === 'boolean' ? stored.asc : defaultViewState.asc,
     page: typeof stored.page === 'number' && stored.page >= 1 ? stored.page : defaultViewState.page,
     pageSize:
       typeof stored.pageSize === 'number' && stored.pageSize > 0
         ? stored.pageSize
         : defaultViewState.pageSize,
-    topView: stored.topView === 'bar' ? 'bar' : 'rank',
     topPlant,
     topType,
   }
@@ -87,20 +87,25 @@ const sortKeys = [
   { id: 'scrapCost', label: '폐기비용' },
 ]
 
-function toneForFilters(
-  plant: string,
-  type: string,
-): 'all' | 'seal' | 'grommet' {
-  if (plant === '본사') return 'seal'
-  if (plant === '2공장') return 'grommet'
-  const t = type.toLowerCase()
-  if (t.includes('seal') || type.includes('실링') || type.includes('씰')) return 'seal'
-  if (t.includes('grommet') || type.includes('그로멧')) return 'grommet'
-  return 'all'
-}
-
 function productTypeOf(value: string) {
   return value.trim() || '미지정'
+}
+
+function top10BarColor(plant: string, type: string): string {
+  if (plant === '2공장') return analysisGroupColor('plant2')
+  if (plant === '본사') return analysisGroupColor('seal')
+  const t = type.toLowerCase()
+  if (t.includes('seal') || type.includes('실링') || type.includes('씰')) {
+    return analysisGroupColor('seal')
+  }
+  if (
+    t.includes('grommet') ||
+    type.includes('그로멧') ||
+    type.includes('유압')
+  ) {
+    return analysisGroupColor('hydraulic')
+  }
+  return TOP10_ALL_TAB_BAR_COLOR
 }
 
 type InspectorQtyAgg = {
@@ -108,7 +113,14 @@ type InspectorQtyAgg = {
   name: string
   team: string
   qty: number
+  fail: number
+  hours: number
+  scrapCost: number
+  failRate: number
+  uph: number
 }
+
+type InspectorTop10Row = SplitTop10RowBase & { inspector: InspectorQtyAgg }
 
 function aggregateInspectorQty(
   records: ReturnType<typeof filterRecords>,
@@ -119,23 +131,35 @@ function aggregateInspectorQty(
     const cur = map.get(key)
     if (cur) {
       cur.qty += r.qty
+      cur.fail += r.fail
+      cur.hours += r.hours
+      cur.scrapCost += r.scrapCost
     } else {
       map.set(key, {
         id: toEntityId('ins', key),
         name: key,
         team: r.team || '미지정',
         qty: r.qty,
+        fail: r.fail,
+        hours: r.hours,
+        scrapCost: r.scrapCost,
+        failRate: 0,
+        uph: 0,
       })
     }
   }
-  return [...map.values()]
+  return [...map.values()].map((row) => ({
+    ...row,
+    failRate: failRatePpm(row.fail, row.qty),
+    uph: row.hours > 0 ? Math.round(row.qty / row.hours) : 0,
+  }))
 }
 
 export function InspectorAnalysis() {
   const { analytics, records } = useData()
   const { filters } = useFilters()
   const [view, setView] = useState<InspectorAnalysisViewState>(readViewState)
-  const { query, sortKey, asc, page, pageSize, topView, topPlant, topType } = view
+  const { query, sortKey, asc, page, pageSize, topPlant, topType } = view
   const [openId, setOpenId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -182,15 +206,24 @@ export function InspectorAnalysis() {
     })
   }, [scopedRecords, activePlant, activeTopType])
 
-  const topItems = useMemo((): QtyTopItem[] => {
-    return aggregateInspectorQty(filteredForTop).map((r) => ({
-      id: r.id,
-      name: r.name,
-      meta: activeTopType ? `${r.team} · ${activeTopType}` : r.team,
-      qty: r.qty,
-      href: `/inspectors/${r.id}`,
-    }))
-  }, [filteredForTop, activeTopType])
+  const topRows = useMemo((): InspectorTop10Row[] => {
+    const aggregated = aggregateInspectorQty(filteredForTop).filter(
+      (r) => r.qty > 0,
+    )
+    const totalQty = aggregated.reduce((s, r) => s + r.qty, 0)
+    return [...aggregated]
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 10)
+      .map((r, idx) => ({
+        id: r.id,
+        name: r.name,
+        rank: idx + 1,
+        value: r.qty,
+        sharePercent: totalQty > 0 ? (r.qty / totalQty) * 100 : 0,
+        href: `/inspectors/${r.id}`,
+        inspector: r,
+      }))
+  }, [filteredForTop])
 
   const plantTabCounts = useMemo(() => {
     const counts: Record<string, number> = {
@@ -255,28 +288,26 @@ export function InspectorAnalysis() {
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
   const safePage = Math.min(page, totalPages)
   const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
-  const badgeLabel = [activePlant || null, activeTopType || null]
-    .filter(Boolean)
-    .join(' · ') || '전체'
+  const scopeParts = [activePlant || null, activeTopType || null].filter(Boolean)
+  const scopeLabel = scopeParts.length ? scopeParts.join(' · ') : '전체'
+  const barColor = top10BarColor(activePlant, activeTopType)
 
   return (
     <div className="space-y-5">
       <PageHeader title="검사자 분석" />
 
-      <QtyTop10Chart
-        items={topItems}
-        title="검사 수량 작업자 TOP 10"
-        subtitle="검사자별 검수량 기준 상위 10명 · 소속 / 제품유형"
-        badgeLabel={badgeLabel}
-        tone={toneForFilters(activePlant, activeTopType)}
-        view={topView}
-        onViewChange={(v) => patchView({ topView: v })}
-        emptyMessage="선택한 소속·제품유형에 해당하는 검수량 데이터가 없습니다."
-        typeTabs={
-          <div className="qty-filter-stack">
+      <SplitTop10Panel
+        title="검수량 검사자 TOP 10"
+        description={`선택 기간 · ${scopeLabel} · 검수량 상위 10명`}
+        toolbar={
+          <div className="qty-filter-stack mb-3.5">
             <div className="qty-filter-row">
               <span className="qty-filter-label">소속</span>
-              <div className="qty-type-tabs" role="tablist" aria-label="검수량 TOP 소속">
+              <div
+                className="qty-type-tabs"
+                role="tablist"
+                aria-label="검수량 TOP 소속"
+              >
                 {PLANT_SITE_TABS.map((tab) => (
                   <button
                     key={tab.id || 'all-plant'}
@@ -335,7 +366,43 @@ export function InspectorAnalysis() {
             </div>
           </div>
         }
+        rows={topRows}
+        barColor={barColor}
+        xAxisAngle={0}
+        valueLabel="검수량"
+        formatValue={(n) => Math.round(n).toLocaleString('ko-KR')}
+        emptyMessage="선택한 소속·제품유형에 해당하는 검수량 데이터가 없습니다."
+        detailKicker="선택 검사자"
+        detailMeta={(row) =>
+          activeTopType
+            ? `${row.inspector.team} · ${activeTopType}`
+            : row.inspector.team
+        }
+        rankMeta={(row) =>
+          activeTopType
+            ? `${row.inspector.team} · ${activeTopType}`
+            : row.inspector.team
+        }
+        metrics={[
+          {
+            label: '검수량',
+            value: (row) => row.inspector.qty.toLocaleString('ko-KR'),
+          },
+          {
+            label: '부적합률',
+            value: (row) => formatPpm(row.inspector.failRate),
+          },
+          {
+            label: 'UPH',
+            value: (row) => row.inspector.uph.toLocaleString('ko-KR'),
+          },
+          {
+            label: '폐기비용',
+            value: (row) => formatWon(row.inspector.scrapCost),
+          },
+        ]}
       />
+
       <SortSearchBar
         query={query}
         onQuery={(v) => {
@@ -437,7 +504,12 @@ export function InspectorAnalysis() {
             </tbody>
           </table>
         </div>
-        <Pager page={safePage} totalPages={totalPages} total={rows.length} onPage={(p) => patchView({ page: p })} />
+        <Pager
+          page={safePage}
+          totalPages={totalPages}
+          total={rows.length}
+          onPage={(p) => patchView({ page: p })}
+        />
       </SortSearchBar>
     </div>
   )

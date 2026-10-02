@@ -1,4 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
 import { SortSearchBar } from '../components/common/SortSearchBar'
@@ -8,6 +9,8 @@ import { useData } from '../context/DataContext'
 import { useFilters } from '../context/FilterContext'
 import { filterRecords } from '../lib/analyze'
 import { downloadExcel } from '../lib/download'
+import { toEntityId } from '../lib/entityId'
+import { buildProductDetailHref } from '../lib/productDetailNav'
 import type { EquipmentRow } from '../types'
 import { formatPpm } from '../lib/format'
 
@@ -139,7 +142,18 @@ export function EquipmentAnalysis() {
                           <tbody>
                             {row.products.map((p) => (
                               <tr key={p.product}>
-                                <td className="py-1">{p.product}</td>
+                                <td className="py-1 font-medium">
+                                  <Link
+                                    to={buildProductDetailHref(
+                                      toEntityId('prd', p.product),
+                                      'equipment',
+                                    )}
+                                    className="text-accent hover:underline"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {p.product}
+                                  </Link>
+                                </td>
                                 <td className="num py-1">{p.qty.toLocaleString()}</td>
                                 <td className="num py-1">{p.fail.toLocaleString()}</td>
                                 <td className="num py-1">{formatPpm(p.failRate)}</td>

@@ -1,19 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle } from 'lucide-react'
 import { PageHeader } from '../components/common/PageHeader'
 import { SortSearchBar } from '../components/common/SortSearchBar'
 import { Pager } from '../components/common/Pager'
 import {
-  QtyTop10Chart,
-  type QtyTopItem,
-  type QtyTopView,
-} from '../components/charts/QtyTop10Chart'
+  SplitTop10Panel,
+  type SplitTop10RowBase,
+} from '../components/charts/SplitTop10Panel'
 import { useData } from '../context/DataContext'
 import { downloadExcel } from '../lib/download'
 import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
 import type { WorkerRow } from '../types'
-import { formatPpmAsPercent } from '../lib/format'
+import { formatPpmAsPercent, formatWon } from '../lib/format'
 
 const VIEW_STATE_KEY = 'worker-analysis'
 
@@ -23,7 +21,6 @@ type WorkerAnalysisViewState = {
   asc: boolean
   page: number
   pageSize: number
-  topView: QtyTopView
 }
 
 const defaultViewState: WorkerAnalysisViewState = {
@@ -32,7 +29,6 @@ const defaultViewState: WorkerAnalysisViewState = {
   asc: false,
   page: 1,
   pageSize: 10,
-  topView: 'rank',
 }
 
 const sortKeys = [
@@ -61,14 +57,15 @@ function readViewState(): WorkerAnalysisViewState {
       typeof stored.pageSize === 'number' && stored.pageSize > 0
         ? stored.pageSize
         : defaultViewState.pageSize,
-    topView: stored.topView === 'bar' ? 'bar' : 'rank',
   }
 }
+
+type WorkerTop10Row = SplitTop10RowBase & { worker: WorkerRow }
 
 export function WorkerAnalysis() {
   const { analytics } = useData()
   const [view, setView] = useState<WorkerAnalysisViewState>(readViewState)
-  const { query, sortKey, asc, page, pageSize, topView } = view
+  const { query, sortKey, asc, page, pageSize } = view
 
   useEffect(() => {
     savePageViewState(VIEW_STATE_KEY, view)
@@ -78,13 +75,19 @@ export function WorkerAnalysis() {
     setView((prev) => ({ ...prev, ...patch }))
   }
 
-  const topItems = useMemo((): QtyTopItem[] => {
-    return analytics.workers.map((r) => ({
-      id: r.id,
-      name: r.name,
-      meta: `담당 품번 ${r.productCount}`,
-      qty: r.fail,
-      href: `/workers/${r.id}`,
+  const topRows = useMemo((): WorkerTop10Row[] => {
+    const ranked = [...analytics.workers]
+      .sort((a, b) => b.fail - a.fail)
+      .slice(0, 10)
+    const totalFail = analytics.workers.reduce((s, w) => s + w.fail, 0)
+    return ranked.map((w, idx) => ({
+      id: w.id,
+      name: w.name,
+      rank: idx + 1,
+      value: w.fail,
+      sharePercent: totalFail > 0 ? (w.fail / totalFail) * 100 : 0,
+      href: `/workers/${w.id}`,
+      worker: w,
     }))
   }, [analytics.workers])
 
@@ -114,18 +117,35 @@ export function WorkerAnalysis() {
     <div className="space-y-5">
       <PageHeader title="성형 작업자 분석" />
 
-      <QtyTop10Chart
-        items={topItems}
+      <SplitTop10Panel
         title="부적합수량 작업자 TOP 10"
-        subtitle="성형 작업자별 부적합수량 기준 상위 10명"
-        badgeLabel="전체"
-        tone="all"
-        view={topView}
-        onViewChange={(v) => patchView({ topView: v })}
-        emptyMessage="표시할 부적합수량 데이터가 없습니다."
+        description="성형 작업자별 부적합수량 기준 상위 10명"
+        rows={topRows}
+        xAxisAngle={0}
         valueLabel="부적합수량"
-        valueUnit="EA"
-        ValueIcon={AlertTriangle}
+        formatValue={(n) => Math.round(n).toLocaleString('ko-KR')}
+        emptyMessage="표시할 부적합수량 데이터가 없습니다."
+        detailKicker="선택 작업자"
+        detailMeta={(row) => `담당 품번 ${row.worker.productCount}개`}
+        rankMeta={(row) => `담당 품번 ${row.worker.productCount}개`}
+        metrics={[
+          {
+            label: '부적합수량',
+            value: (row) => row.worker.fail.toLocaleString('ko-KR'),
+          },
+          {
+            label: '불량률',
+            value: (row) => formatPpmAsPercent(row.worker.failRate),
+          },
+          {
+            label: '실적수량',
+            value: (row) => row.worker.qty.toLocaleString('ko-KR'),
+          },
+          {
+            label: '폐기비용',
+            value: (row) => formatWon(row.worker.scrapCost),
+          },
+        ]}
       />
 
       <SortSearchBar

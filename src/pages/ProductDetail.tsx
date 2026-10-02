@@ -1,13 +1,17 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   Activity,
-  ArrowLeft,
+  AlertTriangle,
   CalendarRange,
-  ChevronRight,
+  CheckCircle2,
+  Clock3,
   Coins,
+  Factory,
+  Gauge,
   HardHat,
   LayoutDashboard,
   Package,
+  PackageX,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -28,6 +32,13 @@ import { Panel } from "../components/common/Panel";
 import { ResponsiveGrid } from "../components/common/ResponsiveGrid";
 import { StatusBadge } from "../components/common/StatusBadge";
 import { DefectPieChart } from "../components/charts/DefectCharts";
+import {
+  DetailBackNav,
+  DetailDefectChips,
+  DetailHero,
+  DetailKpiStrip,
+  DetailSnapshotBanner,
+} from "../components/detail/DetailChrome";
 import { ProductPhotoPanel } from "../components/product/ProductPhotoPanel";
 import { useData } from "../context/DataContext";
 import {
@@ -77,6 +88,7 @@ const BACK_NAV_ICONS: Record<ProductDetailFromId, LucideIcon> = {
   workers: HardHat,
   inspectors: Users,
   cost: Coins,
+  equipment: Factory,
 };
 
 function buildBackNav(
@@ -227,25 +239,23 @@ export function ProductDetail() {
       ? { label: "검사자", value: urlInspector }
       : null;
 
-  const snapshotBanner =
-    usingSnapshot && snapshotStatus === "loading" ? (
-      <div className="card border-accent/30 px-4 py-3 text-sm text-muted">
-        스냅샷 원본 DATA를 불러오는 중…
-      </div>
-    ) : usingSnapshot && snapshotStatus === "missing" ? (
-      <div className="card border-warn/40 px-4 py-3 text-sm text-muted">
-        이 스냅샷에는 품번 상세용 원본 DATA가 포함되어 있지 않습니다. 주간보고에서
-        스냅샷을 다시 저장하면 당시 데이터로 상세 조회할 수 있습니다.
-      </div>
-    ) : usingSnapshot && snapshotStatus === "error" ? (
-      <div className="card border-danger/40 px-4 py-3 text-sm text-danger">
-        {snapshotError ?? "스냅샷 DATA를 불러오지 못했습니다."}
-      </div>
-    ) : usingSnapshot && snapshotStatus === "ready" ? (
-      <div className="card border-accent/30 px-4 py-3 text-sm text-muted">
-        스냅샷 확정본 기준 조회 · 현재 업로드 DATA와 무관합니다.
-      </div>
-    ) : null;
+  const snapshotBanner = usingSnapshot ? (
+    <DetailSnapshotBanner status={snapshotStatus} error={snapshotError} />
+  ) : null;
+
+  const backMetas = [
+    ...(personScope
+      ? [{ label: personScope.label, value: personScope.value }]
+      : []),
+    ...(periodRange
+      ? [
+          {
+            label: "조회기간",
+            value: `${periodRange.start} ~ ${periodRange.end}`,
+          },
+        ]
+      : []),
+  ];
 
   if (!name) {
     return (
@@ -258,10 +268,12 @@ export function ProductDetail() {
   if (usingSnapshot && snapshotStatus === "loading") {
     return (
       <div className="space-y-5">
-        <ProductDetailBackNav
-          backNav={backNav}
-          periodRange={periodRange}
-          personScope={personScope}
+        <DetailBackNav
+          to={backNav.path}
+          label={backNav.label}
+          ariaLabel="품번 상세 돌아가기"
+          Icon={backNav.icon}
+          metas={backMetas}
         />
         {snapshotBanner}
       </div>
@@ -271,13 +283,16 @@ export function ProductDetail() {
   if (!product && scoped.length === 0) {
     return (
       <div className="space-y-5">
-        <ProductDetailBackNav
-          backNav={backNav}
-          periodRange={periodRange}
-          personScope={personScope}
+        <DetailBackNav
+          to={backNav.path}
+          label={backNav.label}
+          ariaLabel="품번 상세 돌아가기"
+          Icon={backNav.icon}
+          metas={backMetas}
         />
         {snapshotBanner}
-        <PageHeader
+        <DetailHero
+          eyebrow="품번 상세"
           title={name}
           description={
             personScope
@@ -310,88 +325,6 @@ export function ProductDetail() {
         personScope={personScope}
       />
     </>
-  );
-}
-
-function ProductDetailBackNav({
-  backNav,
-  periodRange,
-  personScope,
-}: {
-  backNav: ReturnType<typeof buildBackNav>;
-  periodRange?: { start: string; end: string } | null;
-  personScope?: { label: string; value: string } | null;
-}) {
-  const Icon = backNav.icon;
-
-  return (
-    <nav aria-label="품번 상세 돌아가기" className="sticky top-16 z-10">
-      <Link
-        to={backNav.path}
-        className="group flex items-center gap-3 rounded-2xl border-2 border-accent/50 bg-white p-3 shadow-[0_8px_24px_rgba(59,130,246,0.12)] ring-1 ring-accent/20 transition hover:border-accent hover:bg-accent/[0.03] hover:shadow-[0_12px_28px_rgba(59,130,246,0.18)] sm:gap-4 sm:p-4"
-      >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent text-white shadow-sm transition group-hover:bg-blue-600 sm:h-12 sm:w-12">
-          <ArrowLeft size={20} strokeWidth={2.5} aria-hidden />
-        </span>
-
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent ring-1 ring-accent/25 sm:h-12 sm:w-12">
-          <Icon size={20} strokeWidth={2.25} aria-hidden />
-        </span>
-
-        <span className="min-w-0 flex-1">
-          <span className="block text-[11px] font-bold tracking-[0.12em] text-accent uppercase">
-            돌아가기
-          </span>
-          <span className="mt-0.5 block truncate text-base font-bold text-ink transition group-hover:text-accent sm:text-lg">
-            {backNav.label}
-          </span>
-        </span>
-
-        {personScope ? (
-          <span className="hidden shrink-0 rounded-xl border border-line bg-canvas px-3 py-2 text-right sm:block">
-            <span className="block text-[10px] font-semibold tracking-wide text-muted uppercase">
-              {personScope.label}
-            </span>
-            <span className="mt-0.5 block max-w-[9rem] truncate text-xs font-semibold text-ink">
-              {personScope.value}
-            </span>
-          </span>
-        ) : null}
-
-        {periodRange ? (
-          <span className="hidden shrink-0 rounded-xl border border-line bg-canvas px-3 py-2 text-right sm:block">
-            <span className="block text-[10px] font-semibold tracking-wide text-muted uppercase">
-              조회기간
-            </span>
-            <span className="num mt-0.5 block text-xs font-semibold text-ink">
-              {periodRange.start} ~ {periodRange.end}
-            </span>
-          </span>
-        ) : null}
-
-        <ChevronRight
-          size={20}
-          className="shrink-0 text-muted/60 transition group-hover:translate-x-0.5 group-hover:text-accent"
-          aria-hidden
-        />
-      </Link>
-      {(personScope || periodRange) && (
-        <p className="mt-2 px-1 text-center text-xs font-medium text-muted sm:hidden">
-          {personScope ? (
-            <span>
-              {personScope.label}{" "}
-              <span className="font-semibold text-ink">{personScope.value}</span>
-            </span>
-          ) : null}
-          {personScope && periodRange ? <span className="mx-1.5">·</span> : null}
-          {periodRange ? (
-            <span className="num">
-              조회기간 {periodRange.start} ~ {periodRange.end}
-            </span>
-          ) : null}
-        </p>
-      )}
-    </nav>
   );
 }
 
@@ -525,13 +458,28 @@ function ProductDetailBody({
 
   return (
     <div className="space-y-5">
-      <ProductDetailBackNav
-        backNav={backNav}
-        periodRange={periodRange}
-        personScope={personScope}
+      <DetailBackNav
+        to={backNav.path}
+        label={backNav.label}
+        ariaLabel="품번 상세 돌아가기"
+        Icon={backNav.icon}
+        metas={[
+          ...(personScope
+            ? [{ label: personScope.label, value: personScope.value }]
+            : []),
+          ...(periodRange
+            ? [
+                {
+                  label: "조회기간",
+                  value: `${periodRange.start} ~ ${periodRange.end}`,
+                },
+              ]
+            : []),
+        ]}
       />
 
-      <PageHeader
+      <DetailHero
+        eyebrow="품번 상세"
         title={name}
         description={
           personScope
@@ -540,27 +488,64 @@ function ProductDetailBody({
               ? `${type} · 선택 주차 품번 상세`
               : `${type} · 선택한 기간/분석 그룹 기준`
         }
+        chips={[
+          type,
+          ...(personScope ? [`${personScope.label} ${personScope.value}`] : []),
+          ...(periodRange
+            ? [`${periodRange.start} ~ ${periodRange.end}`]
+            : []),
+        ]}
         actions={<StatusBadge status={status} />}
       />
 
-      <ResponsiveGrid variant="kpi">
-        {[
-          ["검사량", qty.toLocaleString()],
-          ["합격수량", pass.toLocaleString()],
-          ["부적합수량", fail.toLocaleString()],
-          ["폐기비용", formatWonSuffix(scrapCost)],
-          ["소요시간(분)", minutes.toLocaleString()],
-          ["UPH", String(uph)],
-          ["부적합률", `${formatPpm(failRate)}`],
-        ].map(([label, value]) => (
-          <div key={label} className="card px-4 py-3">
-            <p className="text-xs text-muted">{label}</p>
-            <p className="num mt-1 text-xl font-semibold">{value}</p>
-          </div>
-        ))}
-      </ResponsiveGrid>
-
-      <ProductPhotoPanel productKey={name} />
+      <div className="detail-top">
+        <ProductPhotoPanel productKey={name} />
+        <DetailKpiStrip
+          items={[
+            {
+              label: "검사량",
+              value: qty.toLocaleString(),
+              tone: "accent",
+              icon: Package,
+            },
+            {
+              label: "합격수량",
+              value: pass.toLocaleString(),
+              tone: "ok",
+              icon: CheckCircle2,
+            },
+            {
+              label: "부적합수량",
+              value: fail.toLocaleString(),
+              tone: fail > 0 ? "danger" : "default",
+              icon: PackageX,
+            },
+            {
+              label: "폐기비용",
+              value: formatWonSuffix(scrapCost),
+              tone: "warn",
+              icon: Coins,
+            },
+            {
+              label: "소요시간(분)",
+              value: minutes.toLocaleString(),
+              icon: Clock3,
+            },
+            {
+              label: "UPH",
+              value: String(uph),
+              tone: "accent",
+              icon: Gauge,
+            },
+            {
+              label: "부적합률",
+              value: formatPpm(failRate),
+              tone: failRate > 0 ? "danger" : "default",
+              icon: AlertTriangle,
+            },
+          ]}
+        />
+      </div>
 
       <ResponsiveGrid variant="split">
         <Panel
@@ -572,7 +557,7 @@ function ProductDetailBody({
             <div
               role="group"
               aria-label="차트 조회 기준"
-              className="inline-flex items-center rounded-full border border-line bg-canvas/80 p-1"
+              className="detail-seg"
             >
               {[
                 { id: "qty" as const, label: "검수량" },
@@ -583,10 +568,8 @@ function ProductDetailBody({
                   type="button"
                   aria-pressed={trendMetric === metric.id}
                   onClick={() => setTrendMetric(metric.id)}
-                  className={`min-w-[72px] rounded-full px-4 py-2 text-xs font-semibold transition-all ${
-                    trendMetric === metric.id
-                      ? "bg-white text-accent shadow-sm ring-1 ring-black/5"
-                      : "text-muted hover:bg-white/60 hover:text-ink"
+                  className={`detail-seg-btn${
+                    trendMetric === metric.id ? " is-active" : ""
                   }`}
                 >
                   {metric.label}
@@ -595,112 +578,128 @@ function ProductDetailBody({
             </div>
           }
         >
-          <div className="rounded-2xl border border-line/70 bg-white px-3 pb-3 pt-4">
-            <div className="h-[250px]">
+          <div className="detail-chart-frame">
+            <div className="h-[268px]">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
                   data={trendData}
-                  margin={{ top: 28, right: 8, left: 12, bottom: 0 }}
+                  margin={{ top: 22, right: 6, left: 4, bottom: 4 }}
+                  barCategoryGap="28%"
                 >
                   <CartesianGrid
-                    stroke="#e5eaf1"
-                    strokeDasharray="4 4"
+                    stroke="#e8eef5"
+                    strokeDasharray="3 6"
                     vertical={false}
                   />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11, fill: "#5b6577" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  yAxisId="metric"
-                  tick={{ fontSize: 11, fill: "#5b6577" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={trendMetric === "scrapCost" ? 120 : 80}
-                  tickFormatter={(value) =>
-                    trendMetric === "scrapCost"
-                      ? formatWonSuffix(Number(value))
-                      : Number(value).toLocaleString()
-                  }
-                />
-                <YAxis
-                  yAxisId="rate"
-                  orientation="right"
-                  tick={{ fontSize: 11, fill: "#5b6577" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={72}
-                  tickFormatter={(value) => formatPpm(Number(value))}
-                />
-                <Tooltip
-                  contentStyle={{
-                    border: "1px solid #dbe3ee",
-                    borderRadius: 14,
-                    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
-                    fontSize: 12,
-                    backgroundColor: "rgba(255, 255, 255, 0.96)",
-                  }}
-                  cursor={{ fill: "rgba(59, 130, 246, 0.06)" }}
-                  formatter={(value, name) => {
-                    const numericValue = Number(value ?? 0);
-                    if (name === "부적합률")
-                      return [formatPpm(numericValue), name];
-                    if (name === "폐기비용")
-                      return [formatWonSuffix(numericValue), name];
-                    return [numericValue.toLocaleString(), String(name)];
-                  }}
-                  labelFormatter={(label) =>
-                    `${isMonthlyTrend ? "월" : "날짜"} ${label}`
-                  }
-                />
-                <Bar
-                  yAxisId="metric"
-                  dataKey={trendMetric}
-                  name={trendMetric === "qty" ? "검수량" : "폐기비용"}
-                  fill="#93c5fd"
-                  radius={[7, 7, 2, 2]}
-                  maxBarSize={30}
-                />
-                <Line
-                  yAxisId="rate"
-                  type="monotone"
-                  dataKey="failRate"
-                  name="부적합률"
-                  stroke="#e05252"
-                  strokeWidth={2.5}
-                  dot={{ r: 2.5, fill: "#fff", strokeWidth: 2 }}
-                  activeDot={{
-                    r: 5,
-                    fill: "#fff",
-                    stroke: "#e05252",
-                    strokeWidth: 2.5,
-                  }}
-                >
-                  <LabelList
-                    dataKey="failRate"
-                    position="top"
-                    offset={8}
-                    fill="#b84343"
-                    fontSize={9}
-                    fontWeight={600}
-                    formatter={(value: unknown) => {
-                      const rate = Math.round(Number(value ?? 0));
-                      return rate > 0 ? rate.toLocaleString() : "";
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 11, fill: "#7b8798", fontWeight: 500 }}
+                    axisLine={false}
+                    tickLine={false}
+                    dy={4}
+                  />
+                  <YAxis
+                    yAxisId="metric"
+                    tick={{ fontSize: 10.5, fill: "#94a3b8" }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={trendMetric === "scrapCost" ? 88 : 56}
+                    tickFormatter={(value) => {
+                      const n = Number(value);
+                      if (trendMetric === "scrapCost") {
+                        if (n >= 1_000_000)
+                          return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}백만`;
+                        if (n >= 10_000) return `${Math.round(n / 10_000)}만`;
+                        return formatWonSuffix(n);
+                      }
+                      if (n >= 1_000_000)
+                        return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+                      if (n >= 1_000) return `${Math.round(n / 1000)}K`;
+                      return String(n);
                     }}
                   />
-                </Line>
+                  <YAxis
+                    yAxisId="rate"
+                    orientation="right"
+                    tick={{ fontSize: 10.5, fill: "#94a3b8" }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={58}
+                    tickFormatter={(value) => `${Math.round(Number(value))}ppm`}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      border: "1px solid #dbe3ee",
+                      borderRadius: 14,
+                      boxShadow: "0 10px 28px rgba(15, 23, 42, 0.08)",
+                      fontSize: 12,
+                      backgroundColor: "rgba(255, 255, 255, 0.97)",
+                      padding: "10px 12px",
+                    }}
+                    cursor={{ fill: "rgba(59, 130, 246, 0.05)" }}
+                    formatter={(value, name) => {
+                      const numericValue = Number(value ?? 0);
+                      if (name === "부적합률")
+                        return [formatPpm(numericValue), name];
+                      if (name === "폐기비용")
+                        return [formatWonSuffix(numericValue), name];
+                      return [numericValue.toLocaleString(), String(name)];
+                    }}
+                    labelFormatter={(label) =>
+                      `${isMonthlyTrend ? "월" : "날짜"} ${label}`
+                    }
+                  />
+                  <Bar
+                    yAxisId="metric"
+                    dataKey={trendMetric}
+                    name={trendMetric === "qty" ? "검수량" : "폐기비용"}
+                    fill="#7db4f8"
+                    radius={[8, 8, 3, 3]}
+                    maxBarSize={34}
+                  />
+                  <Line
+                    yAxisId="rate"
+                    type="monotone"
+                    dataKey="failRate"
+                    name="부적합률"
+                    stroke="#d45555"
+                    strokeWidth={2.4}
+                    dot={{
+                      r: 3.2,
+                      fill: "#fff",
+                      stroke: "#d45555",
+                      strokeWidth: 2,
+                    }}
+                    activeDot={{
+                      r: 5.5,
+                      fill: "#fff",
+                      stroke: "#d45555",
+                      strokeWidth: 2.5,
+                    }}
+                  >
+                    <LabelList
+                      dataKey="failRate"
+                      position="top"
+                      offset={10}
+                      fill="#b33f3f"
+                      fontSize={10}
+                      fontWeight={650}
+                      formatter={(value: unknown) => {
+                        const rate = Math.round(Number(value ?? 0));
+                        return rate > 0 ? rate.toLocaleString() : "";
+                      }}
+                    />
+                  </Line>
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
-            <div className="mt-2 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-[11px] font-medium text-muted">
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-sm bg-blue-400" />
+            <div className="detail-chart-legend" aria-hidden>
+              <span className="detail-chart-legend-item">
+                <span className="detail-chart-swatch detail-chart-swatch-bar" />
                 {trendMetric === "qty" ? "검수량" : "폐기비용"}
               </span>
-              <span className="inline-flex items-center gap-1.5">
-                <span className="h-0.5 w-4 rounded-full bg-red-500" />
+              <span className="detail-chart-legend-item">
+                <span className="detail-chart-swatch detail-chart-swatch-line" />
                 부적합률 (ppm)
               </span>
             </div>
@@ -710,7 +709,9 @@ function ProductDetailBody({
           title="불량 유형별 발생량"
           description="품질 분석과 동일한 색상 · 원그래프"
         >
-          <DefectPieChart data={defects} />
+          <div className="detail-chart-frame detail-chart-frame-pie">
+            <DefectPieChart data={defects} />
+          </div>
         </Panel>
       </ResponsiveGrid>
 
@@ -725,33 +726,6 @@ function ProductDetailBody({
       >
         {defects.length ? (
           <>
-            <div
-              className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2.5"
-              style={{
-                borderColor: `color-mix(in srgb, ${selectedDefectColor} 45%, transparent)`,
-                background: `color-mix(in srgb, ${selectedDefectColor} 8%, transparent)`,
-              }}
-            >
-              <p className="text-sm text-ink">
-                <span
-                  className="font-medium"
-                  style={{ color: selectedDefectColor }}
-                >
-                  불량 유형을 선택
-                </span>
-                해 설비·금형별 발생 비중을 확인하세요.
-              </p>
-              <p className="text-xs text-muted">
-                현재 선택{" "}
-                <span
-                  className="font-semibold"
-                  style={{ color: selectedDefectColor }}
-                >
-                  {selectedDefect || "전체"}
-                </span>
-              </p>
-            </div>
-
             <div
               className="grid-dense max-h-[360px] overflow-y-auto pr-1"
               role="radiogroup"
@@ -1017,16 +991,17 @@ function ProductDetailBody({
               description={`이 품번·기간 기준 ${sorted.length}개 전체`}
             >
               <div className="max-h-72 overflow-y-auto pr-1">
-                <ul className="space-y-1.5 text-sm">
-                  {sorted.map((item) => (
-                    <li key={item} className="border-b border-line/60 py-1.5">
-                      {item}
-                    </li>
-                  ))}
-                  {!sorted.length && (
-                    <li className="text-muted">없음</li>
-                  )}
-                </ul>
+                {sorted.length ? (
+                  <div className="detail-tags detail-tags-wrap">
+                    {sorted.map((item) => (
+                      <span key={item} className="detail-tag detail-tag-id">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted">없음</p>
+                )}
               </div>
             </Panel>
           );
@@ -1038,21 +1013,21 @@ function ProductDetailBody({
         description={`${name}를 담당한 작업자별 검사·불량 현황 · 불량률 높은 순`}
       >
         <div className="overflow-x-auto">
-          <table className="min-w-[800px] w-full text-left text-sm">
+          <table className="detail-table min-w-[800px] w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-line text-xs text-muted">
-                <th className="px-2 py-2 font-medium">성형 작업자</th>
-                <th className="px-2 py-2 font-medium">실적수량</th>
-                <th className="px-2 py-2 font-medium">합격</th>
-                <th className="px-2 py-2 font-medium">부적합</th>
-                <th className="px-2 py-2 font-medium">불량률(%)</th>
-                <th className="px-2 py-2 font-medium">불량 내역</th>
+              <tr>
+                <th>성형 작업자</th>
+                <th>실적수량</th>
+                <th>합격</th>
+                <th>부적합</th>
+                <th>불량률(%)</th>
+                <th>불량 내역</th>
               </tr>
             </thead>
             <tbody>
               {workerUph.map((row) => (
-                <tr key={row.id} className="border-b border-line/70">
-                  <td className="px-2 py-2.5 font-medium">
+                <tr key={row.id}>
+                  <td className="font-medium">
                     <Link
                       to={buildWorkerDetailHref(
                         toEntityId("wrk", row.worker),
@@ -1063,19 +1038,15 @@ function ProductDetailBody({
                       {row.worker}
                     </Link>
                   </td>
-                  <td className="num px-2 py-2.5">
-                    {row.qty.toLocaleString()}
-                  </td>
-                  <td className="num px-2 py-2.5">
-                    {row.pass.toLocaleString()}
-                  </td>
-                  <td className="num px-2 py-2.5">
-                    {row.fail.toLocaleString()}
-                  </td>
-                  <td className="num px-2 py-2.5 font-semibold">
+                  <td className="num">{row.qty.toLocaleString()}</td>
+                  <td className="num">{row.pass.toLocaleString()}</td>
+                  <td className="num">{row.fail.toLocaleString()}</td>
+                  <td className="num font-semibold">
                     {formatPpmAsPercent(row.failRate)}
                   </td>
-                  <td className="px-2 py-2.5 text-xs">{row.defectSummary}</td>
+                  <td>
+                    <DetailDefectChips summary={row.defectSummary} />
+                  </td>
                 </tr>
               ))}
               {!workerUph.length && (
@@ -1095,23 +1066,23 @@ function ProductDetailBody({
         description={`${name}를 검사한 검사자 효율 · UPH 높은 순`}
       >
         <div className="overflow-x-auto">
-          <table className="min-w-[960px] w-full text-left text-sm">
+          <table className="detail-table min-w-[960px] w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-line text-xs text-muted">
-                <th className="px-2 py-2 font-medium">검사자</th>
-                <th className="px-2 py-2 font-medium">소속</th>
-                <th className="px-2 py-2 font-medium">검사량</th>
-                <th className="px-2 py-2 font-medium">합격</th>
-                <th className="px-2 py-2 font-medium">부적합</th>
-                <th className="px-2 py-2 font-medium">소요시간(분)</th>
-                <th className="px-2 py-2 font-medium">UPH</th>
-                <th className="px-2 py-2 font-medium">불량 내역</th>
+              <tr>
+                <th>검사자</th>
+                <th>소속</th>
+                <th>검사량</th>
+                <th>합격</th>
+                <th>부적합</th>
+                <th>소요시간(분)</th>
+                <th>UPH</th>
+                <th>불량 내역</th>
               </tr>
             </thead>
             <tbody>
               {inspectorUph.map((row) => (
-                <tr key={row.id} className="border-b border-line/70">
-                  <td className="px-2 py-2.5 font-medium">
+                <tr key={row.id}>
+                  <td className="font-medium">
                     <Link
                       to={buildInspectorDetailHref(
                         toEntityId("ins", row.inspector),
@@ -1122,21 +1093,15 @@ function ProductDetailBody({
                       {row.inspector}
                     </Link>
                   </td>
-                  <td className="px-2 py-2.5">{row.team}</td>
-                  <td className="num px-2 py-2.5">
-                    {row.qty.toLocaleString()}
+                  <td>{row.team}</td>
+                  <td className="num">{row.qty.toLocaleString()}</td>
+                  <td className="num">{row.pass.toLocaleString()}</td>
+                  <td className="num">{row.fail.toLocaleString()}</td>
+                  <td className="num">{row.minutes.toLocaleString()}</td>
+                  <td className="num font-semibold">{row.uph}</td>
+                  <td>
+                    <DetailDefectChips summary={row.defectSummary} />
                   </td>
-                  <td className="num px-2 py-2.5">
-                    {row.pass.toLocaleString()}
-                  </td>
-                  <td className="num px-2 py-2.5">
-                    {row.fail.toLocaleString()}
-                  </td>
-                  <td className="num px-2 py-2.5">
-                    {row.minutes.toLocaleString()}
-                  </td>
-                  <td className="num px-2 py-2.5 font-semibold">{row.uph}</td>
-                  <td className="px-2 py-2.5 text-xs">{row.defectSummary}</td>
                 </tr>
               ))}
               {!inspectorUph.length && (

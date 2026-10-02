@@ -406,6 +406,8 @@ export interface Analytics {
   defectTypes: DefectType[]
   inspectors: InspectorRow[]
   products: ProductRow[]
+  /** 대시보드 품번 TOP10 — 분석 그룹 필터와 무관(기간·기타 필터만 적용) */
+  dashboardTop10Products: ProductRow[]
   workers: WorkerRow[]
   workerProductUph: WorkerProductUph[]
   inspectorProductUph: InspectorProductUph[]
