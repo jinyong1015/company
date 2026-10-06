@@ -456,13 +456,14 @@ export function buildVinaMonthlyReportView(
   return {
     metric,
     months: monthlyMetrics,
-    tableRows: VINA_MONTHLY_ORGS.map((org) => ({
-      id: org.id,
-      label: org.label,
-      values: valuesByRow((m) => m[org.id]),
-    })).concat([
-      { id: 'total', label: 'TOTAL', values: valuesByRow((m) => m.total) },
-    ]),
+    tableRows: [
+      ...VINA_MONTHLY_ORGS.map((org) => ({
+        id: org.id as WeeklyReportOrgId | 'total',
+        label: org.label,
+        values: valuesByRow((m) => m[org.id]),
+      })),
+      { id: 'total' as const, label: 'TOTAL', values: valuesByRow((m) => m.total) },
+    ],
     range: {
       from: monthlyMetrics[0]?.monthLabel ?? '',
       to: monthlyMetrics[monthlyMetrics.length - 1]?.monthLabel ?? '',

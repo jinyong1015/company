@@ -92,6 +92,7 @@ const BACK_NAV_ICONS: Record<ProductDetailFromId, LucideIcon> = {
   "vina-products": Package,
   "vina-quality": Activity,
   "vina-inspectors": Users,
+  "vina-cost": Coins,
 };
 
 function buildBackNav(
