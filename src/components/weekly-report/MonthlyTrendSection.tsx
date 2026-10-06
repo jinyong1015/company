@@ -22,27 +22,40 @@ import {
   chartDataFromMonthly,
   weeklyReportMetricLabel,
 } from '../../lib/weeklyReport'
-import type { WeeklyReportMetric, WeeklyReportMonthlyView } from '../../types'
+import type {
+  WeeklyReportMetric,
+  WeeklyReportMonthlyView,
+  WeeklyReportOrgId,
+} from '../../types'
 
 const LINE_COLOR = ANALYSIS_GROUP_TOTAL_LINE_COLOR
 const LABEL_COLOR = '#ef4444'
 
-const ROW_ACCENT: Record<
-  string,
-  { color: string; isTotal?: boolean }
-> = {
-  seal: { color: WEEKLY_REPORT_ORGS.find((o) => o.id === 'seal')!.color },
-  hydraulic: { color: WEEKLY_REPORT_ORGS.find((o) => o.id === 'hydraulic')!.color },
-  plant2: { color: WEEKLY_REPORT_ORGS.find((o) => o.id === 'plant2')!.color },
-  total: { color: LABEL_COLOR, isTotal: true },
+export type MonthlyTrendOrg = {
+  id: WeeklyReportOrgId
+  label: string
+  color: string
+}
+
+const DEFAULT_ORGS: MonthlyTrendOrg[] = WEEKLY_REPORT_MONTHLY_BAR_ORDER.map(
+  (id) => {
+    const o = WEEKLY_REPORT_ORGS.find((org) => org.id === id)!
+    return { id: o.id, label: o.label, color: o.color }
+  },
+)
+
+function rowAccentMap(orgs: MonthlyTrendOrg[]) {
+  const map: Record<string, { color: string; isTotal?: boolean }> = {
+    total: { color: LABEL_COLOR, isTotal: true },
+  }
+  for (const o of orgs) map[o.id] = { color: o.color }
+  return map
 }
 
 function selectedColumnClass(isSelected: boolean) {
   if (!isSelected) return ''
   return 'weekly-selected-column'
 }
-
-const LEGEND_ORDER = ['seal', 'hydraulic', 'plant2', 'total']
 
 const metrics = [
   { id: 'failRate' as const, label: '부적합률' },
@@ -104,18 +117,19 @@ function MonthlyTrendBody({
   selectedMonthKey,
   onMonthSelect,
   large = false,
+  orgs = DEFAULT_ORGS,
 }: {
   view: WeeklyReportMonthlyView
   metric: WeeklyReportMetric
   selectedMonthKey?: string
   onMonthSelect?: (monthKey: string) => void
   large?: boolean
+  orgs?: MonthlyTrendOrg[]
 }) {
   const chartData = chartDataFromMonthly(view)
-  const groups = WEEKLY_REPORT_MONTHLY_BAR_ORDER.map((id) => {
-    const o = WEEKLY_REPORT_ORGS.find((org) => org.id === id)!
-    return { id: o.id, label: o.label, color: o.color }
-  })
+  const groups = orgs
+  const rowAccent = rowAccentMap(orgs)
+  const legendOrder = [...orgs.map((o) => o.id), 'total']
 
   const chartHeight = large ? 'min(52vh, 520px)' : '380px'
   const tickSize = large ? 12 : 11
@@ -169,7 +183,7 @@ function MonthlyTrendBody({
             <Legend
               wrapperStyle={{ fontSize: large ? 13 : 12, paddingTop: 8 }}
               itemSorter={(item) => {
-                const idx = LEGEND_ORDER.indexOf(String(item.dataKey ?? ''))
+                const idx = legendOrder.indexOf(String(item.dataKey ?? ''))
                 return idx === -1 ? 99 : idx
               }}
             />
@@ -276,7 +290,7 @@ function MonthlyTrendBody({
             </thead>
             <tbody>
               {view.tableRows.map((row, rowIndex) => {
-                const accent = ROW_ACCENT[row.id]
+                const accent = rowAccent[row.id]
                 const isTotal = accent?.isTotal
                 return (
                   <tr
@@ -359,20 +373,27 @@ export function MonthlyTrendSection({
   onMetricChange,
   selectedMonthKey,
   onMonthSelect,
+  title = '월별 현황',
+  descriptionPrefix,
+  orgs = DEFAULT_ORGS,
 }: {
   view: WeeklyReportMonthlyView
   metric: WeeklyReportMetric
   onMetricChange: (m: WeeklyReportMetric) => void
   selectedMonthKey?: string
   onMonthSelect?: (monthKey: string) => void
+  title?: string
+  /** 예: "VINA 데이터 · " */
+  descriptionPrefix?: string
+  orgs?: MonthlyTrendOrg[]
 }) {
   const [fullscreen, setFullscreen] = useState(false)
-  const description = `최근 12개월 (${view.range.from} ~ ${view.range.to})`
+  const description = `${descriptionPrefix ?? ''}최근 12개월 (${view.range.from} ~ ${view.range.to})`
 
   return (
     <>
       <Panel
-        title="월별 현황"
+        title={title}
         description={description}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -393,12 +414,13 @@ export function MonthlyTrendSection({
           metric={metric}
           selectedMonthKey={selectedMonthKey}
           onMonthSelect={onMonthSelect}
+          orgs={orgs}
         />
       </Panel>
 
       <WeeklyFullscreenOverlay
         open={fullscreen}
-        title="월별 현황"
+        title={title}
         description={description}
         onClose={() => setFullscreen(false)}
         actions={
@@ -411,6 +433,7 @@ export function MonthlyTrendSection({
             metric={metric}
             selectedMonthKey={selectedMonthKey}
             onMonthSelect={onMonthSelect}
+            orgs={orgs}
             large
           />
         </div>

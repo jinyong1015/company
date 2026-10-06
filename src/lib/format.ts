@@ -59,3 +59,29 @@ export function statusByPpm(rate: number) {
   if (rate >= 13_000) return '주의' as const
   return '정상' as const
 }
+
+const KO_WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const
+
+/** YYYY-MM-DD → 2026-09-22(화) */
+export function formatYmdWithWeekday(ymd: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd.trim())
+  if (!m) return ymd
+  const y = Number(m[1])
+  const mo = Number(m[2])
+  const d = Number(m[3])
+  const date = new Date(y, mo - 1, d)
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getFullYear() !== y ||
+    date.getMonth() !== mo - 1 ||
+    date.getDate() !== d
+  ) {
+    return ymd
+  }
+  return `${ymd}(${KO_WEEKDAYS[date.getDay()]})`
+}
+
+/** 조회기간 표시: 2026-09-22(화) ~ 2026-09-28(월) */
+export function formatDateRangeWithWeekday(start: string, end: string) {
+  return `${formatYmdWithWeekday(start)} ~ ${formatYmdWithWeekday(end)}`
+}

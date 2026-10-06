@@ -22,9 +22,16 @@ const THIN_BORDER: Partial<Borders> = {
 const KNOWN_NUMBER_HEADERS = new Set([
   '검수량',
   '합격수',
+  '합격수량',
   '부적합수',
+  '부적합수량',
+  'NG수량',
+  'NG 수량',
   '부적합률',
   '폐기금액',
+  '금액',
+  '검사금액',
+  '단가',
 ])
 
 function isNumberHeader(header: string, value: unknown) {

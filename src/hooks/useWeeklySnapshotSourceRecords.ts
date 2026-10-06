@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useData } from '../context/DataContext'
+import { useVinaData } from '../context/VinaDataContext'
 import type { InspectionRecord } from '../types'
-import { loadWeeklySnapshotDetailRecords } from '../lib/weeklySnapshotDetailCache'
+import {
+  loadWeeklySnapshotDetailRecords,
+  type SnapshotDetailSource,
+} from '../lib/weeklySnapshotDetailCache'
 
 export type SnapshotRecordsStatus =
   | 'live'
@@ -13,9 +17,15 @@ export type SnapshotRecordsStatus =
 /**
  * snapshotId가 있으면 스냅샷에 저장된 원본 행을 쓰고,
  * 없으면 현재 업로드 DATA를 쓴다.
+ * source='vina'이면 VINA 스냅샷 원본(vinaDetailRecords) / 라이브 VINA 데이터.
  */
-export function useWeeklySnapshotSourceRecords(snapshotId: string | null) {
-  const { records: liveRecords } = useData()
+export function useWeeklySnapshotSourceRecords(
+  snapshotId: string | null,
+  source: SnapshotDetailSource = 'main',
+) {
+  const { records: mainLive } = useData()
+  const { records: vinaLive } = useVinaData()
+  const liveRecords = source === 'vina' ? vinaLive : mainLive
   const [snapRecords, setSnapRecords] = useState<InspectionRecord[] | null>(
     null,
   )
@@ -36,7 +46,7 @@ export function useWeeklySnapshotSourceRecords(snapshotId: string | null) {
     setStatus('loading')
     setError(null)
 
-    void loadWeeklySnapshotDetailRecords(snapshotId).then((result) => {
+    void loadWeeklySnapshotDetailRecords(snapshotId, source).then((result) => {
       if (cancelled) return
       if (!result.ok) {
         setSnapRecords([])
@@ -51,7 +61,7 @@ export function useWeeklySnapshotSourceRecords(snapshotId: string | null) {
     return () => {
       cancelled = true
     }
-  }, [snapshotId])
+  }, [snapshotId, source])
 
   const usingSnapshot = Boolean(snapshotId)
 

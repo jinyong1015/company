@@ -40,7 +40,6 @@ import {
   DetailSnapshotBanner,
 } from "../components/detail/DetailChrome";
 import { ProductPhotoPanel } from "../components/product/ProductPhotoPanel";
-import { useData } from "../context/DataContext";
 import {
   cloneFilterState,
   useFilters,
@@ -77,6 +76,7 @@ import {
   DEFECT_ALL_COLOR,
   defectTypeColor,
 } from "../lib/defectColors";
+import { useDetailInspectionData } from "../hooks/useDetailInspectionData";
 import { useWeeklySnapshotSourceRecords } from "../hooks/useWeeklySnapshotSourceRecords";
 import type { Analytics, InspectionRecord, ProductRow } from "../types";
 
@@ -89,20 +89,26 @@ const BACK_NAV_ICONS: Record<ProductDetailFromId, LucideIcon> = {
   inspectors: Users,
   cost: Coins,
   equipment: Factory,
+  "vina-products": Package,
+  "vina-quality": Activity,
+  "vina-inspectors": Users,
 };
 
 function buildBackNav(
   from: ProductDetailFromId,
   searchParams: URLSearchParams,
   productName?: string,
+  vina = false,
 ) {
   const path =
     from === "weekly-report"
       ? buildWeeklyReportBackHref(searchParams)
       : from === "workers"
         ? buildWorkerAnalysisBackHref(searchParams, productName)
-        : from === "inspectors"
-          ? buildInspectorAnalysisBackHref(searchParams, productName)
+        : from === "inspectors" || from === "vina-inspectors"
+          ? buildInspectorAnalysisBackHref(searchParams, productName, {
+              vina: vina || from === "vina-inspectors",
+            })
           : PRODUCT_DETAIL_FROM_PATHS[from];
 
   return {
@@ -116,16 +122,28 @@ function buildBackNav(
 export function ProductDetail() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
-  const { analytics } = useData();
+  const {
+    source: dataSource,
+    analytics,
+    records: liveRecords,
+    ignoreAnalysisGroup,
+  } = useDetailInspectionData();
+  const isVina = dataSource === "vina";
   const { filters, setCustomDateRange, replaceFilters } = useFilters();
   const name = fromEntityId(id, "prd");
+  // 주간보고 확정본 → VINA 상세: vinaDetailRecords / 그 외 VINA: 라이브 VINA
   const snapshotId = searchParams.get("snapshotId")?.trim() || null;
   const {
-    records: sourceRecords,
+    records: snapshotRecords,
     usingSnapshot,
     status: snapshotStatus,
     error: snapshotError,
-  } = useWeeklySnapshotSourceRecords(snapshotId);
+  } = useWeeklySnapshotSourceRecords(
+    snapshotId,
+    isVina ? "vina" : "main",
+  );
+  const sourceRecords =
+    usingSnapshot || !isVina ? snapshotRecords : liveRecords;
   const urlDateRange = useMemo(
     () => readUrlDateRange(searchParams),
     [searchParams],
@@ -158,21 +176,26 @@ export function ProductDetail() {
   }, [id, searchParams]);
 
   const effectiveFilters = useMemo<FilterState>(() => {
-    const base: FilterState = usingSnapshot
-      ? {
-          ...filters,
-          analysisGroup: "all",
-          teams: [],
-          inspectors: [],
-          workTypes: [],
-          productTypes: [],
-          products: [],
-          molds: [],
-          equipment: [],
-          workers: [],
-          lots: [],
-        }
-      : filters;
+    const base: FilterState =
+      usingSnapshot || isVina
+        ? {
+            ...filters,
+            analysisGroup: "all",
+            ...(usingSnapshot
+              ? {
+                  teams: [],
+                  inspectors: [],
+                  workTypes: [],
+                  productTypes: [],
+                  products: [],
+                  molds: [],
+                  equipment: [],
+                  workers: [],
+                  lots: [],
+                }
+              : {}),
+          }
+        : filters;
     const withPeriod = urlDateRange
       ? {
           ...base,
@@ -184,22 +207,36 @@ export function ProductDetail() {
     if (urlWorker) return { ...withPeriod, workers: [urlWorker] };
     if (urlInspector) return { ...withPeriod, inspectors: [urlInspector] };
     return withPeriod;
-  }, [filters, urlDateRange, urlWorker, urlInspector, usingSnapshot]);
+  }, [filters, urlDateRange, urlWorker, urlInspector, usingSnapshot, isVina]);
+
+  const filterOpts = useMemo(
+    () => (ignoreAnalysisGroup ? { ignoreAnalysisGroup: true } : undefined),
+    [ignoreAnalysisGroup],
+  );
 
   const scoped = useMemo(
     () =>
-      filterRecords(sourceRecords, effectiveFilters, true).filter((r) => {
-        if (r.product !== name) return false;
-        if (urlWorker) return r.worker === urlWorker && r.qty > 0;
-        if (urlInspector) return r.inspector === urlInspector && r.qty > 0;
-        return true;
-      }),
-    [sourceRecords, effectiveFilters, name, urlWorker, urlInspector],
+      filterRecords(sourceRecords, effectiveFilters, true, filterOpts).filter(
+        (r) => {
+          if (r.product !== name) return false;
+          if (urlWorker) return r.worker === urlWorker && r.qty > 0;
+          if (urlInspector) return r.inspector === urlInspector && r.qty > 0;
+          return true;
+        },
+      ),
+    [
+      sourceRecords,
+      effectiveFilters,
+      filterOpts,
+      name,
+      urlWorker,
+      urlInspector,
+    ],
   );
 
   const productAnalytics = useMemo(
     () =>
-      usingSnapshot || urlDateRange || urlWorker || urlInspector
+      usingSnapshot || urlDateRange || urlWorker || urlInspector || isVina
         ? analyzeRecords(sourceRecords, effectiveFilters)
         : analytics,
     [
@@ -207,6 +244,7 @@ export function ProductDetail() {
       urlDateRange,
       urlWorker,
       urlInspector,
+      isVina,
       sourceRecords,
       effectiveFilters,
       analytics,
@@ -219,11 +257,14 @@ export function ProductDetail() {
     ) ?? null;
   const trendRange = resolvePeriodRange(effectiveFilters);
 
-  const backFrom = parseProductDetailFrom(searchParams.get("from"));
-  const backNav = buildBackNav(backFrom, searchParams, name);
+  const backFrom = parseProductDetailFrom(searchParams.get("from"), {
+    vina: isVina,
+  });
+  const backNav = buildBackNav(backFrom, searchParams, name, isVina);
   const fromWeeklyReport = backFrom === "weekly-report";
   const fromWorkers = backFrom === "workers";
-  const fromInspectors = backFrom === "inspectors";
+  const fromInspectors =
+    backFrom === "inspectors" || backFrom === "vina-inspectors";
   const rangeStart = searchParams.get("startDate");
   const rangeEnd = searchParams.get("endDate");
   const periodRange =
@@ -323,6 +364,7 @@ export function ProductDetail() {
         periodRange={periodRange}
         trendRange={trendRange}
         personScope={personScope}
+        isVina={isVina}
       />
     </>
   );
@@ -337,6 +379,7 @@ function ProductDetailBody({
   periodRange,
   trendRange,
   personScope,
+  isVina,
 }: {
   name: string;
   product: ProductRow | null;
@@ -346,6 +389,7 @@ function ProductDetailBody({
   periodRange?: { start: string; end: string } | null;
   trendRange: { start: Date; end: Date };
   personScope?: { label: string; value: string } | null;
+  isVina: boolean;
 }) {
   const [searchParams] = useSearchParams();
   const qty = product?.qty ?? scoped.reduce((s, r) => s + r.qty, 0);
@@ -1028,15 +1072,19 @@ function ProductDetailBody({
               {workerUph.map((row) => (
                 <tr key={row.id}>
                   <td className="font-medium">
-                    <Link
-                      to={buildWorkerDetailHref(
-                        toEntityId("wrk", row.worker),
-                        { product: name, carryFrom: searchParams },
-                      )}
-                      className="text-accent hover:underline"
-                    >
-                      {row.worker}
-                    </Link>
+                    {isVina ? (
+                      row.worker
+                    ) : (
+                      <Link
+                        to={buildWorkerDetailHref(
+                          toEntityId("wrk", row.worker),
+                          { product: name, carryFrom: searchParams },
+                        )}
+                        className="text-accent hover:underline"
+                      >
+                        {row.worker}
+                      </Link>
+                    )}
                   </td>
                   <td className="num">{row.qty.toLocaleString()}</td>
                   <td className="num">{row.pass.toLocaleString()}</td>
@@ -1086,7 +1134,11 @@ function ProductDetailBody({
                     <Link
                       to={buildInspectorDetailHref(
                         toEntityId("ins", row.inspector),
-                        { product: name, carryFrom: searchParams },
+                        {
+                          product: name,
+                          carryFrom: searchParams,
+                          vina: isVina,
+                        },
                       )}
                       className="text-accent hover:underline"
                     >

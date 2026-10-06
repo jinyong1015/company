@@ -1,20 +1,46 @@
 import { useEffect, useState } from 'react'
-import { formatWonSuffix } from '../../lib/format'
-import { WEEKLY_REPORT_ORGS } from '../../lib/weeklyReport'
+import { formatPpm, formatWonSuffix } from '../../lib/format'
+import { VINA_MONTHLY_ORGS, WEEKLY_REPORT_ORGS } from '../../lib/weeklyReport'
 import type { OrgWeeklyStats, WeeklyProductionRow } from '../../types'
 
-type MetricKey = 'qty' | 'fail' | 'scrapCost'
+type MetricKey = 'failRate' | 'qty' | 'fail' | 'scrapCost'
 
-const METRICS: { key: MetricKey; label: string; unit: string }[] = [
+export type ProductionMetric = { key: MetricKey; label: string; unit: string }
+
+const DEFAULT_METRICS: ProductionMetric[] = [
   { key: 'qty', label: '검수량', unit: 'EA' },
   { key: 'fail', label: '부적합수량', unit: 'EA' },
   { key: 'scrapCost', label: '폐기비용', unit: '원' },
 ]
 
-const ORG_COLUMNS = [
+/** VINA: 부적합률을 검수량 위에 표시 */
+export const VINA_PRODUCTION_METRICS: ProductionMetric[] = [
+  { key: 'failRate', label: '부적합률', unit: 'ppm' },
+  { key: 'qty', label: '검수량', unit: 'EA' },
+  { key: 'fail', label: '부적합수량', unit: 'EA' },
+  { key: 'scrapCost', label: '폐기비용', unit: '원' },
+]
+
+export type ProductionColumn = {
+  id: keyof WeeklyProductionRow['columns']
+  label: string
+  fullLabel: string
+}
+
+const DEFAULT_ORG_COLUMNS: ProductionColumn[] = [
   ...WEEKLY_REPORT_ORGS.map((o) => ({
     id: o.id as keyof WeeklyProductionRow['columns'],
     label: o.shortLabel,
+    fullLabel: o.label,
+  })),
+  { id: 'total' as const, label: 'TOTAL', fullLabel: 'TOTAL' },
+]
+
+/** VINA: SEAL / GROMMET (기타 제외) */
+export const VINA_PRODUCTION_COLUMNS: ProductionColumn[] = [
+  ...VINA_MONTHLY_ORGS.map((o) => ({
+    id: o.id as keyof WeeklyProductionRow['columns'],
+    label: o.label,
     fullLabel: o.label,
   })),
   { id: 'total' as const, label: 'TOTAL', fullLabel: 'TOTAL' },
@@ -28,6 +54,7 @@ export type EditableCustomPeriodLabelProps = {
 }
 
 function formatValue(key: MetricKey, value: number) {
+  if (key === 'failRate') return formatPpm(value)
   if (key === 'scrapCost') return formatWonSuffix(value)
   return value.toLocaleString()
 }
@@ -162,10 +189,12 @@ function MetricBlock({
   metric,
   rows,
   editableCustomPeriodLabel,
+  columns,
 }: {
-  metric: (typeof METRICS)[number]
+  metric: ProductionMetric
   rows: WeeklyProductionRow[]
   editableCustomPeriodLabel?: EditableCustomPeriodLabelProps
+  columns: ProductionColumn[]
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border-2 border-ink/90 shadow-sm">
@@ -178,7 +207,7 @@ function MetricBlock({
                 ({metric.unit})
               </span>
             </th>
-            {ORG_COLUMNS.map((col) => (
+            {columns.map((col) => (
               <th
                 key={col.id}
                 className={`px-3 py-2.5 text-center text-xs font-semibold ${
@@ -207,7 +236,7 @@ function MetricBlock({
                   editableCustomPeriodLabel={editableCustomPeriodLabel}
                 />
               </td>
-              {ORG_COLUMNS.map((col) => {
+              {columns.map((col) => {
                 const value = cellValue(period, col.id, metric.key)
                 return (
                   <td
@@ -235,18 +264,23 @@ function MetricBlock({
 export function WeeklyProductionTable({
   rows,
   editableCustomPeriodLabel,
+  columns = DEFAULT_ORG_COLUMNS,
+  metrics = DEFAULT_METRICS,
 }: {
   rows: WeeklyProductionRow[]
   editableCustomPeriodLabel?: EditableCustomPeriodLabelProps
+  columns?: ProductionColumn[]
+  metrics?: ProductionMetric[]
 }) {
   return (
     <div className="space-y-4">
-      {METRICS.map((metric) => (
+      {metrics.map((metric) => (
         <MetricBlock
           key={metric.key}
           metric={metric}
           rows={rows}
           editableCustomPeriodLabel={editableCustomPeriodLabel}
+          columns={columns}
         />
       ))}
     </div>

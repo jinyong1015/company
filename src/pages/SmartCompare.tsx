@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { PageHeader } from "../components/common/PageHeader";
+import { VinaNotice } from "../components/vina/VinaNotice";
 import { Panel } from "../components/common/Panel";
-import { useData } from "../context/DataContext";
 import { useFilters } from "../context/FilterContext";
+import { useDetailInspectionData } from "../hooks/useDetailInspectionData";
 import {
   summarizeProductPeriod,
   productsInPeriod,
@@ -49,8 +50,15 @@ function DeltaTone({ value }: { value: number }) {
 }
 
 export function SmartCompare() {
-  const { analytics, records } = useData();
+  const {
+    source,
+    analytics,
+    records,
+    ignoreAnalysisGroup,
+  } = useDetailInspectionData();
+  const isVina = source === "vina";
   const { filters } = useFilters();
+  const analysisGroup = ignoreAnalysisGroup ? "all" : filters.analysisGroup;
 
   const products = useMemo(() => {
     const list =
@@ -81,9 +89,9 @@ export function SmartCompare() {
         selectedProduct,
         periodAStart,
         periodAEnd,
-        filters.analysisGroup,
+        analysisGroup,
       ),
-    [records, selectedProduct, periodAStart, periodAEnd, filters.analysisGroup],
+    [records, selectedProduct, periodAStart, periodAEnd, analysisGroup],
   );
   const summaryB = useMemo(
     () =>
@@ -92,9 +100,9 @@ export function SmartCompare() {
         selectedProduct,
         periodBStart,
         periodBEnd,
-        filters.analysisGroup,
+        analysisGroup,
       ),
-    [records, selectedProduct, periodBStart, periodBEnd, filters.analysisGroup],
+    [records, selectedProduct, periodBStart, periodBEnd, analysisGroup],
   );
 
   const productLabel =
@@ -110,8 +118,8 @@ export function SmartCompare() {
   const [inspB, setInspB] = useState("");
 
   const uphProducts = useMemo(
-    () => productsInPeriod(records, uphStart, uphEnd, filters.analysisGroup),
-    [records, uphStart, uphEnd, filters.analysisGroup],
+    () => productsInPeriod(records, uphStart, uphEnd, analysisGroup),
+    [records, uphStart, uphEnd, analysisGroup],
   );
   const selectedUphProduct =
     uphProduct && uphProducts.includes(uphProduct)
@@ -125,9 +133,9 @@ export function SmartCompare() {
         selectedUphProduct,
         uphStart,
         uphEnd,
-        filters.analysisGroup,
+        analysisGroup,
       ),
-    [records, selectedUphProduct, uphStart, uphEnd, filters.analysisGroup],
+    [records, selectedUphProduct, uphStart, uphEnd, analysisGroup],
   );
 
   const inspectorNamesForProduct = useMemo(
@@ -230,10 +238,15 @@ export function SmartCompare() {
   return (
     <div className="space-y-5">
       <PageHeader title="스마트 비교" />
+      {isVina ? <VinaNotice /> : null}
 
       <Panel
         title="품번 기간 비교"
-        description="품번과 두 기간을 지정하면 검수량·부적합률·부적합수량·폐기비용을 바로 비교합니다. (전역 분석 그룹 적용 · 헤더 기간 무관)"
+        description={
+          isVina
+            ? "품번과 두 기간을 지정하면 검수량·부적합률·부적합수량·폐기비용을 바로 비교합니다. (VINA 데이터 · 헤더 기간 무관)"
+            : "품번과 두 기간을 지정하면 검수량·부적합률·부적합수량·폐기비용을 바로 비교합니다. (전역 분석 그룹 적용 · 헤더 기간 무관)"
+        }
         className="smart-compare-panel"
       >
         <div className="smart-compare-controls">
@@ -363,8 +376,9 @@ export function SmartCompare() {
 
             {summaryA.recordCount === 0 && summaryB.recordCount === 0 ? (
               <div className="smart-compare-empty smart-compare-empty--soft">
-                선택한 품번·기간에 DATA가 없습니다. 날짜 또는 분석 그룹을
-                확인해 주세요.
+                {isVina
+                  ? "선택한 품번·기간에 VINA DATA가 없습니다. 날짜를 확인해 주세요."
+                  : "선택한 품번·기간에 DATA가 없습니다. 날짜 또는 분석 그룹을 확인해 주세요."}
               </div>
             ) : null}
           </>
@@ -373,7 +387,11 @@ export function SmartCompare() {
 
       <Panel
         title="기간·품번 → 검사자 UPH 비교"
-        description="기간과 품번을 고른 뒤 검사자 A·B UPH를 비교합니다. (전역 분석 그룹 적용 · 헤더 기간 무관)"
+        description={
+          isVina
+            ? "기간과 품번을 고른 뒤 검사자 A·B UPH를 비교합니다. (VINA 데이터 · 헤더 기간 무관)"
+            : "기간과 품번을 고른 뒤 검사자 A·B UPH를 비교합니다. (전역 분석 그룹 적용 · 헤더 기간 무관)"
+        }
         className="smart-compare-panel"
       >
         <div className="smart-compare-steps">
@@ -501,7 +519,9 @@ export function SmartCompare() {
 
         {!selectedUphProduct || !productInspectorRows.length ? (
           <div className="smart-compare-empty">
-            선택한 기간·품번·분석 그룹에서 비교할 검사자 DATA가 없습니다.
+            {isVina
+              ? "선택한 기간·품번의 VINA DATA에서 비교할 검사자가 없습니다."
+              : "선택한 기간·품번·분석 그룹에서 비교할 검사자 DATA가 없습니다."}
           </div>
         ) : (
           <>

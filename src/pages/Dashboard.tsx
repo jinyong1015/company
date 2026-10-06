@@ -569,8 +569,8 @@ function ProductDefectTop10({
       }
       metrics={[
         {
-          label: sortLabel,
-          value: (row) => formatProductSortValue(sort, row.value),
+          label: "부적합수량",
+          value: (row) => row.product.fail.toLocaleString("ko-KR"),
         },
         {
           label: "부적합률",

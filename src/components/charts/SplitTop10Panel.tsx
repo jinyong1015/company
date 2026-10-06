@@ -190,6 +190,15 @@ export function SplitTop10Panel<TRow extends SplitTop10RowBase>({
   const activeIndex = active
     ? rows.findIndex((r) => r.id === active.id)
     : -1;
+  /** 동일 label이 정렬 기준·고정 지표로 중복 전달돼도 상세에는 한 번만 표시 */
+  const uniqueMetrics = useMemo(() => {
+    const seen = new Set<string>();
+    return metrics.filter((m) => {
+      if (seen.has(m.label)) return false;
+      seen.add(m.label);
+      return true;
+    });
+  }, [metrics]);
   const accentColor =
     active && activeIndex >= 0 && getBarColor
       ? getBarColor(active, activeIndex)
@@ -368,7 +377,7 @@ export function SplitTop10Panel<TRow extends SplitTop10RowBase>({
               </div>
 
               <dl className="dash-top10-metrics dash-top10-metrics--compact">
-                {metrics.map((m) => (
+                {uniqueMetrics.map((m) => (
                   <div key={m.label}>
                     <dt>{m.label}</dt>
                     <dd className="num">{m.value(active)}</dd>

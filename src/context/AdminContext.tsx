@@ -31,6 +31,10 @@ type AdminContextValue = {
   canUploadProductPhoto: boolean
   /** 품번 상세 사진 삭제 (관리자만) */
   canDeleteProductPhoto: boolean
+  /** VINA 분석·업로드 (실무자/관리자) */
+  canAccessVina: boolean
+  /** VINA 데이터 삭제 등 관리 (관리자만) */
+  canManageVinaData: boolean
   hasUnsavedEdits: boolean
   settingsOpen: boolean
   settingsTab: SettingsTab
@@ -229,6 +233,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       canEditWeeklyContent: isStaff,
       canUploadProductPhoto: isStaff,
       canDeleteProductPhoto: isAdmin,
+      canAccessVina: isStaff,
+      canManageVinaData: isAdmin,
       hasUnsavedEdits,
       settingsOpen,
       settingsTab,

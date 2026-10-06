@@ -183,6 +183,7 @@ export function Worst5Card({
   period,
   snapshotId,
   variant = 'default',
+  getProductHref,
 }: {
   title: string
   color: string
@@ -192,6 +193,8 @@ export function Worst5Card({
   period: WeeklyReportPeriodState
   snapshotId?: string | null
   variant?: 'default' | 'fullscreen'
+  /** 지정 시 품번 링크에 사용 (VINA 상세 등) */
+  getProductHref?: (product: string) => string
 }) {
   const isFullscreen = variant === 'fullscreen'
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
@@ -412,9 +415,15 @@ export function Worst5Card({
                       </td>
                       <td className={cellPad}>
                         <Link
-                          to={buildWeeklyReportProductLink(item.product, period, {
-                            snapshotId,
-                          })}
+                          to={
+                            getProductHref
+                              ? getProductHref(item.product)
+                              : buildWeeklyReportProductLink(
+                                  item.product,
+                                  period,
+                                  { snapshotId },
+                                )
+                          }
                           className="block truncate font-semibold text-accent hover:underline"
                           title={item.product}
                         >

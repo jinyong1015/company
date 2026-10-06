@@ -10,6 +10,10 @@ export type ProductDetailFromId =
   | 'inspectors'
   | 'cost'
   | 'equipment'
+  | 'vina-products'
+  | 'vina-quality'
+  | 'vina-inspectors'
+  | 'vina-cost'
 
 export const PRODUCT_DETAIL_FROM_LABELS: Record<ProductDetailFromId, string> = {
   'weekly-report': '주간업무 보고',
@@ -20,6 +24,10 @@ export const PRODUCT_DETAIL_FROM_LABELS: Record<ProductDetailFromId, string> = {
   inspectors: '검사자 분석',
   cost: '비용 분석',
   equipment: '설비 분석',
+  'vina-products': 'VINA 품번 분석',
+  'vina-quality': 'VINA 품질 분석',
+  'vina-inspectors': 'VINA 검사자 분석',
+  'vina-cost': 'VINA 비용 분석',
 }
 
 export const PRODUCT_DETAIL_FROM_PATHS: Record<ProductDetailFromId, string> = {
@@ -31,6 +39,10 @@ export const PRODUCT_DETAIL_FROM_PATHS: Record<ProductDetailFromId, string> = {
   inspectors: '/inspectors',
   cost: '/costs',
   equipment: '/equipment',
+  'vina-products': '/vina/products',
+  'vina-quality': '/vina/quality',
+  'vina-inspectors': '/vina/inspectors',
+  'vina-cost': '/vina/costs',
 }
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -45,6 +57,7 @@ const PERIOD_CARRY_KEYS = [
 
 export function parseProductDetailFrom(
   value: string | null,
+  options?: { vina?: boolean },
 ): ProductDetailFromId {
   if (
     value === 'weekly-report' ||
@@ -54,11 +67,15 @@ export function parseProductDetailFrom(
     value === 'workers' ||
     value === 'inspectors' ||
     value === 'cost' ||
-    value === 'equipment'
+    value === 'equipment' ||
+    value === 'vina-products' ||
+    value === 'vina-quality' ||
+    value === 'vina-inspectors' ||
+    value === 'vina-cost'
   ) {
     return value
   }
-  return 'products'
+  return options?.vina ? 'vina-products' : 'products'
 }
 
 /** URL의 startDate·endDate (유효할 때만) */
@@ -102,6 +119,7 @@ export function buildProductDetailHref(
     inspector?: string
     inspectorId?: string
     snapshotId?: string
+    vina?: boolean
   },
 ): string {
   const params = new URLSearchParams({ from })
@@ -118,7 +136,11 @@ export function buildProductDetailHref(
   if (options?.inspector) params.set('inspector', options.inspector)
   if (options?.inspectorId) params.set('inspectorId', options.inspectorId)
   if (options?.snapshotId) params.set('snapshotId', options.snapshotId)
-  return `/products/${productId}?${params.toString()}`
+  const base =
+    options?.vina || from.startsWith('vina-')
+      ? '/vina/products'
+      : '/products'
+  return `${base}/${productId}?${params.toString()}`
 }
 
 /** 품번 상세 → 성형작업자 상세 (조회기간·주간보고 복귀 파라미터 유지) */
@@ -136,13 +158,14 @@ export function buildWorkerDetailHref(
 /** 품번 상세 → 검사자 상세 (조회기간·주간보고 복귀 파라미터 유지) */
 export function buildInspectorDetailHref(
   inspectorId: string,
-  options?: { product?: string; carryFrom?: URLSearchParams },
+  options?: { product?: string; carryFrom?: URLSearchParams; vina?: boolean },
 ): string {
   const params = new URLSearchParams()
   if (options?.product) params.set('product', options.product)
   if (options?.carryFrom) appendCarriedPeriodParams(params, options.carryFrom)
   const q = params.toString()
-  return `/inspectors/${inspectorId}${q ? `?${q}` : ''}`
+  const base = options?.vina ? '/vina/inspectors' : '/inspectors'
+  return `${base}/${inspectorId}${q ? `?${q}` : ''}`
 }
 
 /**
@@ -157,6 +180,7 @@ export function buildProductDetailReturnHref(
     workerId?: string
     inspector?: string
     inspectorId?: string
+    vina?: boolean
   },
 ): string {
   const fromWeekly = searchParams.get('from') === 'weekly-report'
@@ -166,9 +190,11 @@ export function buildProductDetailReturnHref(
     : null
   const from: ProductDetailFromId = fromWeekly
     ? 'weekly-report'
-    : options.worker || options.workerId
-      ? 'workers'
-      : 'inspectors'
+    : options.vina
+      ? 'vina-inspectors'
+      : options.worker || options.workerId
+        ? 'workers'
+        : 'inspectors'
 
   return buildProductDetailHref(productId, from, {
     startDate: dateRange?.startDate,
@@ -179,6 +205,7 @@ export function buildProductDetailReturnHref(
     inspector: options.inspector,
     inspectorId: options.inspectorId,
     snapshotId: searchParams.get('snapshotId') ?? undefined,
+    vina: options.vina,
   })
 }
 
@@ -199,12 +226,18 @@ export function buildWorkerAnalysisBackHref(
 export function buildInspectorAnalysisBackHref(
   searchParams: URLSearchParams,
   productName?: string,
+  options?: { vina?: boolean },
 ): string {
   const inspectorId = searchParams.get('inspectorId')?.trim()
-  if (!inspectorId) return PRODUCT_DETAIL_FROM_PATHS.inspectors
+  if (!inspectorId) {
+    return options?.vina
+      ? PRODUCT_DETAIL_FROM_PATHS['vina-inspectors']
+      : PRODUCT_DETAIL_FROM_PATHS.inspectors
+  }
   return buildInspectorDetailHref(inspectorId, {
     product: productName,
     carryFrom: searchParams,
+    vina: options?.vina,
   })
 }
 

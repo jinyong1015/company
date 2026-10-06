@@ -8,6 +8,7 @@ import {
   Factory,
   FileWarning,
   GitCompare,
+  Globe2,
   HardHat,
   LayoutDashboard,
   MoreHorizontal,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { GlobalFilterSection } from "../filters/GlobalFilterSection";
+import { VinaFilterSection } from "../filters/VinaFilterSection";
 import { useAdmin } from "../../context/AdminContext";
 import { AiChatbot } from "../ai/AiChatbot";
 
@@ -35,6 +37,12 @@ const nav = [
   { to: "/molds", label: "금형 분석", icon: Boxes, group: "분석" },
   { to: "/equipment", label: "설비 분석", icon: Factory, group: "분석" },
   { to: "/costs", label: "비용 분석", icon: Coins, group: "분석" },
+  {
+    to: "/vina",
+    label: "VINA 분석",
+    icon: Globe2,
+    group: "분석",
+  },
   {
     to: "/workers",
     label: "성형작업자 분석",
@@ -57,10 +65,26 @@ const nav = [
   },
 ];
 
-const hideGlobalFilters = ["/manage", "/ai", "/weekly-report", "/data", "/error-data"];
+const hideGlobalFilters = [
+  "/manage",
+  "/ai",
+  "/weekly-report",
+  "/data",
+  "/error-data",
+  "/vina/manage",
+];
 
-/** 실무자/관리자 로그인 필요한 메뉴 */
-const staffOnlyPaths = new Set(["/weekly-report", "/manage"]);
+function isVinaPath(pathname: string) {
+  return pathname === "/vina" || pathname.startsWith("/vina/");
+}
+
+function isStaffOnlyPath(pathname: string) {
+  return (
+    pathname === "/weekly-report" ||
+    pathname === "/manage" ||
+    isVinaPath(pathname)
+  );
+}
 
 const primaryNav = nav.filter((item) => item.group !== "인사이트");
 const insightNav = nav.filter((item) => item.group === "인사이트");
@@ -84,7 +108,7 @@ function TopNavigation() {
     event: MouseEvent,
     to: string,
   ) => {
-    if (!staffOnlyPaths.has(to) || isStaff) return;
+    if (!isStaffOnlyPath(to) || isStaff) return;
     event.preventDefault();
     openLogin("manager");
     setMoreOpen(false);
@@ -277,7 +301,9 @@ function TopNavigation() {
 export function Layout() {
   const { isStaff, role, openSettings, openLogin } = useAdmin();
   const { pathname } = useLocation();
-  const showFilters = !hideGlobalFilters.includes(pathname);
+  const onVina = isVinaPath(pathname);
+  const showLegacyFilters = !onVina && !hideGlobalFilters.includes(pathname);
+  const showVinaFilters = onVina && pathname !== "/vina/manage";
 
   return (
     <div className="min-h-screen">
@@ -351,7 +377,8 @@ export function Layout() {
       </header>
 
       <main className="content-shell space-y-4 px-4 py-5 sm:px-5 sm:py-6 lg:px-8">
-        {showFilters && <GlobalFilterSection />}
+        {showLegacyFilters ? <GlobalFilterSection /> : null}
+        {showVinaFilters ? <VinaFilterSection /> : null}
         <Outlet />
       </main>
       <AiChatbot />

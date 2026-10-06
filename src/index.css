@@ -4461,7 +4461,7 @@ select {
 .detail-back-meta {
   display: none;
   flex-shrink: 0;
-  min-width: 0;
+  min-width: max-content;
   border-radius: 0.85rem;
   border: 1px solid var(--color-line);
   background: color-mix(in srgb, var(--color-canvas) 80%, transparent);
@@ -4483,7 +4483,8 @@ select {
 .detail-back-meta-value {
   display: block;
   margin-top: 0.15rem;
-  max-width: 11rem;
+  /* 조회기간: 2026-09-22(화) ~ 2026-09-28(월) 전체가 보이도록 */
+  max-width: min(28rem, 56vw);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4491,6 +4492,13 @@ select {
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--color-ink);
+}
+@media (min-width: 1024px) {
+  .detail-back-meta-value {
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+  }
 }
 .detail-back-chevron {
   flex-shrink: 0;

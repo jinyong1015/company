@@ -38,6 +38,24 @@ export type WeeklyReportSnapshotPayload = {
   worst5Thresholds: WeeklyReportDetail['worst5Thresholds']
   /** 월별 현황(지표별). 구버전 스냅샷에는 없을 수 있음 */
   monthlyByMetric?: Partial<Record<WeeklyReportMetric, WeeklyReportMonthlyView>>
+  /**
+   * VINA 부적합 현황 · 월별 현황(지표별).
+   * VINA 제품유형 기준. 구버전 스냅샷에는 없을 수 있음.
+   */
+  vinaMonthlyByMetric?: Partial<
+    Record<WeeklyReportMetric, WeeklyReportMonthlyView>
+  >
+  /** VINA 월별 현황에서 선택한 지표. 구버전 스냅샷에는 없을 수 있음 */
+  vinaMetric?: WeeklyReportMetric
+  /**
+   * VINA 주간 생산/검사 실적 (전주·현재).
+   * 구버전 스냅샷에는 없을 수 있음.
+   */
+  vinaProductionRows?: WeeklyReportDetail['productionRows']
+  /** VINA 부적합 WORST 5. 구버전 스냅샷에는 없을 수 있음 */
+  vinaWorst5?: WeeklyReportDetail['worst5']
+  /** VINA WORST 5 검수량 기준. 구버전 스냅샷에는 없을 수 있음 */
+  vinaWorst5Thresholds?: WeeklyReportDetail['worst5Thresholds']
   selectedMonthKey?: string
   metric?: WeeklyReportMetric
   /**
@@ -46,6 +64,11 @@ export type WeeklyReportSnapshotPayload = {
    * 구버전 스냅샷에는 없을 수 있음.
    */
   detailRecords?: InspectionRecord[]
+  /**
+   * VINA WORST 5 품번의 해당 기간 원본 행.
+   * VINA 품번·검사자 상세 드릴다운용. 구버전 스냅샷에는 없을 수 있음.
+   */
+  vinaDetailRecords?: InspectionRecord[]
 }
 
 export type WeeklyReportSnapshotMeta = {

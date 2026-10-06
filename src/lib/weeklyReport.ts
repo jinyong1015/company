@@ -2,6 +2,7 @@ import {
   ANALYSIS_GROUP_BAR_COLORS,
   isAnalyzable,
   matchesAnalysisGroup,
+  normalizeProductType,
   type AnalysisGroupId,
 } from './groups'
 import { toEntityId } from './entityId'
@@ -281,6 +282,212 @@ export function buildMonthlyReportView(
   }
 }
 
+/** VINA 월별·실적·WORST5 — 제품유형 기준 SEAL / GROMMET (기타 제외) */
+export const VINA_MONTHLY_ORGS: {
+  id: WeeklyReportOrgId
+  label: string
+  color: string
+}[] = [
+  {
+    id: 'seal',
+    label: 'SEAL',
+    color: ANALYSIS_GROUP_BAR_COLORS.find((c) => c.id === 'seal')!.color,
+  },
+  {
+    id: 'hydraulic',
+    label: 'GROMMET',
+    color: ANALYSIS_GROUP_BAR_COLORS.find((c) => c.id === 'hydraulic')!.color,
+  },
+]
+
+function vinaTypeBucket(productType: string): WeeklyReportOrgId {
+  const normalized = normalizeProductType(productType) || productType
+  const t = normalized.toLowerCase()
+  if (t.includes('seal') || t.includes('실링') || t.includes('씰')) return 'seal'
+  if (
+    t.includes('grommet') ||
+    t.includes('그로멧') ||
+    t.includes('그로메트') ||
+    t.includes('유압')
+  ) {
+    return 'hydraulic'
+  }
+  return 'plant2'
+}
+
+function filterByVinaBucket(
+  records: InspectionRecord[],
+  bucket: WeeklyReportOrgId,
+) {
+  return records.filter((r) => vinaTypeBucket(r.productType) === bucket)
+}
+
+const VINA_WORST5_THRESHOLD_STORAGE_KEY = 'weekly-report-vina-worst5-thresholds'
+
+export function getDefaultVinaWorst5Thresholds(): Record<
+  WeeklyReportOrgId,
+  number
+> {
+  return {
+    seal: 3000,
+    hydraulic: 3000,
+    plant2: 3000,
+  }
+}
+
+export function loadVinaWorst5Thresholds(): Record<WeeklyReportOrgId, number> {
+  const defaults = getDefaultVinaWorst5Thresholds()
+  try {
+    const raw = localStorage.getItem(VINA_WORST5_THRESHOLD_STORAGE_KEY)
+    if (!raw) return defaults
+    const parsed = JSON.parse(raw) as Partial<Record<WeeklyReportOrgId, number>>
+    return {
+      seal: normalizeWorst5Threshold(parsed.seal, defaults.seal),
+      hydraulic: normalizeWorst5Threshold(parsed.hydraulic, defaults.hydraulic),
+      plant2: normalizeWorst5Threshold(parsed.plant2, defaults.plant2),
+    }
+  } catch {
+    return defaults
+  }
+}
+
+export function saveVinaWorst5Thresholds(
+  thresholds: Record<WeeklyReportOrgId, number>,
+) {
+  try {
+    localStorage.setItem(
+      VINA_WORST5_THRESHOLD_STORAGE_KEY,
+      JSON.stringify(thresholds),
+    )
+  } catch {
+    /* ignore */
+  }
+}
+
+function buildVinaWorst5(
+  records: InspectionRecord[],
+  bucket: WeeklyReportOrgId,
+  minQty: number,
+): WorstProductItem[] {
+  const scoped = filterByVinaBucket(records, bucket)
+  const map = new Map<string, InspectionRecord[]>()
+  for (const r of scoped) {
+    const list = map.get(r.product) ?? []
+    list.push(r)
+    map.set(r.product, list)
+  }
+
+  return [...map.entries()]
+    .map(([product, list]) => {
+      const qty = sum(list, 'qty')
+      const fail = sum(list, 'fail')
+      const failRate = failRatePpm(fail, qty)
+      return {
+        product,
+        qty,
+        fail,
+        failRate,
+        failRatePercent: failRate / 10_000,
+        mainDefect: mainDefectOf(list),
+      }
+    })
+    .filter((p) => p.qty >= minQty)
+    .sort((a, b) => b.failRate - a.failRate)
+    .slice(0, 5)
+    .map((p, i) => ({ ...p, rank: i + 1 }))
+}
+
+/** VINA 부적합 WORST 5 — 조회기간 내 제품유형별 부적합률 상위 품번 */
+export function buildVinaWorst5Map(
+  records: InspectionRecord[],
+  period: Pick<WeekPeriod, 'startDate' | 'endDate'>,
+  thresholds: Record<WeeklyReportOrgId, number> = getDefaultVinaWorst5Thresholds(),
+): WeeklyReportDetail['worst5'] {
+  const weekRecords = analyzableRecords(records).filter((r) =>
+    inDateRange(r.date, period.startDate, period.endDate),
+  )
+  return Object.fromEntries(
+    VINA_MONTHLY_ORGS.map((org) => [
+      org.id,
+      buildVinaWorst5(weekRecords, org.id, thresholds[org.id]),
+    ]),
+  ) as WeeklyReportDetail['worst5']
+}
+
+/**
+ * VINA 전용 월별 현황.
+ * 제품유형(종류) SEAL·GROMMET만 표시 (기타 제외).
+ */
+export function buildVinaMonthlyReportView(
+  records: InspectionRecord[],
+  metric: WeeklyReportMetric,
+  anchorDate = new Date(),
+): WeeklyReportMonthlyView {
+  const analyzable = analyzableRecords(records)
+  const months = rollingMonths(anchorDate, 12)
+
+  const monthlyMetrics: MonthlyOrgMetric[] = months.map((m) => {
+    const key = monthKeyOf(m)
+    const monthRecords = analyzable.filter((r) => r.date.startsWith(key))
+    const sealRecs = filterByVinaBucket(monthRecords, 'seal')
+    const hydraulicRecs = filterByVinaBucket(monthRecords, 'hydraulic')
+    const seal = metricValue(sealRecs, metric)
+    const hydraulic = metricValue(hydraulicRecs, metric)
+    const scoped = [...sealRecs, ...hydraulicRecs]
+    let total: number
+    if (metric === 'failRate') {
+      total = metricValue(scoped, metric)
+    } else {
+      total = seal + hydraulic
+    }
+    return {
+      monthKey: key,
+      monthLabel: monthLabelOf(m),
+      seal,
+      hydraulic,
+      plant2: 0,
+      total,
+    }
+  })
+
+  const valuesByRow = (pick: (m: MonthlyOrgMetric) => number) =>
+    Object.fromEntries(monthlyMetrics.map((m) => [m.monthKey, pick(m)]))
+
+  return {
+    metric,
+    months: monthlyMetrics,
+    tableRows: VINA_MONTHLY_ORGS.map((org) => ({
+      id: org.id,
+      label: org.label,
+      values: valuesByRow((m) => m[org.id]),
+    })).concat([
+      { id: 'total', label: 'TOTAL', values: valuesByRow((m) => m.total) },
+    ]),
+    range: {
+      from: monthlyMetrics[0]?.monthLabel ?? '',
+      to: monthlyMetrics[monthlyMetrics.length - 1]?.monthLabel ?? '',
+    },
+  }
+}
+
+/** YYYY-MM → 해당 월 1일~말일 */
+export function monthKeyToDateRange(monthKey: string): {
+  startDate: string
+  endDate: string
+} | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(monthKey.trim())
+  if (!m) return null
+  const y = Number(m[1])
+  const mo = Number(m[2])
+  if (!Number.isInteger(y) || mo < 1 || mo > 12) return null
+  const lastDay = new Date(y, mo, 0).getDate()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return {
+    startDate: `${y}-${pad(mo)}-01`,
+    endDate: `${y}-${pad(mo)}-${pad(lastDay)}`,
+  }
+}
+
 export function getDefaultWorst5Thresholds(): Record<WeeklyReportOrgId, number> {
   return Object.fromEntries(
     WEEKLY_REPORT_ORGS.map((org) => [org.id, org.worstMinQty]),
@@ -390,6 +597,108 @@ function buildProductionRowFromRecords(
     isCurrent,
     columns: { hydraulic, seal, plant2, total },
   }
+}
+
+/** VINA 전용 — 제품유형(SEAL/GROMMET) 기준 주간 실적 1행 (기타 제외) */
+function buildVinaProductionRowFromRecords(
+  weekRecords: InspectionRecord[],
+  periodKey: string,
+  periodLabel: string,
+  isCurrent: boolean,
+): WeeklyProductionRow {
+  const seal = orgStats(filterByVinaBucket(weekRecords, 'seal'))
+  const hydraulic = orgStats(filterByVinaBucket(weekRecords, 'hydraulic'))
+  const plant2: OrgWeeklyStats = {
+    qty: 0,
+    fail: 0,
+    failRate: 0,
+    scrapCost: 0,
+  }
+  const totalQty = hydraulic.qty + seal.qty
+  const totalFail = hydraulic.fail + seal.fail
+  const total: OrgWeeklyStats = {
+    qty: totalQty,
+    fail: totalFail,
+    failRate: failRatePpm(totalFail, totalQty),
+    scrapCost: hydraulic.scrapCost + seal.scrapCost,
+  }
+
+  return {
+    periodKey,
+    periodLabel,
+    isCurrent,
+    columns: { hydraulic, seal, plant2, total },
+  }
+}
+
+function buildVinaProductionRow(
+  records: InspectionRecord[],
+  year: number,
+  month: number,
+  weekOfMonth: number,
+  isCurrent: boolean,
+): WeeklyProductionRow {
+  const weekRecords = recordsInWeek(records, year, month, weekOfMonth)
+  return buildVinaProductionRowFromRecords(
+    weekRecords,
+    `${year}-${String(month).padStart(2, '0')}-W${weekOfMonth}`,
+    weekLabel(month, weekOfMonth),
+    isCurrent,
+  )
+}
+
+/**
+ * VINA 주간 생산/검사 실적 (전주 + 현재 주/조회기간).
+ * 기존 주간보고와 동일 기간 규칙, 집계만 제품유형 버킷.
+ */
+export function buildVinaWeeklyProductionRows(
+  records: InspectionRecord[],
+  options: {
+    year: number
+    month: number
+    weekOfMonth: number
+    periodMode: 'week' | 'custom'
+    rangeStart?: string
+    rangeEnd?: string
+  },
+): WeeklyProductionRow[] {
+  const analyzable = analyzableRecords(records)
+  const prev = previousWeek(options.year, options.month, options.weekOfMonth)
+  const prevRow = buildVinaProductionRow(
+    analyzable,
+    prev.year,
+    prev.month,
+    prev.weekOfMonth,
+    false,
+  )
+
+  if (
+    options.periodMode === 'custom' &&
+    options.rangeStart &&
+    options.rangeEnd &&
+    options.rangeStart <= options.rangeEnd
+  ) {
+    const current = buildVinaProductionRowFromRecords(
+      analyzable.filter((r) =>
+        inDateRange(r.date, options.rangeStart!, options.rangeEnd!),
+      ),
+      `custom:${options.rangeStart}:${options.rangeEnd}`,
+      formatProductionPeriodLabel(options.rangeStart, options.rangeEnd),
+      true,
+    )
+    return [prevRow, current]
+  }
+
+  return [
+    prevRow,
+    buildVinaProductionRow(
+      analyzable,
+      options.year,
+      options.month,
+      options.weekOfMonth,
+      true,
+    ),
+  ]
 }
 
 function buildProductionRow(

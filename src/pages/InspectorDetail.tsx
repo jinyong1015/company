@@ -23,7 +23,6 @@ import {
   DetailSnapshotBanner,
 } from '../components/detail/DetailChrome'
 import { DEFECT_TYPE_COLORS } from '../lib/defectColors'
-import { useData } from '../context/DataContext'
 import { cloneFilterState, useFilters, type FilterState } from '../context/FilterContext'
 import { filterRecords, buildPeriodTrends, resolvePeriodRange } from '../lib/analyze'
 import { fromEntityId, toEntityId } from '../lib/entityId'
@@ -32,6 +31,7 @@ import {
   buildProductDetailReturnHref,
   readUrlDateRange,
 } from '../lib/productDetailNav'
+import { useDetailInspectionData } from '../hooks/useDetailInspectionData'
 import { useWeeklySnapshotSourceRecords } from '../hooks/useWeeklySnapshotSourceRecords'
 import { useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { failRatePpm, formatPpm, formatWon } from '../lib/format'
@@ -48,16 +48,20 @@ function InspectorDetailBackNav({
   productName,
   productHref,
   periodRange,
+  vina = false,
 }: {
   productName?: string
   productHref?: string
   periodRange?: { start: string; end: string } | null
+  vina?: boolean
 }) {
   const toProduct = Boolean(productName && productHref)
+  const listPath = vina ? '/vina/inspectors' : '/inspectors'
+  const listLabel = vina ? 'VINA 검사자 분석' : '검사자 분석'
   return (
     <DetailBackNav
-      to={toProduct ? productHref! : '/inspectors'}
-      label={toProduct ? productName! : '검사자 분석'}
+      to={toProduct ? productHref! : listPath}
+      label={toProduct ? productName! : listLabel}
       ariaLabel="검사자 상세 돌아가기"
       Icon={toProduct ? Package : Users}
       metas={[
@@ -113,17 +117,28 @@ function buildProductStats(
 export function InspectorDetail() {
   const { id } = useParams()
   const [searchParams] = useSearchParams()
-  const { analytics } = useData()
+  const {
+    source: dataSource,
+    analytics,
+    records: liveRecords,
+    ignoreAnalysisGroup,
+  } = useDetailInspectionData()
+  const isVina = dataSource === 'vina'
   const { filters, setCustomDateRange, replaceFilters } = useFilters()
   const name = fromEntityId(id, 'ins')
   const productFromUrl = searchParams.get('product')?.trim() ?? ''
   const snapshotId = searchParams.get('snapshotId')?.trim() || null
   const {
-    records: sourceRecords,
+    records: snapshotRecords,
     usingSnapshot,
     status: snapshotStatus,
     error: snapshotError,
-  } = useWeeklySnapshotSourceRecords(snapshotId)
+  } = useWeeklySnapshotSourceRecords(
+    snapshotId,
+    isVina ? 'vina' : 'main',
+  )
+  const sourceRecords =
+    usingSnapshot || !isVina ? snapshotRecords : liveRecords
   const urlDateRange = useMemo(
     () => readUrlDateRange(searchParams),
     [searchParams],
@@ -148,21 +163,26 @@ export function InspectorDetail() {
   ])
 
   const effectiveFilters = useMemo<FilterState>(() => {
-    const base: FilterState = usingSnapshot
-      ? {
-          ...filters,
-          analysisGroup: 'all',
-          teams: [],
-          inspectors: [],
-          workTypes: [],
-          productTypes: [],
-          products: [],
-          molds: [],
-          equipment: [],
-          workers: [],
-          lots: [],
-        }
-      : filters
+    const base: FilterState =
+      usingSnapshot || isVina
+        ? {
+            ...filters,
+            analysisGroup: 'all',
+            ...(usingSnapshot
+              ? {
+                  teams: [],
+                  inspectors: [],
+                  workTypes: [],
+                  productTypes: [],
+                  products: [],
+                  molds: [],
+                  equipment: [],
+                  workers: [],
+                  lots: [],
+                }
+              : {}),
+          }
+        : filters
     if (!urlDateRange) return base
     return {
       ...base,
@@ -170,15 +190,23 @@ export function InspectorDetail() {
       startDate: urlDateRange.startDate,
       endDate: urlDateRange.endDate,
     }
-  }, [filters, urlDateRange, usingSnapshot])
+  }, [filters, urlDateRange, usingSnapshot, isVina])
+
+  const filterOpts = useMemo(
+    () => (ignoreAnalysisGroup ? { ignoreAnalysisGroup: true } : undefined),
+    [ignoreAnalysisGroup],
+  )
 
   const inspector =
     analytics.inspectors.find((i) => i.id === id || i.id === toEntityId('ins', name) || i.name === name) ??
     null
 
   const scoped = useMemo(
-    () => filterRecords(sourceRecords, effectiveFilters, true).filter((r) => r.inspector === name),
-    [sourceRecords, effectiveFilters, name],
+    () =>
+      filterRecords(sourceRecords, effectiveFilters, true, filterOpts).filter(
+        (r) => r.inspector === name,
+      ),
+    [sourceRecords, effectiveFilters, filterOpts, name],
   )
 
   const productOptions = useMemo(() => {
@@ -212,11 +240,13 @@ export function InspectorDetail() {
             {
               inspector: name,
               inspectorId: id ?? toEntityId('ins', name),
+              vina: isVina,
             },
           ),
         }
       : {}),
     periodRange,
+    vina: isVina,
   }
 
   const visibleProducts = useMemo(() => {
@@ -357,15 +387,21 @@ export function InspectorDetail() {
         {
           inspector: name,
           inspectorId,
+          vina: isVina,
         },
       )
     }
-    return buildProductDetailHref(toEntityId('prd', productName), 'inspectors', {
-      startDate: periodStart,
-      endDate: periodEnd,
-      inspector: name,
-      inspectorId,
-    })
+    return buildProductDetailHref(
+      toEntityId('prd', productName),
+      isVina ? 'vina-inspectors' : 'inspectors',
+      {
+        startDate: periodStart,
+        endDate: periodEnd,
+        inspector: name,
+        inspectorId,
+        vina: isVina,
+      },
+    )
   }
 
   return (

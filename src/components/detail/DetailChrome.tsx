@@ -1,10 +1,22 @@
 import { Link } from 'react-router-dom'
 import { ArrowLeft, ChevronRight, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { formatDateRangeWithWeekday } from '../../lib/format'
 
 export type DetailBackMeta = {
   label: string
   value: string
+}
+
+const RANGE_PATTERN =
+  /^(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})$/
+
+/** 조회기간 meta는 요일이 잘리지 않도록 날짜+요일로 정규화 */
+function displayMetaValue(label: string, value: string) {
+  if (label !== '조회기간') return value
+  const m = RANGE_PATTERN.exec(value.trim())
+  if (!m) return value
+  return formatDateRangeWithWeekday(m[1], m[2])
 }
 
 /**
@@ -35,32 +47,40 @@ export function DetailBackNav({
           <Icon size={18} strokeWidth={2.25} />
         </span>
 
-        <span className="min-w-0 flex-1">
+        <span className="min-w-0 shrink">
           <span className="detail-back-kicker">돌아가기</span>
           <span className="detail-back-label">{label}</span>
         </span>
 
-        {desktopMetas.map((meta) => (
-          <span key={`${meta.label}:${meta.value}`} className="detail-back-meta">
-            <span className="detail-back-meta-label">{meta.label}</span>
-            <span className="detail-back-meta-value">{meta.value}</span>
-          </span>
-        ))}
+        {desktopMetas.map((meta) => {
+          const shown = displayMetaValue(meta.label, meta.value)
+          return (
+            <span key={`${meta.label}:${meta.value}`} className="detail-back-meta">
+              <span className="detail-back-meta-label">{meta.label}</span>
+              <span className="detail-back-meta-value" title={shown}>
+                {shown}
+              </span>
+            </span>
+          )
+        })}
 
         <ChevronRight size={18} className="detail-back-chevron" aria-hidden />
       </Link>
 
       {metas.length > 0 ? (
         <p className="detail-back-mobile-metas">
-          {metas.map((meta, idx) => (
-            <span key={`${meta.label}:${meta.value}`}>
-              {idx > 0 ? <span className="mx-1.5 opacity-40">·</span> : null}
-              <span>
-                {meta.label}{' '}
-                <span className="font-semibold text-ink">{meta.value}</span>
+          {metas.map((meta, idx) => {
+            const shown = displayMetaValue(meta.label, meta.value)
+            return (
+              <span key={`${meta.label}:${meta.value}`}>
+                {idx > 0 ? <span className="mx-1.5 opacity-40">·</span> : null}
+                <span>
+                  {meta.label}{' '}
+                  <span className="font-semibold text-ink">{shown}</span>
+                </span>
               </span>
-            </span>
-          ))}
+            )
+          })}
         </p>
       ) : null}
     </nav>

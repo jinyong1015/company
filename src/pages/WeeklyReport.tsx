@@ -10,7 +10,11 @@ import { MeasurementStatusPanel } from '../components/weekly-report/MeasurementS
 import { MonthlyTrendSection } from '../components/weekly-report/MonthlyTrendSection'
 import { WeeklyFullscreenOverlay } from '../components/weekly-report/WeeklyFullscreenOverlay'
 import { WeeklyIssuePanel } from '../components/weekly-report/WeeklyIssuePanel'
-import { WeeklyProductionTable } from '../components/weekly-report/WeeklyProductionTable'
+import {
+  VINA_PRODUCTION_COLUMNS,
+  VINA_PRODUCTION_METRICS,
+  WeeklyProductionTable,
+} from '../components/weekly-report/WeeklyProductionTable'
 import { WeeklySectionHeading } from '../components/weekly-report/WeeklySectionHeading'
 import { WeeklySnapshotBar } from '../components/weekly-report/WeeklySnapshotBar'
 import { Worst5Card } from '../components/weekly-report/Worst5Card'
@@ -20,6 +24,9 @@ import { useToast } from '../context/ToastContext'
 import {
   buildAutoWeeklyIssues,
   buildMonthlyReportView,
+  buildVinaMonthlyReportView,
+  buildVinaWeeklyProductionRows,
+  buildVinaWorst5Map,
   buildWeeklyReportDetail,
   buildWeeklyReportDetailByDateRange,
   collectWorst5DetailRecords,
@@ -27,13 +34,19 @@ import {
   formatProductionPeriodLabel,
   getWeekDateRange,
   listWeeksInMonth,
+  loadVinaWorst5Thresholds,
   loadWorst5Thresholds,
   periodKeyFromPeriod,
   saveWeeklyIssues,
+  saveVinaWorst5Thresholds,
   saveWorst5Thresholds,
   syncWeeklyIssues,
+  VINA_MONTHLY_ORGS,
   WEEKLY_REPORT_ORGS,
 } from '../lib/weeklyReport'
+import { buildProductDetailHref } from '../lib/productDetailNav'
+import { toEntityId } from '../lib/entityId'
+import { loadVinaRecords } from '../lib/vinaStorage'
 import {
   loadApprovalDocs,
   saveApprovalDocs,
@@ -54,7 +67,10 @@ import {
   saveMeasurementStatus,
   syncMeasurementStatus,
 } from '../lib/weeklyReportMeasurementStatus'
-import { cacheWeeklySnapshotDetailRecords } from '../lib/weeklySnapshotDetailCache'
+import {
+  cacheWeeklySnapshotDetailRecords,
+  cacheWeeklySnapshotVinaDetailRecords,
+} from '../lib/weeklySnapshotDetailCache'
 import {
   formatProductionQueryPeriodTitle,
   loadProductionPeriodLabel,
@@ -205,6 +221,9 @@ export function WeeklyReport() {
     resolveWeeklyReportPeriod(records, anchor, searchParams),
   )
   const [metric, setMetric] = useState<WeeklyReportMetric>('failRate')
+  const [vinaMetric, setVinaMetric] = useState<WeeklyReportMetric>('failRate')
+  const [vinaRecords, setVinaRecords] = useState<InspectionRecord[]>([])
+  const [vinaRecordsReady, setVinaRecordsReady] = useState(false)
   const [selectedMonthKey, setSelectedMonthKey] = useState(
     initialPeriod.selectedMonthKey,
   )
@@ -216,6 +235,9 @@ export function WeeklyReport() {
   const [rangeEnd, setRangeEnd] = useState(initialPeriod.rangeEnd)
   const [worst5Thresholds, setWorst5Thresholds] = useState(() =>
     loadWorst5Thresholds(),
+  )
+  const [vinaWorst5Thresholds, setVinaWorst5Thresholds] = useState(() =>
+    loadVinaWorst5Thresholds(),
   )
   const [issuesSaving, setIssuesSaving] = useState(false)
   const [customerNc, setCustomerNc] = useState<CustomerNcItem[]>([])
@@ -245,7 +267,10 @@ export function WeeklyReport() {
   const [activeSnapshot, setActiveSnapshot] =
     useState<WeeklyReportSnapshotRecord | null>(null)
   const [productionFullscreen, setProductionFullscreen] = useState(false)
+  const [vinaProductionFullscreen, setVinaProductionFullscreen] =
+    useState(false)
   const [worst5Fullscreen, setWorst5Fullscreen] = useState(false)
+  const [vinaWorst5Fullscreen, setVinaWorst5Fullscreen] = useState(false)
   const [pendingDeleteSnapshotId, setPendingDeleteSnapshotId] = useState<
     string | null
   >(null)
@@ -259,9 +284,63 @@ export function WeeklyReport() {
     [records, metric, anchor],
   )
 
+  // 주간보고에서도 VINA IndexedDB를 읽어 3-2 월별 현황·스냅샷에 사용
+  useEffect(() => {
+    let cancelled = false
+    void loadVinaRecords()
+      .then((loaded) => {
+        if (cancelled) return
+        setVinaRecords(loaded)
+        setVinaRecordsReady(true)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setVinaRecords([])
+        setVinaRecordsReady(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const vinaMonthlyView = useMemo(
+    () => buildVinaMonthlyReportView(vinaRecords, vinaMetric, anchor),
+    [vinaRecords, vinaMetric, anchor],
+  )
+
   const { year, month } = useMemo(
     () => parseMonthKey(selectedMonthKey),
     [selectedMonthKey],
+  )
+
+  const vinaProductionRows = useMemo(
+    () =>
+      buildVinaWeeklyProductionRows(vinaRecords, {
+        year,
+        month,
+        weekOfMonth: week,
+        periodMode,
+        rangeStart,
+        rangeEnd,
+      }),
+    [vinaRecords, year, month, week, periodMode, rangeStart, rangeEnd],
+  )
+
+  const vinaWorst5Period = useMemo(() => {
+    if (periodMode === 'custom' && isValidDateRange(rangeStart, rangeEnd)) {
+      return { startDate: rangeStart, endDate: rangeEnd }
+    }
+    return getWeekDateRange(year, month, week)
+  }, [periodMode, rangeStart, rangeEnd, year, month, week])
+
+  const vinaWorst5 = useMemo(
+    () =>
+      buildVinaWorst5Map(
+        vinaRecords,
+        vinaWorst5Period,
+        vinaWorst5Thresholds,
+      ),
+    [vinaRecords, vinaWorst5Period, vinaWorst5Thresholds],
   )
 
   const weeksInMonth = useMemo(
@@ -586,10 +665,51 @@ export function WeeklyReport() {
         metrics.map((m) => [m, buildMonthlyReportView(records, m, anchor)]),
       ) as Record<WeeklyReportMetric, ReturnType<typeof buildMonthlyReportView>>
 
+      // 스냅샷 시점의 VINA 월별 현황을 지표별로 동결 저장
+      let vinaSource = vinaRecords
+      try {
+        vinaSource = await loadVinaRecords()
+      } catch {
+        /* 이미 로드된 vinaRecords 사용 */
+      }
+      const vinaMonthlyByMetric = Object.fromEntries(
+        metrics.map((m) => [
+          m,
+          buildVinaMonthlyReportView(vinaSource, m, anchor),
+        ]),
+      ) as Record<
+        WeeklyReportMetric,
+        ReturnType<typeof buildVinaMonthlyReportView>
+      >
+
+      const snapVinaProductionRows = buildVinaWeeklyProductionRows(vinaSource, {
+        year,
+        month,
+        weekOfMonth: week,
+        periodMode,
+        rangeStart,
+        rangeEnd,
+      })
+
+      const snapVinaWorst5Period =
+        periodMode === 'custom' && isValidDateRange(rangeStart, rangeEnd)
+          ? { startDate: rangeStart, endDate: rangeEnd }
+          : getWeekDateRange(year, month, week)
+      const snapVinaWorst5 = buildVinaWorst5Map(
+        vinaSource,
+        snapVinaWorst5Period,
+        vinaWorst5Thresholds,
+      )
+
       const detailRecords = collectWorst5DetailRecords(
         records,
         weeklyDetail.period,
         weeklyDetail.worst5,
+      )
+      const vinaDetailRecords = collectWorst5DetailRecords(
+        vinaSource,
+        snapVinaWorst5Period,
+        snapVinaWorst5,
       )
 
       const customerNcPhotos = await listNonconformityPhotoRowsByIds(
@@ -613,9 +733,15 @@ export function WeeklyReport() {
           worst5: weeklyDetail.worst5,
           worst5Thresholds: weeklyDetail.worst5Thresholds,
           monthlyByMetric,
+          vinaMonthlyByMetric,
+          vinaMetric,
+          vinaProductionRows: snapVinaProductionRows,
+          vinaWorst5: snapVinaWorst5,
+          vinaWorst5Thresholds,
           selectedMonthKey,
           metric,
           detailRecords,
+          vinaDetailRecords,
         },
       })
       if (!result.ok) {
@@ -624,6 +750,11 @@ export function WeeklyReport() {
       }
       if (result.id) {
         cacheWeeklySnapshotDetailRecords(result.id, detailRecords, false)
+        cacheWeeklySnapshotVinaDetailRecords(
+          result.id,
+          vinaDetailRecords,
+          false,
+        )
       }
       pushToast('주간보고 확정본을 저장했습니다.', 'success')
       await refreshSnapshotList()
@@ -644,9 +775,18 @@ export function WeeklyReport() {
     infoShare,
     refreshSnapshotList,
     records,
+    vinaRecords,
     anchor,
     selectedMonthKey,
     metric,
+    vinaMetric,
+    year,
+    month,
+    week,
+    periodMode,
+    rangeStart,
+    rangeEnd,
+    vinaWorst5Thresholds,
   ])
 
   const handleSelectSnapshot = useCallback(
@@ -667,8 +807,20 @@ export function WeeklyReport() {
         detailRecords ?? [],
         missingDetail,
       )
+      const missingVinaDetail = !Object.prototype.hasOwnProperty.call(
+        result.record.payload,
+        'vinaDetailRecords',
+      )
+      cacheWeeklySnapshotVinaDetailRecords(
+        result.record.id,
+        result.record.payload.vinaDetailRecords ?? [],
+        missingVinaDetail,
+      )
       if (result.record.payload.metric) {
         setMetric(result.record.payload.metric)
+      }
+      if (result.record.payload.vinaMetric) {
+        setVinaMetric(result.record.payload.vinaMetric)
       }
       // URL에 snapshotId 유지 (상세 복귀용)
       setSearchParams(
@@ -1021,6 +1173,17 @@ export function WeeklyReport() {
     [],
   )
 
+  const handleVinaWorst5ThresholdChange = useCallback(
+    (orgId: WeeklyReportOrgId, value: number) => {
+      setVinaWorst5Thresholds((prev) => {
+        const next = { ...prev, [orgId]: value }
+        saveVinaWorst5Thresholds(next)
+        return next
+      })
+    },
+    [],
+  )
+
   const rangeInvalid =
     periodMode === 'custom' && !isValidDateRange(rangeStart, rangeEnd)
 
@@ -1056,6 +1219,15 @@ export function WeeklyReport() {
     customProductionLabelKey,
     customProductionLabel,
   ])
+
+  const displayVinaProductionRows = useMemo(() => {
+    if (!customProductionLabelKey) return vinaProductionRows
+    return vinaProductionRows.map((row) =>
+      row.isCurrent && row.periodKey.startsWith('custom:')
+        ? { ...row, periodLabel: customProductionLabel }
+        : row,
+    )
+  }, [vinaProductionRows, customProductionLabelKey, customProductionLabel])
 
   const viewingSnapshot = Boolean(activeSnapshot)
   const shownTitle = activeSnapshot?.payload.title ?? weeklyDetail.title
@@ -1093,8 +1265,38 @@ export function WeeklyReport() {
     activeSnapshot?.payload.worst5Thresholds ?? worst5Thresholds
   const shownMonthlyView =
     activeSnapshot?.payload.monthlyByMetric?.[metric] ?? monthlyView
+  const shownVinaMonthlyView =
+    activeSnapshot?.payload.vinaMonthlyByMetric?.[vinaMetric] ??
+    vinaMonthlyView
+  const hasShownVinaMonthly = viewingSnapshot
+    ? Boolean(activeSnapshot?.payload.vinaMonthlyByMetric)
+    : vinaRecords.length > 0
+  const shownVinaProductionRows =
+    activeSnapshot?.payload.vinaProductionRows ?? displayVinaProductionRows
+  const hasShownVinaProduction = viewingSnapshot
+    ? Boolean(activeSnapshot?.payload.vinaProductionRows)
+    : vinaRecords.length > 0
+  const shownVinaWorst5 =
+    activeSnapshot?.payload.vinaWorst5 ?? vinaWorst5
+  const shownVinaWorst5Thresholds =
+    activeSnapshot?.payload.vinaWorst5Thresholds ?? vinaWorst5Thresholds
+  const hasShownVinaWorst5 = viewingSnapshot
+    ? Boolean(activeSnapshot?.payload.vinaWorst5)
+    : vinaRecords.length > 0
+  const hasAnyVinaSection =
+    hasShownVinaMonthly || hasShownVinaProduction || hasShownVinaWorst5
   const shownSelectedMonthKey =
     activeSnapshot?.payload.selectedMonthKey ?? selectedMonthKey
+
+  const vinaWorst5LinkRange = useMemo(() => {
+    if (viewingSnapshot && activeSnapshot) {
+      return {
+        startDate: activeSnapshot.payload.period.startDate,
+        endDate: activeSnapshot.payload.period.endDate,
+      }
+    }
+    return vinaWorst5Period
+  }, [viewingSnapshot, activeSnapshot, vinaWorst5Period])
 
   const worst5LinkPeriod = useMemo<WeeklyReportPeriodState>(() => {
     if (!viewingSnapshot || !activeSnapshot) return periodState
@@ -1107,6 +1309,23 @@ export function WeeklyReport() {
       rangeEnd: p.endDate,
     }
   }, [viewingSnapshot, activeSnapshot, periodState])
+
+  const vinaWorst5ProductHref = useCallback(
+    (product: string) =>
+      buildProductDetailHref(toEntityId('prd', product), 'weekly-report', {
+        vina: true,
+        startDate: vinaWorst5LinkRange.startDate,
+        endDate: vinaWorst5LinkRange.endDate,
+        weeklyReportPeriod: worst5LinkPeriod,
+        snapshotId: activeSnapshot?.id ?? undefined,
+      }),
+    [
+      vinaWorst5LinkRange.startDate,
+      vinaWorst5LinkRange.endDate,
+      worst5LinkPeriod,
+      activeSnapshot?.id,
+    ],
+  )
 
   const handleCustomProductionLabelChange = useCallback(
     (label: string) => {
@@ -1142,9 +1361,21 @@ export function WeeklyReport() {
     setProductionFullscreen(false)
   }, [])
 
+  const closeVinaProductionFullscreen = useCallback(() => {
+    setVinaProductionFullscreen(false)
+  }, [])
+
   const closeWorst5Fullscreen = useCallback(() => {
     setWorst5Fullscreen(false)
   }, [])
+
+  const closeVinaWorst5Fullscreen = useCallback(() => {
+    setVinaWorst5Fullscreen(false)
+  }, [])
+
+  const vinaProductionDescription = viewingSnapshot
+    ? '확정본에 저장된 VINA 실적'
+    : 'VINA 데이터 · 전주 대비 주차별 실적 비교'
 
   if (!records.length) {
     return (
@@ -1420,6 +1651,127 @@ export function WeeklyReport() {
               </div>
             </div>
 
+            <WeeklySectionHeading title="3-2. VINA 부적합 현황" />
+            {!viewingSnapshot && !vinaRecordsReady ? (
+              <p className="text-sm text-muted">VINA 현황 불러오는 중…</p>
+            ) : !hasAnyVinaSection ? (
+              <div className="rounded-2xl border border-dashed border-line bg-surface px-4 py-8 text-center shadow-sm">
+                <p className="text-sm font-medium text-ink">
+                  {viewingSnapshot
+                    ? '이 확정본에는 VINA 부적합 현황이 포함되어 있지 않습니다.'
+                    : 'VINA 데이터가 없습니다.'}
+                </p>
+                {!viewingSnapshot ? (
+                  <p className="mt-1 text-sm text-muted">
+                    VINA 분석 → 데이터 업로드 후 스냅샷을 저장하면 이 구간에
+                    기록됩니다.
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {hasShownVinaMonthly ? (
+                  <MonthlyTrendSection
+                    view={shownVinaMonthlyView}
+                    metric={vinaMetric}
+                    onMetricChange={setVinaMetric}
+                    selectedMonthKey={shownSelectedMonthKey}
+                    onMonthSelect={
+                      viewingSnapshot ? undefined : handleMonthSelect
+                    }
+                    title="VINA 월별 현황"
+                    descriptionPrefix="VINA 데이터 · 제품유형 기준 · "
+                    orgs={VINA_MONTHLY_ORGS}
+                  />
+                ) : null}
+
+                {hasShownVinaProduction || hasShownVinaWorst5 ? (
+                  <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+                    <div className="min-w-0">
+                      {hasShownVinaProduction ? (
+                        <Panel
+                          title="VINA 주간 생산/검사 실적"
+                          description={vinaProductionDescription}
+                          actions={
+                            <button
+                              type="button"
+                              className="btn inline-flex items-center gap-1.5 text-xs"
+                              onClick={() => setVinaProductionFullscreen(true)}
+                            >
+                              <Maximize2
+                                size={14}
+                                strokeWidth={2.25}
+                                aria-hidden
+                              />
+                              전체화면 보기
+                            </button>
+                          }
+                        >
+                          <WeeklyProductionTable
+                            rows={shownVinaProductionRows}
+                            columns={VINA_PRODUCTION_COLUMNS}
+                            metrics={VINA_PRODUCTION_METRICS}
+                            editableCustomPeriodLabel={
+                              editableCustomPeriodLabel
+                            }
+                          />
+                        </Panel>
+                      ) : null}
+                    </div>
+
+                    <div className="min-w-0">
+                      {hasShownVinaWorst5 ? (
+                        <Panel
+                          title="VINA 부적합 WORST 5"
+                          description={
+                            viewingSnapshot
+                              ? '확정본에 저장된 VINA WORST 5'
+                              : 'VINA · 제품유형별 부적합률 상위 품번'
+                          }
+                          bodyClassName="!space-y-5 !bg-canvas/50 !p-3"
+                          actions={
+                            <button
+                              type="button"
+                              className="btn inline-flex items-center gap-1.5 text-xs"
+                              onClick={() => setVinaWorst5Fullscreen(true)}
+                            >
+                              <Maximize2
+                                size={14}
+                                strokeWidth={2.25}
+                                aria-hidden
+                              />
+                              전체화면 보기
+                            </button>
+                          }
+                        >
+                          {VINA_MONTHLY_ORGS.map((org) => (
+                            <Worst5Card
+                              key={`vina-${org.id}`}
+                              title={org.label}
+                              color={org.color}
+                              minQty={shownVinaWorst5Thresholds[org.id]}
+                              onMinQtyChange={
+                                viewingSnapshot
+                                  ? undefined
+                                  : (value) =>
+                                      handleVinaWorst5ThresholdChange(
+                                        org.id,
+                                        value,
+                                      )
+                              }
+                              items={shownVinaWorst5[org.id] ?? []}
+                              period={worst5LinkPeriod}
+                              getProductHref={vinaWorst5ProductHref}
+                            />
+                          ))}
+                        </Panel>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
             <WeeklySectionHeading title="4. 측정현황" />
             <MeasurementStatusPanel
               items={shownMeasurementStatus}
@@ -1458,6 +1810,55 @@ export function WeeklyReport() {
                   rows={shownProductionRows}
                   editableCustomPeriodLabel={editableCustomPeriodLabel}
                 />
+              </div>
+            </WeeklyFullscreenOverlay>
+
+            <WeeklyFullscreenOverlay
+              open={vinaProductionFullscreen}
+              title="VINA 주간 생산/검사 실적"
+              description={vinaProductionDescription}
+              onClose={closeVinaProductionFullscreen}
+              centerContent
+            >
+              <div className="mx-auto w-full max-w-5xl text-[15px] sm:text-base [&_table]:min-w-0 [&_td]:py-3.5 [&_th]:py-3">
+                <WeeklyProductionTable
+                  rows={shownVinaProductionRows}
+                  columns={VINA_PRODUCTION_COLUMNS}
+                  metrics={VINA_PRODUCTION_METRICS}
+                  editableCustomPeriodLabel={editableCustomPeriodLabel}
+                />
+              </div>
+            </WeeklyFullscreenOverlay>
+
+            <WeeklyFullscreenOverlay
+              open={vinaWorst5Fullscreen}
+              title="VINA 부적합 WORST 5"
+              description={
+                viewingSnapshot
+                  ? '확정본에 저장된 VINA WORST 5'
+                  : 'VINA · 제품유형별 부적합률 상위 품번'
+              }
+              onClose={closeVinaWorst5Fullscreen}
+            >
+              <div className="grid gap-4 lg:grid-cols-2">
+                {VINA_MONTHLY_ORGS.map((org) => (
+                  <Worst5Card
+                    key={`vina-fs-${org.id}`}
+                    title={org.label}
+                    color={org.color}
+                    minQty={shownVinaWorst5Thresholds[org.id]}
+                    onMinQtyChange={
+                      viewingSnapshot
+                        ? undefined
+                        : (value) =>
+                            handleVinaWorst5ThresholdChange(org.id, value)
+                    }
+                    items={shownVinaWorst5[org.id] ?? []}
+                    period={worst5LinkPeriod}
+                    getProductHref={vinaWorst5ProductHref}
+                    variant="fullscreen"
+                  />
+                ))}
               </div>
             </WeeklyFullscreenOverlay>
 
