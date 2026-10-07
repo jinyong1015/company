@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -13,21 +13,29 @@ import { VinaNotice } from '../../components/vina/VinaNotice'
 import { VinaSubNav } from '../../components/vina/VinaSubNav'
 import { useVinaData } from '../../context/VinaDataContext'
 import { createVinaSampleWorkbook } from '../../lib/vinaExcel'
+import { VINA_ITEM_UNMAPPED_ISSUE } from '../../lib/vinaItemNormalize'
 import type { QualityCheckItem } from '../../types'
 
 function checkSeverity(item: QualityCheckItem): 'error' | 'warn' {
   return item.severity ?? 'error'
 }
 
+function isUnmappedQualityLabel(label: string) {
+  return (
+    label === VINA_ITEM_UNMAPPED_ISSUE ||
+    label.replace(/\s+/g, '') === '품번변환확인필요'
+  )
+}
+
 export function VinaManage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const {
     meta,
+    records,
     uploading,
     uploadError,
     uploadExcel,
     clearVinaData,
-    analytics,
     hasUploadedData,
     pending,
     confirmUpload,
@@ -36,7 +44,28 @@ export function VinaManage() {
   } = useVinaData()
   const [localName, setLocalName] = useState<string | null>(meta.fileName)
   const [dragging, setDragging] = useState(false)
-  const result = pending?.uploadResult ?? meta.uploadResult
+
+  const sourceRecords = pending?.records ?? records
+  const resultBase = pending?.uploadResult ?? meta.uploadResult
+
+  const result = useMemo(() => {
+    if (!resultBase) return null
+    const ok = sourceRecords.filter((r) => r.rowClass === 'ok').length
+    const warn = sourceRecords.filter((r) => r.rowClass === 'warn').length
+    const error = sourceRecords.filter((r) => r.rowClass === 'error').length
+    const excluded = sourceRecords.filter((r) => r.rowClass === 'excluded').length
+    return {
+      ...resultBase,
+      valid: sourceRecords.length ? ok : resultBase.valid,
+      warn: sourceRecords.length ? warn : resultBase.warn,
+      error: sourceRecords.length ? error : resultBase.error,
+      excluded: sourceRecords.length ? excluded : resultBase.excluded,
+      qualityChecks: (resultBase.qualityChecks ?? []).filter(
+        (item) => !isUnmappedQualityLabel(item.label),
+      ),
+    }
+  }, [resultBase, sourceRecords])
+
   const counts = result
     ? {
         ok: result.valid,
@@ -78,17 +107,21 @@ export function VinaManage() {
 
       <header className="manage-page-header">
         <div className="min-w-0">
-          <p className="manage-page-kicker">VINA DATA</p>
           <h1 className="manage-page-title">VINA 데이터 업로드</h1>
         </div>
         <div className="manage-page-actions">
           <button type="button" onClick={downloadSample} className="manage-action-btn">
-            <Download size={14} />
+            <Download size={15} aria-hidden />
             샘플 엑셀
           </button>
           {hasUploadedData ? (
-            <button type="button" onClick={handleResetToSeed} className="manage-action-btn">
-              <RotateCcw size={14} />
+            <button
+              type="button"
+              onClick={handleResetToSeed}
+              className="manage-action-btn"
+              title="업로드된 VINA 데이터를 삭제하고 초기 상태로 되돌립니다"
+            >
+              <RotateCcw size={15} aria-hidden />
               시드 복원
             </button>
           ) : null}
@@ -98,27 +131,14 @@ export function VinaManage() {
       <VinaNotice />
 
       <section className="manage-panel">
-        <div className="manage-panel-head">
-          <div>
-            <h2 className="manage-panel-title">VINA Excel Upload</h2>
-            <p className="manage-panel-sub">
-              .xlsx / .xls · Work Day·ITEM·사원명·설비·검사수량·NG수량·1차만 정상(2차 오류)·검사금액·NG금액
-            </p>
-          </div>
-        </div>
         <div className="manage-panel-body">
           <div
-            role="button"
-            tabIndex={0}
-            className={`manage-dropzone${dragging ? ' is-dragging' : ''}`}
-            onClick={() => inputRef.current?.click()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click()
-            }}
-            onDragOver={(e) => {
+            className={`manage-dropzone${dragging ? ' is-dragging' : ''}${uploading ? ' is-busy' : ''}`}
+            onDragEnter={(e) => {
               e.preventDefault()
               setDragging(true)
             }}
+            onDragOver={(e) => e.preventDefault()}
             onDragLeave={() => setDragging(false)}
             onDrop={(e) => {
               e.preventDefault()
@@ -127,15 +147,6 @@ export function VinaManage() {
               if (file) void handleFile(file)
             }}
           >
-            <div className="manage-dropzone-icon">
-              <Upload size={22} />
-            </div>
-            <p className="manage-dropzone-title">
-              VINA 엑셀을 드래그하거나 클릭하여 업로드
-            </p>
-            <p className="manage-dropzone-hint">
-              업로드 시 기존 VINA 데이터가 새 파일로 교체됩니다
-            </p>
             <input
               ref={inputRef}
               type="file"
@@ -147,34 +158,42 @@ export function VinaManage() {
                 e.target.value = ''
               }}
             />
+            <div className="manage-dropzone-icon" aria-hidden>
+              {uploading ? <Upload size={22} className="animate-pulse" /> : <FileSpreadsheet size={22} />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="manage-dropzone-title">
+                {uploading ? 'VINA 엑셀 분석 중…' : 'VINA 검사 엑셀을 끌어다 놓거나 클릭하여 선택'}
+              </p>
+              <p className="manage-dropzone-sub">
+                Work Day · ITEM · 사원명 · 설비 · 검사수량 · NG수량 · 검사금액 등
+              </p>
+            </div>
+            <button
+              type="button"
+              className="manage-action-btn manage-action-btn-primary"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+            >
+              파일 선택
+            </button>
           </div>
 
           {showFileStatus ? (
-            <div className="manage-file-card">
-              <FileSpreadsheet size={18} style={{ color: 'var(--accent)' }} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold" style={{ color: 'var(--text)' }}>
-                  {displayName ?? '파일'}
-                </p>
-                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                  {uploading
-                    ? 'VINA 파일 검증 중…'
-                    : pending
-                      ? pending.uploadResult.blocked
-                        ? '오류 행 포함 · 전체 저장 시 오류는 분석 제외'
-                        : pending.uploadResult.warn > 0
-                          ? '경고 확인 후 저장하세요'
-                          : '검증 완료'
-                      : hasUploadedData
-                        ? `업로드 완료 · VINA 분석 레코드 ${analytics.summary.recordCount.toLocaleString()}건`
-                        : '대기 중'}
-                </p>
-              </div>
+            <div className="manage-file-status">
+              <span className="manage-file-status-label">선택 파일</span>
+              <span className="manage-file-status-name">{displayName ?? '—'}</span>
               {!uploading && !pending && hasUploadedData ? (
-                <CheckCircle2 size={18} style={{ color: 'var(--success)' }} />
+                <span className="manage-file-status-ok">
+                  <CheckCircle2 size={14} aria-hidden />
+                  저장됨
+                </span>
               ) : null}
               {!uploading && pending?.uploadResult.blocked ? (
-                <AlertTriangle size={18} style={{ color: 'var(--error)' }} />
+                <span className="manage-file-status-warn">
+                  <AlertTriangle size={14} aria-hidden />
+                  오류 있음
+                </span>
               ) : null}
             </div>
           ) : null}
@@ -306,7 +325,7 @@ export function VinaManage() {
                     .map((item) => (
                       <div
                         key={item.label}
-                        className={`manage-quality-row manage-quality-row-warn${item.count > 0 ? ' has-count' : ''}`}
+                        className={`manage-quality-row${item.count > 0 ? ' has-count' : ''}`}
                       >
                         <span title={item.label}>{item.label}</span>
                         <span className="num">{item.count}건</span>

@@ -79,11 +79,14 @@ export interface ProductRow {
   id: string
   name: string
   type: string
+  /** 검사 기록 행(row) 개수 — 검수량(합)과 구분 */
+  count: number
   qty: number
   pass: number
   fail: number
   /** 불량 유형별 건수 합계 */
   failTotal: number
+  /** 부적합률(ppm) = 합산 부적합 ÷ 합산 검수량 (행별 률 평균 금지) */
   failRate: number
   hours: number
   /** 소요시간(분) */

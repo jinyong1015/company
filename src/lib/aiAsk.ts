@@ -8,7 +8,21 @@ import {
   groupLabel as officialGroupLabel,
 } from './groups'
 import { analyzeRecords } from './analyze'
+import {
+  aiDataSourceLabel,
+  detectAiDataSource,
+  stripAiDataSourcePhrases,
+  vinaHasScrapCostData,
+  vinaSourceAttributionLines,
+  vinaUnsupportedRequestMessage,
+  type AiDataSource,
+} from './aiDataSource'
 import { KNOWN_DEFECT_TYPES } from './excel'
+import { itemMatchKey, sameItemMatchKey } from './itemMatchKey'
+import {
+  matchVinaItemToCatalog,
+  normalizeVinaItem,
+} from './vinaItemNormalize'
 import {
   formatGrowthPercent,
   formatPercent,
@@ -27,8 +41,8 @@ import type {
   ProductRow,
 } from '../types'
 
-/** 품번/집계 정렬 지표 */
-export type AiMetric = 'failRate' | 'qty' | 'scrapCost' | 'fail'
+/** 품번/집계 정렬 지표 (count = 검사 기록 행 수, qty = 검수량 합) */
+export type AiMetric = 'failRate' | 'qty' | 'scrapCost' | 'fail' | 'count'
 
 export type AiValueFormat =
   | 'ppm'
@@ -221,6 +235,11 @@ export type AiQueryPeriod = {
 export type AiAnswerOptions = {
   defaultPeriod?: AiQueryPeriod | null
   now?: Date
+  /**
+   * VINA DATA records (IndexedDB).
+   * 질문에 VINA/VN/베트남이 있을 때만 사용. 없으면 무시.
+   */
+  vinaRecords?: InspectionRecord[]
 }
 
 function pad2(n: number) {
@@ -321,124 +340,198 @@ function inferDataYear(records: InspectionRecord[]) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]![0]
 }
 
-/** 질문 문장에서 기간을 읽습니다. 예: 7월 / 7월 22일부터 28일까지 / 이번 주 */
+/** 오늘(로컬) YYYY-MM-DD */
+function todayYmd(now: Date) {
+  return ymd(now.getFullYear(), now.getMonth() + 1, now.getDate())
+}
+
+/**
+ * 질문 문장에서 기간을 읽습니다.
+ * 5차 교육: 구체적 날짜 범위 > 특정 월 > 최근 N일 > 이번/지난 주·달 > 올해/작년
+ * (「이번 달」보다 「9월 1일~15일」을 우선)
+ */
 export function parsePeriodFromQuestion(
   text: string,
   _records: InspectionRecord[],
   now = new Date(),
 ): AiQueryPeriod | null {
-  const yearFromText = text.match(/(20\d{2})\s*년/)
+  const yearFromText = text.match(/(20\d{2})\s*년/) ?? text.match(/\b(20\d{2})\b/)
   const year = yearFromText ? Number(yearFromText[1]) : now.getFullYear()
   const n = compact(text)
+  const todayStr = todayYmd(now)
 
-  // 오늘 / 어제
+  // ── 1) 오늘 / 어제 ──
   if (/오늘|금일/.test(text) && !/어제|그제/.test(text)) {
-    const y = now.getFullYear()
-    const m = now.getMonth() + 1
-    const d = now.getDate()
     return {
-      startDate: ymd(y, m, d),
-      endDate: ymd(y, m, d),
-      label: `${y}년 ${m}월 ${d}일(오늘)`,
+      startDate: todayStr,
+      endDate: todayStr,
+      label: `${todayStr}(오늘)`,
     }
   }
   if (/어제|전일/.test(text)) {
     const prev = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1)
-    const y = prev.getFullYear()
-    const m = prev.getMonth() + 1
-    const d = prev.getDate()
+    const s = ymd(prev.getFullYear(), prev.getMonth() + 1, prev.getDate())
     return {
-      startDate: ymd(y, m, d),
-      endDate: ymd(y, m, d),
-      label: `${y}년 ${m}월 ${d}일(어제)`,
+      startDate: s,
+      endDate: s,
+      label: `${s}(어제)`,
     }
   }
 
-  // 최근 N주 (주차별 추이용 — 일/월과 구분)
-  const recentWeeks = text.match(/최근\s*(\d+)\s*주/)
-  if (recentWeeks) {
-    const weeks = Number(recentWeeks[1])
-    if (Number.isFinite(weeks) && weeks > 0) {
-      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const start = new Date(end)
-      start.setDate(start.getDate() - (weeks * 7 - 1))
+  // ── 2) 구체적 날짜 범위 (이번 달보다 우선) ──
+  const dayRange = text.match(
+    /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(?:부터|에서|~|-|–|—)\s*(?:(\d{1,2})\s*월\s*)?(\d{1,2})\s*일/,
+  )
+  if (dayRange) {
+    const m1 = Number(dayRange[1])
+    const d1 = Number(dayRange[2])
+    const m2 = Number(dayRange[3] || dayRange[1])
+    const d2 = Number(dayRange[4])
+    if (m1 >= 1 && m1 <= 12 && m2 >= 1 && m2 <= 12 && d1 >= 1 && d2 >= 1) {
       return {
-        startDate: ymd(start.getFullYear(), start.getMonth() + 1, start.getDate()),
-        endDate: ymd(end.getFullYear(), end.getMonth() + 1, end.getDate()),
-        label: `최근 ${weeks}주`,
+        startDate: ymd(year, m1, d1),
+        endDate: ymd(year, m2, d2),
+        label: `${year}년 ${m1}월 ${d1}일 ~ ${m2}월 ${d2}일`,
       }
     }
   }
 
-  // 최근 N일 / 최근 한 달 / 최근 3개월
-  const recentDays = text.match(/최근\s*(\d+)\s*일/)
-  if (recentDays) {
-    const days = Number(recentDays[1])
-    if (Number.isFinite(days) && days > 0) {
-      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const start = new Date(end)
-      start.setDate(start.getDate() - (days - 1))
+  const firstDayTo = text.match(
+    /(\d{1,2})\s*월\s*(?:첫\s*날|1\s*일)\s*(?:부터|~|-)\s*(\d{1,2})\s*일/,
+  )
+  if (firstDayTo) {
+    const m = Number(firstDayTo[1])
+    const d2 = Number(firstDayTo[2])
+    if (m >= 1 && m <= 12 && d2 >= 1) {
       return {
-        startDate: ymd(start.getFullYear(), start.getMonth() + 1, start.getDate()),
-        endDate: ymd(end.getFullYear(), end.getMonth() + 1, end.getDate()),
-        label: `최근 ${days}일`,
-      }
-    }
-  }
-  if (/최근\s*(?:한\s*)?달|최근\s*1\s*개월|최근\s*한달/.test(text)) {
-    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const start = new Date(end)
-    start.setMonth(start.getMonth() - 1)
-    return {
-      startDate: ymd(start.getFullYear(), start.getMonth() + 1, start.getDate()),
-      endDate: ymd(end.getFullYear(), end.getMonth() + 1, end.getDate()),
-      label: '최근 한 달',
-    }
-  }
-  const recentMonths = text.match(/최근\s*(\d+)\s*개월/)
-  if (recentMonths) {
-    const months = Number(recentMonths[1])
-    if (Number.isFinite(months) && months > 0) {
-      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const start = new Date(end)
-      start.setMonth(start.getMonth() - months)
-      return {
-        startDate: ymd(start.getFullYear(), start.getMonth() + 1, start.getDate()),
-        endDate: ymd(end.getFullYear(), end.getMonth() + 1, end.getDate()),
-        label: `최근 ${months}개월`,
+        startDate: ymd(year, m, 1),
+        endDate: ymd(year, m, d2),
+        label: `${year}년 ${m}월 1일 ~ ${m}월 ${d2}일`,
       }
     }
   }
 
-  // 작년
-  if (/작년|전년|지난해/.test(text) && !/\d{1,2}\s*월/.test(text)) {
-    const y = now.getFullYear() - 1
-    return {
-      startDate: ymd(y, 1, 1),
-      endDate: ymd(y, 12, 31),
-      label: `${y}년(작년)`,
+  const monthDayTilde = text.match(
+    /(\d{1,2})\s*월\s*(\d{1,2})\s*[~～\-–—]\s*(\d{1,2})\s*일/,
+  )
+  if (monthDayTilde) {
+    const m = Number(monthDayTilde[1])
+    const d1 = Number(monthDayTilde[2])
+    const d2 = Number(monthDayTilde[3])
+    if (m >= 1 && m <= 12 && d1 >= 1 && d2 >= 1) {
+      return {
+        startDate: ymd(year, m, d1),
+        endDate: ymd(year, m, d2),
+        label: `${year}년 ${m}월 ${d1}일 ~ ${m}월 ${d2}일`,
+      }
     }
   }
 
-  // 2024년 / 2026년 (월 미지정 → 해당 연도 전체)
-  if (yearFromText && !/\d{1,2}\s*월/.test(text) && !/올해|금년/.test(text)) {
+  const slashRange = text.match(
+    /(\d{1,2})\s*[./]\s*(\d{1,2})\s*(?:부터|~|-|–|—)\s*(\d{1,2})\s*[./]\s*(\d{1,2})/,
+  )
+  if (slashRange && !/(20\d{2})/.test(slashRange[0]!)) {
+    const m1 = Number(slashRange[1])
+    const d1 = Number(slashRange[2])
+    const m2 = Number(slashRange[3])
+    const d2 = Number(slashRange[4])
+    if (m1 >= 1 && m1 <= 12 && m2 >= 1 && m2 <= 12 && d1 >= 1 && d2 >= 1) {
+      return {
+        startDate: ymd(year, m1, d1),
+        endDate: ymd(year, m2, d2),
+        label: `${year}년 ${m1}월 ${d1}일 ~ ${m2}월 ${d2}일`,
+      }
+    }
+  }
+
+  const isoRange = text.match(
+    /(20\d{2})[./-](\d{1,2})[./-](\d{1,2})\s*(?:부터|~|-|–|—)\s*(?:(20\d{2})[./-])?(\d{1,2})[./-](\d{1,2})/,
+  )
+  if (isoRange) {
+    const y1 = Number(isoRange[1])
+    const m1 = Number(isoRange[2])
+    const d1 = Number(isoRange[3])
+    const y2 = Number(isoRange[4] || isoRange[1])
+    const m2 = Number(isoRange[5])
+    const d2 = Number(isoRange[6])
+    return {
+      startDate: ymd(y1, m1, d1),
+      endDate: ymd(y2, m2, d2),
+      label: `${ymd(y1, m1, d1)} ~ ${ymd(y2, m2, d2)}`,
+    }
+  }
+
+  // 시작일만: "9월 15일부터" → 그날 ~ 오늘
+  const fromOnly = text.match(
+    /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*부터(?!\s*(?:(\d{1,2})\s*월\s*)?(\d{1,2})\s*일)/,
+  )
+  if (fromOnly) {
+    const m = Number(fromOnly[1])
+    const d = Number(fromOnly[2])
+    if (m >= 1 && m <= 12 && d >= 1) {
+      return {
+        startDate: ymd(year, m, d),
+        endDate: todayStr,
+        label: `${year}년 ${m}월 ${d}일 ~ 오늘`,
+      }
+    }
+  }
+
+  // 단일일 (「까지」만 있는 경우는 clarify에서 처리 — 여기서는 하루로 보지 않음)
+  const untilOnly = /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*까지/.test(text) &&
+    !/(?:부터|에서|~|-|–|—).{0,12}일\s*까지/.test(text) &&
+    !/(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(?:부터|에서)/.test(text)
+  if (!untilOnly) {
+    const singleDay = text.match(
+      /(\d{1,2})\s*월\s*(\d{1,2})\s*일(?!\s*(?:부터|까지|에서|~|-|–|—))/,
+    )
+    if (singleDay) {
+      const m = Number(singleDay[1])
+      const d = Number(singleDay[2])
+      if (m >= 1 && m <= 12 && d >= 1) {
+        return {
+          startDate: ymd(year, m, d),
+          endDate: ymd(year, m, d),
+          label: `${year}년 ${m}월 ${d}일`,
+        }
+      }
+    }
+  }
+
+  // ── 3) 월 구간·특정 월 (이번 달보다 우선) ──
+  if (/1\s*월\s*[~～\-–—부터까지\s]*12\s*월/.test(text) && /월별|월간|그래프/.test(text)) {
     return {
       startDate: ymd(year, 1, 1),
-      endDate: ymd(year, 12, 31),
-      label: `${year}년`,
+      endDate: year === now.getFullYear() ? todayStr : ymd(year, 12, 31),
+      label: `${year}년 1월 ~ 12월`,
     }
   }
 
-  // 2024년 / 2026년 (월 미지정 → 해당 연도 전체)
-  if (yearFromText && !/\d{1,2}\s*월/.test(text) && !/올해|금년/.test(text)) {
-    return {
-      startDate: ymd(year, 1, 1),
-      endDate: ymd(year, 12, 31),
-      label: `${year}년`,
+  const monthRange = text.match(
+    /(\d{1,2})\s*월\s*(?:부터|에서|~|-|–|—)\s*(\d{1,2})\s*월/,
+  )
+  const monthRangeShort = text.match(/(\d{1,2})\s*[~～\-–—]\s*(\d{1,2})\s*월/)
+  const monthSpan = monthRange ?? monthRangeShort
+  if (monthSpan) {
+    const m1 = Number(monthSpan[1])
+    const m2 = Number(monthSpan[2])
+    if (!(m1 === 1 && m2 === 12 && /월별|월간/.test(text))) {
+      if (m1 >= 1 && m1 <= 12 && m2 >= 1 && m2 <= 12) {
+        const startM = Math.min(m1, m2)
+        const endM = Math.max(m1, m2)
+        let endDate = ymd(year, endM, lastDayOfMonth(year, endM))
+        if (year === now.getFullYear() && endM === now.getMonth() + 1) {
+          endDate = todayStr
+        }
+        return {
+          startDate: ymd(year, startM, 1),
+          endDate,
+          label: `${year}년 ${startM}월 ~ ${endM}월`,
+        }
+      }
     }
   }
 
-  // N월 초/중순/말 / 둘째 주
   const monthPart = text.match(
     /(\d{1,2})\s*월\s*(초|중순|말|첫째\s*주|둘째\s*주|셋째\s*주|넷째\s*주)/,
   )
@@ -459,15 +552,11 @@ export function parsePeriodFromQuestion(
         d1 = 21
         d2 = last
       } else if (part.includes('첫째')) {
+        const r = getWeekDateRange(year, m, 1)
         return {
-          ...(() => {
-            const r = getWeekDateRange(year, m, 1)
-            return {
-              startDate: r.startDate,
-              endDate: r.endDate,
-              label: `${year}년 ${m}월 1주차`,
-            }
-          })(),
+          startDate: r.startDate,
+          endDate: r.endDate,
+          label: `${year}년 ${m}월 1주차`,
         }
       } else if (part.includes('둘째')) {
         const r = getWeekDateRange(year, m, 2)
@@ -499,7 +588,6 @@ export function parsePeriodFromQuestion(
     }
   }
 
-  // N월 초부터 중순까지
   const monthSpanPart = text.match(
     /(\d{1,2})\s*월\s*초\s*(?:부터|~|-)\s*(?:중순|말)/,
   )
@@ -515,7 +603,6 @@ export function parsePeriodFromQuestion(
     }
   }
 
-  // N월 N주차 / N월 N주 / N월 둘째 주 / N월 두 번째 주
   const weekOfMonthHit = text.match(
     /(\d{1,2})\s*월\s*(?:(\d)\s*주(?:차)?|(첫째|둘째|셋째|넷째|첫\s*번째|두\s*번째|세\s*번째|네\s*번째)\s*주)/,
   )
@@ -538,6 +625,86 @@ export function parsePeriodFromQuestion(
       }
     }
   }
+
+  // 단일 월: 9월 / 09월 / 9월달 / 9월 실적 (비교용 두 달 표기는 제외)
+  const monthHits = [...text.matchAll(/(\d{1,2})\s*월/g)].map((m) => Number(m[1]))
+  const uniqueMonths = [...new Set(monthHits.filter((m) => m >= 1 && m <= 12))]
+  if (
+    uniqueMonths.length === 1 &&
+    !/(\d{1,2})\s*월\s*\d{1,2}\s*일/.test(text) &&
+    !/(?:과|와|랑|보다)\s*\d{1,2}\s*월|\d{1,2}\s*월\s*(?:과|와|이|랑|보다)/.test(text)
+  ) {
+    const m = uniqueMonths[0]!
+    const startDate = ymd(year, m, 1)
+    let endDate = ymd(year, m, lastDayOfMonth(year, m))
+    // 현재 연·월이면 월말(미래)까지 가정하지 않음
+    if (year === now.getFullYear() && m === now.getMonth() + 1) {
+      endDate = todayStr
+    }
+    return {
+      startDate,
+      endDate,
+      label: `${year}년 ${m}월 (${startDate} ~ ${endDate})`,
+    }
+  }
+
+  // ── 4) 최근 N일/주/개월 (지난주·지난달과 구분) ──
+  const recentWeeks = text.match(/최근\s*(\d+)\s*주/)
+  if (recentWeeks) {
+    const weeks = Number(recentWeeks[1])
+    if (Number.isFinite(weeks) && weeks > 0) {
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const start = new Date(end)
+      start.setDate(start.getDate() - (weeks * 7 - 1))
+      return {
+        startDate: ymd(start.getFullYear(), start.getMonth() + 1, start.getDate()),
+        endDate: todayStr,
+        label: `최근 ${weeks}주`,
+      }
+    }
+  }
+
+  const recentDays = text.match(/최근\s*(\d+)\s*일/)
+  if (recentDays) {
+    const days = Number(recentDays[1])
+    if (Number.isFinite(days) && days > 0) {
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const start = new Date(end)
+      start.setDate(start.getDate() - (days - 1))
+      return {
+        startDate: ymd(start.getFullYear(), start.getMonth() + 1, start.getDate()),
+        endDate: todayStr,
+        label: `최근 ${days}일`,
+      }
+    }
+  }
+  // 「최근 30일」≠「지난달」. 「최근 한 달」은 롤링 ~30일로 통일
+  if (/최근\s*(?:한\s*)?달|최근\s*1\s*개월|최근\s*한달|최근\s*30\s*일/.test(text)) {
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const start = new Date(end)
+    start.setDate(start.getDate() - 29)
+    return {
+      startDate: ymd(start.getFullYear(), start.getMonth() + 1, start.getDate()),
+      endDate: todayStr,
+      label: '최근 30일',
+    }
+  }
+  const recentMonths = text.match(/최근\s*(\d+)\s*개월/)
+  if (recentMonths) {
+    const months = Number(recentMonths[1])
+    if (Number.isFinite(months) && months > 0) {
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const start = new Date(end)
+      start.setMonth(start.getMonth() - months)
+      return {
+        startDate: ymd(start.getFullYear(), start.getMonth() + 1, start.getDate()),
+        endDate: todayStr,
+        label: `최근 ${months}개월`,
+      }
+    }
+  }
+
+  // ── 5) 이번/지난 주 (최근 7일과 다름) ──
   if (/지난\s*달\s*(?:의\s*)?(?:마지막|끝)\s*주|전월\s*(?:마지막|끝)\s*주/.test(text)) {
     const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
     const y = previousMonth.getFullYear()
@@ -552,57 +719,54 @@ export function parsePeriodFromQuestion(
     }
   }
 
-  // 이번 주 / 금주 / 당주 (대비·비교 문장은 비교 파서가 우선)
   if (
-    /(?:이번|금|당)\s*주/.test(text) &&
+    (/(?:이번|금|당)\s*주/.test(text) ||
+      n.includes('이번주') ||
+      n.includes('금주') ||
+      n.includes('당주')) &&
     !/(?:지난|저번|전)\s*주/.test(text.replace(/(?:이번|금|당)\s*주/g, ''))
   ) {
-    const today = ymd(now.getFullYear(), now.getMonth() + 1, now.getDate())
-    const w = getWeekOfMonth(today)
+    const w = getWeekOfMonth(todayStr)
     const m = now.getMonth() + 1
     const y = now.getFullYear()
     const range = getWeekDateRange(y, m, w)
     return {
       startDate: range.startDate,
-      endDate: range.endDate,
+      endDate: range.endDate > todayStr ? todayStr : range.endDate,
       label: `${y}년 ${m}월 ${w}주차(이번 주)`,
     }
   }
 
-  // 지난주 / 전주 / 저번 주
-  if (/(?:지난|저번|전)\s*주/.test(text) && !/(?:이번|금|당)\s*주/.test(text)) {
-    const today = ymd(now.getFullYear(), now.getMonth() + 1, now.getDate())
-    const w = getWeekOfMonth(today)
-    const m = now.getMonth() + 1
-    const y = now.getFullYear()
-    let py = y
-    let pm = m
-    let pw = w - 1
-    if (pw < 1) {
-      pm = m === 1 ? 12 : m - 1
-      py = m === 1 ? y - 1 : y
-      const lastDay = lastDayOfMonth(py, pm)
-      pw = Math.min(5, Math.ceil(lastDay / 7))
-    }
-    const range = getWeekDateRange(py, pm, pw)
-    return {
-      startDate: range.startDate,
-      endDate: range.endDate,
-      label: `${py}년 ${pm}월 ${pw}주차(지난주)`,
-    }
-  }
-
-  // 올해 / 이번 년도 / 금년
-  if (/올해|금년|이번\s*년(?:도)?|금년도/.test(text) && !/\d{1,2}\s*월/.test(text)) {
-    const y = now.getFullYear()
-    return {
-      startDate: ymd(y, 1, 1),
-      endDate: ymd(y, 12, 31),
-      label: `${y}년(올해)`,
+  if (
+    /(?:지난|저번|전)\s*주/.test(text) ||
+    n.includes('지난주') ||
+    n.includes('전주') ||
+    n.includes('저번주')
+  ) {
+    if (!/(?:이번|금|당)\s*주/.test(text)) {
+      const w = getWeekOfMonth(todayStr)
+      const m = now.getMonth() + 1
+      const y = now.getFullYear()
+      let py = y
+      let pm = m
+      let pw = w - 1
+      if (pw < 1) {
+        pm = m === 1 ? 12 : m - 1
+        py = m === 1 ? y - 1 : y
+        const lastDay = lastDayOfMonth(py, pm)
+        pw = Math.min(5, Math.ceil(lastDay / 7))
+      }
+      const range = getWeekDateRange(py, pm, pw)
+      return {
+        startDate: range.startDate,
+        endDate: range.endDate,
+        label: `${py}년 ${pm}월 ${pw}주차(지난주)`,
+      }
     }
   }
 
-  if (/지난\s*달|전월/.test(text)) {
+  // ── 6) 이번/지난 달 (최근 30일과 다름) ──
+  if (/지난\s*달|전월/.test(text) || n.includes('지난달') || n.includes('전월')) {
     const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
     const y = previousMonth.getFullYear()
     const m = previousMonth.getMonth() + 1
@@ -613,193 +777,45 @@ export function parsePeriodFromQuestion(
     }
   }
 
-  if (/이번\s*달|금월|요번\s*달/.test(text)) {
+  if (/이번\s*달|금월|요번\s*달/.test(text) || n.includes('이번달') || n.includes('금월')) {
     const y = now.getFullYear()
     const m = now.getMonth() + 1
     return {
       startDate: ymd(y, m, 1),
-      endDate: ymd(y, m, now.getDate()),
-      label: `${y}년 ${m}월(이번 달)`,
+      endDate: todayStr,
+      label: `${y}년 ${m}월(이번 달 · ${ymd(y, m, 1)} ~ ${todayStr})`,
     }
   }
 
-  // 1월~12월 전체 추이 질문은 연간으로 둠
-  if (/1\s*월\s*[~～\-–—부터까지\s]*12\s*월/.test(text) && /월별|월간|그래프/.test(text)) {
+  // ── 7) 올해 / 작년 / 연도 ──
+  if (/올해|금년|이번\s*년(?:도)?|금년도/.test(text) && !/\d{1,2}\s*월/.test(text)) {
+    const y = now.getFullYear()
+    return {
+      startDate: ymd(y, 1, 1),
+      endDate: todayStr,
+      label: `${y}년(올해 · 1/1~오늘)`,
+    }
+  }
+
+  if (/작년|전년|지난해/.test(text) && !/\d{1,2}\s*월/.test(text)) {
+    const y = now.getFullYear() - 1
+    return {
+      startDate: ymd(y, 1, 1),
+      endDate: ymd(y, 12, 31),
+      label: `${y}년(작년)`,
+    }
+  }
+
+  if (yearFromText && !/\d{1,2}\s*월/.test(text) && !/올해|금년/.test(text)) {
+    const endDate =
+      year === now.getFullYear() ? todayStr : ymd(year, 12, 31)
     return {
       startDate: ymd(year, 1, 1),
-      endDate: ymd(year, 12, 31),
-      label: `${year}년 1월 ~ 12월`,
-    }
-  }
-
-  // 7월 22일부터 28일까지 / 7월22일~7월28일 / 7월 22일에서 28일까지
-  const dayRange = text.match(
-    /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(?:부터|에서|~|-|–|—)\s*(?:(\d{1,2})\s*월\s*)?(\d{1,2})\s*일/,
-  )
-  if (dayRange) {
-    const m1 = Number(dayRange[1])
-    const d1 = Number(dayRange[2])
-    const m2 = Number(dayRange[3] || dayRange[1])
-    const d2 = Number(dayRange[4])
-    if (m1 >= 1 && m1 <= 12 && m2 >= 1 && m2 <= 12 && d1 >= 1 && d2 >= 1) {
-      return {
-        startDate: ymd(year, m1, d1),
-        endDate: ymd(year, m2, d2),
-        label: `${year}년 ${m1}월 ${d1}일 ~ ${m2}월 ${d2}일`,
-      }
-    }
-  }
-
-  // 8월 첫날부터 10일까지 / 8월 1~10일
-  const firstDayTo = text.match(
-    /(\d{1,2})\s*월\s*(?:첫\s*날|1\s*일)\s*(?:부터|~|-)\s*(\d{1,2})\s*일/,
-  )
-  if (firstDayTo) {
-    const m = Number(firstDayTo[1])
-    const d2 = Number(firstDayTo[2])
-    if (m >= 1 && m <= 12 && d2 >= 1) {
-      return {
-        startDate: ymd(year, m, 1),
-        endDate: ymd(year, m, d2),
-        label: `${year}년 ${m}월 1일 ~ ${m}월 ${d2}일`,
-      }
-    }
-  }
-  const monthDayTilde = text.match(
-    /(\d{1,2})\s*월\s*(\d{1,2})\s*[~～\-–—]\s*(\d{1,2})\s*일/,
-  )
-  if (monthDayTilde) {
-    const m = Number(monthDayTilde[1])
-    const d1 = Number(monthDayTilde[2])
-    const d2 = Number(monthDayTilde[3])
-    if (m >= 1 && m <= 12 && d1 >= 1 && d2 >= 1) {
-      return {
-        startDate: ymd(year, m, d1),
-        endDate: ymd(year, m, d2),
-        label: `${year}년 ${m}월 ${d1}일 ~ ${m}월 ${d2}일`,
-      }
-    }
-  }
-
-  // 8/1~8/10 · 8.1~8.10 (연도 생략)
-  const slashRange = text.match(
-    /(\d{1,2})\s*[./]\s*(\d{1,2})\s*(?:부터|~|-|–|—)\s*(\d{1,2})\s*[./]\s*(\d{1,2})/,
-  )
-  if (slashRange && !/(20\d{2})/.test(slashRange[0]!)) {
-    const m1 = Number(slashRange[1])
-    const d1 = Number(slashRange[2])
-    const m2 = Number(slashRange[3])
-    const d2 = Number(slashRange[4])
-    if (m1 >= 1 && m1 <= 12 && m2 >= 1 && m2 <= 12 && d1 >= 1 && d2 >= 1) {
-      return {
-        startDate: ymd(year, m1, d1),
-        endDate: ymd(year, m2, d2),
-        label: `${year}년 ${m1}월 ${d1}일 ~ ${m2}월 ${d2}일`,
-      }
-    }
-  }
-
-  // 2026-07-22 ~ 2026-07-28
-  const isoRange = text.match(
-    /(20\d{2})[./-](\d{1,2})[./-](\d{1,2})\s*(?:부터|~|-|–|—)\s*(?:(20\d{2})[./-])?(\d{1,2})[./-](\d{1,2})/,
-  )
-  if (isoRange) {
-    const y1 = Number(isoRange[1])
-    const m1 = Number(isoRange[2])
-    const d1 = Number(isoRange[3])
-    const y2 = Number(isoRange[4] || isoRange[1])
-    const m2 = Number(isoRange[5])
-    const d2 = Number(isoRange[6])
-    return {
-      startDate: ymd(y1, m1, d1),
-      endDate: ymd(y2, m2, d2),
-      label: `${ymd(y1, m1, d1)} ~ ${ymd(y2, m2, d2)}`,
-    }
-  }
-
-  // 5월부터/에서 7월까지 / 5월~7월 / 5~7월
-  const monthRange = text.match(
-    /(\d{1,2})\s*월\s*(?:부터|에서|~|-|–|—)\s*(\d{1,2})\s*월/,
-  )
-  const monthRangeShort = text.match(/(\d{1,2})\s*[~～\-–—]\s*(\d{1,2})\s*월/)
-  const monthSpan = monthRange ?? monthRangeShort
-  if (monthSpan) {
-    const m1 = Number(monthSpan[1])
-    const m2 = Number(monthSpan[2])
-    // 1월~12월 + 월별 그래프는 연간 추이이므로 제외
-    if (!(m1 === 1 && m2 === 12 && /월별|월간/.test(text))) {
-      if (m1 >= 1 && m1 <= 12 && m2 >= 1 && m2 <= 12) {
-        const startM = Math.min(m1, m2)
-        const endM = Math.max(m1, m2)
-        return {
-          startDate: ymd(year, startM, 1),
-          endDate: ymd(year, endM, lastDayOfMonth(year, endM)),
-          label: `${year}년 ${startM}월 ~ ${endM}월`,
-        }
-      }
-    }
-  }
-
-  // 7월 22일 (단일일)
-  const singleDay = text.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일(?!\s*(?:부터|~|-|–|—))/)
-  if (singleDay && !dayRange) {
-    const m = Number(singleDay[1])
-    const d = Number(singleDay[2])
-    if (m >= 1 && m <= 12 && d >= 1) {
-      return {
-        startDate: ymd(year, m, d),
-        endDate: ymd(year, m, d),
-        label: `${year}년 ${m}월 ${d}일`,
-      }
-    }
-  }
-
-  // 7월 / 7월에 / 7월달 — 서로 다른 월이 여러 개면(범위 미인식 시) 스킵
-  const monthHits = [...text.matchAll(/(\d{1,2})\s*월/g)].map((m) => Number(m[1]))
-  const uniqueMonths = [...new Set(monthHits.filter((m) => m >= 1 && m <= 12))]
-  if (uniqueMonths.length === 1 && !/(\d{1,2})\s*월\s*\d{1,2}\s*일/.test(text)) {
-    const m = uniqueMonths[0]!
-    const startDate = ymd(year, m, 1)
-    const endDate = ymd(year, m, lastDayOfMonth(year, m))
-    return {
-      startDate,
       endDate,
-      label: `${startDate} ~ ${endDate}`,
-    }
-  }
-
-  // compact에만 남은 짧은 표현 (이번주/지난주 등 공백 제거본)
-  if (n.includes('이번주') || n.includes('금주') || n.includes('당주')) {
-    const today = ymd(now.getFullYear(), now.getMonth() + 1, now.getDate())
-    const w = getWeekOfMonth(today)
-    const m = now.getMonth() + 1
-    const y = now.getFullYear()
-    const range = getWeekDateRange(y, m, w)
-    return {
-      startDate: range.startDate,
-      endDate: range.endDate,
-      label: `${y}년 ${m}월 ${w}주차(이번 주)`,
-    }
-  }
-  if (n.includes('지난주') || n.includes('전주') || n.includes('저번주')) {
-    const today = ymd(now.getFullYear(), now.getMonth() + 1, now.getDate())
-    const w = getWeekOfMonth(today)
-    const m = now.getMonth() + 1
-    const y = now.getFullYear()
-    let py = y
-    let pm = m
-    let pw = w - 1
-    if (pw < 1) {
-      pm = m === 1 ? 12 : m - 1
-      py = m === 1 ? y - 1 : y
-      const lastDay = lastDayOfMonth(py, pm)
-      pw = Math.min(5, Math.ceil(lastDay / 7))
-    }
-    const range = getWeekDateRange(py, pm, pw)
-    return {
-      startDate: range.startDate,
-      endDate: range.endDate,
-      label: `${py}년 ${pm}월 ${pw}주차(지난주)`,
+      label:
+        year === now.getFullYear()
+          ? `${year}년 (1/1~오늘)`
+          : `${year}년`,
     }
   }
 
@@ -872,7 +888,7 @@ export function parseComparePeriods(
     }
   }
 
-  // 월간 비교
+  // 월간 비교 (지난달↔이번 달)
   if (includesAny(n, ['지난달', '전월', '이번달', '금월'])) {
     const cy = now.getFullYear()
     const cm = now.getMonth() + 1
@@ -891,6 +907,46 @@ export function parseComparePeriods(
         label: `${py}년 ${pm}월(지난달)`,
       },
       label: '전월 대비 이번 달',
+    }
+  }
+
+  // 특정 월 비교: "8월과 9월" / "9월이 8월보다" (합치지 않고 각각 집계)
+  const yearHit = text.match(/(20\d{2})\s*년/)
+  const year = yearHit ? Number(yearHit[1]) : now.getFullYear()
+  const monthVs =
+    text.match(
+      /(\d{1,2})\s*월\s*(?:과|와|랑|,)\s*(\d{1,2})\s*월/,
+    ) ??
+    text.match(
+      /(\d{1,2})\s*월\s*(?:이|은|가)?\s*(\d{1,2})\s*월\s*보다/,
+    )
+  if (monthVs) {
+    const a = Number(monthVs[1])
+    const b = Number(monthVs[2])
+    if (a >= 1 && a <= 12 && b >= 1 && b <= 12 && a !== b) {
+      // "9월이 8월보다" → current=9, previous=8
+      const currentM = /보다/.test(text) ? a : Math.max(a, b)
+      const previousM = /보다/.test(text) ? b : Math.min(a, b)
+      const clipEnd = (m: number) => {
+        const end = ymd(year, m, lastDayOfMonth(year, m))
+        if (year === now.getFullYear() && m === now.getMonth() + 1) {
+          return todayYmd(now)
+        }
+        return end
+      }
+      return {
+        current: {
+          startDate: ymd(year, currentM, 1),
+          endDate: clipEnd(currentM),
+          label: `${year}년 ${currentM}월`,
+        },
+        previous: {
+          startDate: ymd(year, previousM, 1),
+          endDate: clipEnd(previousM),
+          label: `${year}년 ${previousM}월`,
+        },
+        label: `${year}년 ${previousM}월 대비 ${currentM}월`,
+      }
     }
   }
 
@@ -922,7 +978,7 @@ function compact(text: string) {
   return text.toLowerCase().replace(/\s+/g, '')
 }
 
-/** 현장 오타·동의어를 표준 표현으로 정규화 */
+/** 현장 오타·동의어를 표준 표현으로 정규화 (VINA 4차: 자연어→지표 매핑) */
 function normalizeQuestionText(raw: string): string {
   return raw
     .replace(/탑\s*(\d+)/gi, 'TOP$1')
@@ -936,12 +992,23 @@ function normalizeQuestionText(raw: string): string {
     .replace(/지난주/g, '지난 주')
     .replace(/폐기\s*비(?![용가])/g, '폐기비용')
     .replace(/불량\s*퍼센트/g, '부적합률')
-    .replace(/불량\s*비율/g, '부적합률')
+    .replace(/불량\s*비율|문제\s*비율/g, '부적합률')
     .replace(/불량율/g, '부적합률')
     .replace(/불량률/g, '부적합률')
     .replace(/ng\s*율|ng율|ng률/gi, '부적합률')
-    .replace(/검사\s*수량|검사한\s*수량|검사량/g, '검수량')
+    .replace(/(\d{1,2})\s*월\s*달/g, '$1월')
+    .replace(/(\d{1,2})\s*월\s*(?:데이터|실적)/g, '$1월')
+    .replace(
+      /검사\s*수량|검사한\s*수량|확인한\s*수량|검사\s*량|검사량/g,
+      '검수량',
+    )
+    .replace(/불량\s*발생\s*수량|문제\s*수량|불량\s*수량/g, '부적합수량')
     .replace(/품목번호|제품번호|모델명|품목(?!\w)|부품(?!\w)/g, '품번')
+    .replace(/제품별|모델별/g, '품번별')
+    .replace(/\bITEM\b/gi, '품번')
+    .replace(/사람별|검사\s*담당자|누가\s*검사/g, '검사자')
+    .replace(/불량\s*종류|불량명|무슨\s*불량|어떤\s*불량/g, '불량유형')
+    .replace(/검사\s*기록|데이터\s*행/g, '검사기록')
     .replace(/불량품|ng(?![가-힣a-z])/gi, '부적합')
     .replace(/본사\s*공장/g, '본사')
     .replace(/구지공장|구지(?!\w)/g, '2공장')
@@ -1345,7 +1412,11 @@ function topN(text: string, fallback = 5, max = 50) {
   const explicit =
     text.match(/(?:top|worst|Worst|WORST|하위)\s*(\d+)/i) ??
     text.match(/상위\s*(\d+)/i) ??
-    text.match(/(?:가장|제일)\s*(?:높은|많은|큰|낮은|적은)\s*(\d+)\s*개/i) ??
+    text.match(
+      /(?:가장|제일)\s*(?:높은|많은|큰|낮은|적은|심한)\s*(\d+)\s*개/i,
+    ) ??
+    text.match(/(?:심한|많은)\s*(\d+)\s*개/i) ??
+    text.match(/불량\s*(?:많은|심한)\s*(\d+)\s*개/i) ??
     text.match(/(\d+)\s*까지/)
   if (explicit) {
     const n = Number(explicit[1])
@@ -1747,10 +1818,12 @@ function mergeProductRows(lists: ProductRow[]): ProductRow[] {
     const pass = prev.pass + p.pass
     map.set(p.name, {
       ...prev,
+      count: (prev.count ?? 0) + (p.count ?? 0),
       qty,
       fail,
       pass,
       scrapCost: roundWon(prev.scrapCost + p.scrapCost),
+      // 합산 후 재계산 (행별 률 평균 금지)
       failRate: qty > 0 ? Math.round((fail / qty) * 1_000_000) : 0,
       failTotal: (prev.failTotal ?? prev.fail) + (p.failTotal ?? p.fail),
       type: prev.type === p.type ? prev.type : `${prev.type}·${p.type}`,
@@ -1822,6 +1895,8 @@ function barFromProducts(
       ? 'ppm'
       : metric === 'qty'
         ? 'qty'
+        : metric === 'count'
+          ? 'count'
         : metric === 'fail'
           ? 'count'
           : 'won'
@@ -1832,7 +1907,9 @@ function barFromProducts(
         ? '검수량'
         : metric === 'fail'
           ? '부적합수량'
-          : '폐기비용'
+          : metric === 'count'
+            ? '검사 기록'
+            : '폐기비용'
   return {
     type: 'bar',
     title,
@@ -1848,7 +1925,9 @@ function barFromProducts(
             ? p.qty
             : metric === 'fail'
               ? p.fail
-              : p.failRate,
+              : metric === 'count'
+                ? p.count ?? 0
+                : p.failRate,
     })),
   }
 }
@@ -1984,18 +2063,23 @@ function findProductName(n: string, products: string[]): string | null {
   return hits[0] ?? null
 }
 
+/** 품번 비교용 compact — 공백·하이픈 무시 (YF9820 = YF 9820) */
+function productCompact(text: string) {
+  return itemMatchKey(text).toLowerCase()
+}
+
 /** 질문에 언급된 품번을 모두 찾습니다. (긴 품번 우선, 중복·부분일치 제거) */
 function findProductNames(n: string, products: string[]): string[] {
   // top10 안의 p10 등 오탐 방지
-  let search = n.replace(/top\s*\d+/gi, ' ')
+  let search = productCompact(n.replace(/top\s*\d+/gi, ' '))
   const sorted = [...products]
     .filter(Boolean)
-    .sort((a, b) => compact(b).length - compact(a).length)
+    .sort((a, b) => productCompact(b).length - productCompact(a).length)
   const hits: string[] = []
   const seen = new Set<string>()
 
   for (const p of sorted) {
-    const c = compact(p)
+    const c = productCompact(p)
     if (c.length < 3 || !search.includes(c) || seen.has(c)) continue
     hits.push(p)
     seen.add(c)
@@ -2003,17 +2087,20 @@ function findProductNames(n: string, products: string[]): string[] {
     search = search.split(c).join(' ')
   }
 
-  // NEOR GI000처럼 공백 분리 코드 (아직 매칭 안 된 경우)
+  // NEOR GI000처럼 공백 분리 코드 — 부분일치(includes) 금지, matchKey 정확 일치만
   if (!hits.length) {
     const codeTokens = (
-      n.match(/[a-z]+[0-9][a-z0-9]*|[0-9]+[a-z]+[a-z0-9]*/gi) ?? []
-    ).map((t) => t.toLowerCase())
+      n.match(/[a-z]+[0-9][a-z0-9\-]*|[0-9]+[a-z]+[a-z0-9\-]*/gi) ?? []
+    ).map((t) => productCompact(t))
     if (codeTokens.length >= 1) {
-      const hit = sorted.find((p) => {
-        const c = compact(p)
-        return codeTokens.every((t) => c.includes(t))
-      })
+      const joined = codeTokens.join('')
+      const hit = sorted.find((p) => productCompact(p) === joined)
       if (hit) hits.push(hit)
+      else if (codeTokens.length === 1) {
+        const only = codeTokens[0]!
+        const exact = sorted.find((p) => productCompact(p) === only)
+        if (exact) hits.push(exact)
+      }
     }
   }
 
@@ -2045,6 +2132,7 @@ function tryAnswerNamedProductCompare(
   n: string,
   analytics: Analytics,
   periodNote: string,
+  vinaMode = false,
 ): AiBlock[] | null {
   const catalog = [
     ...new Set([
@@ -2133,10 +2221,16 @@ function tryAnswerNamedProductCompare(
   }
 
   if (!rows.length) {
+    const codes = bareCodes.join(', ') || named.join(', ')
     return [
       textBlock(
-        `지정한 품번(${bareCodes.join(', ') || named.join(', ')})의 데이터가 없습니다. (${periodNote})`,
+        vinaMode
+          ? `VINA DATA에서 해당 품번(${codes})을 찾을 수 없습니다. (${periodNote})`
+          : `지정한 품번(${codes})의 데이터가 없습니다. (${periodNote})`,
         missing.length ? `미확인: ${missing.join(', ')}` : '',
+        vinaMode
+          ? '존재하지 않는 데이터를 추측하지 않으며, 기존 검사 DATA에서 임의로 검색하지 않습니다.'
+          : '',
       ),
     ]
   }
@@ -2689,14 +2783,18 @@ function buildProductDrillDown(
   priorQuestion: string,
   rankLabel?: string,
 ): AiBlock[] {
+  const rateLine =
+    product.qty > 0
+      ? `검수량 ${product.qty.toLocaleString()} EA · 부적합 ${product.fail.toLocaleString()} · 부적합률 ${formatPpm(product.failRate)} (합산 후 계산)`
+      : `검수량 0 · 부적합 ${product.fail.toLocaleString()} · 부적합률 계산 불가(검수량 0으로 나누지 않음)`
   const blocks: AiBlock[] = [
     textBlock(
       rankLabel
         ? `${rankLabel} ${product.name}(${product.type}) 품질 상세입니다. (${periodNote})`
         : `${product.name}(${product.type}) 품질 상세입니다. (${periodNote})`,
       `직전 질문: ${priorQuestion}`,
-      `검수량 ${product.qty.toLocaleString()} EA · 부적합 ${product.fail.toLocaleString()} · 부적합률 ${formatPpm(product.failRate)}`,
-      `폐기비용 ${formatWon(product.scrapCost)} · 주요 불량 ${product.mainDefect || '-'}`,
+      rateLine,
+      `검사 기록 ${(product.count ?? 0).toLocaleString()}건 · 폐기비용 ${formatWon(product.scrapCost)} · 주요 불량 ${product.mainDefect || '-'}`,
       product.defectSummary && product.defectSummary !== '-'
         ? `불량 내역: ${product.defectSummary}`
         : '',
@@ -2748,18 +2846,50 @@ function hasExplicitQtySortIntent(n: string): boolean {
 }
 
 function inferMetricFromText(n: string): AiMetric | null {
-  if (includesAny(n, ['폐기', '비용', '폐기금액', '폐기비용'])) return 'scrapCost'
+  if (includesAny(n, ['폐기', '비용', '폐기금액', '폐기비용', 'ng금액'])) {
+    return 'scrapCost'
+  }
+
+  // 검사 기록/건수(행 수) ≠ 검수량 — 6차 교육
+  if (
+    includesAny(n, [
+      '검사기록',
+      '검사건수',
+      '데이터건수',
+      '데이터행',
+      '행수',
+      '기록이가장많',
+      '기록이많은',
+      '건수가많',
+      '건수가가장많',
+    ]) ||
+    (/검사\s*기록|데이터\s*건수|행\s*개수/.test(n) &&
+      includesAny(n, ['많', 'top', '상위']))
+  ) {
+    return 'count'
+  }
+
   // 후속: "이전 부적합률 TOP5에서 검수량 순으로" — 부적합 언급이 있어도 검수량 정렬 우선
   if (hasExplicitQtySortIntent(n)) return 'qty'
-  // "검수량 10000ea 이상만"은 필터이지 검수량 순 정렬이 아님
+
+  // "가장 많이 검사" / 검수량 — 불량·검사기록과 혼동 금지
   if (
-    includesAny(n, ['검수량', '검사량', '검사실적']) &&
-    !includesAny(n, ['부적합', '불량']) &&
-    !includesAny(n, ['이상'])
+    includesAny(n, [
+      '많이검사',
+      '검사를가장많이',
+      '검사많이',
+      '검수를가장많이',
+      '검수많이',
+      '얼마나검사',
+    ]) ||
+    (includesAny(n, ['검수량', '검사량', '검사실적']) &&
+      !includesAny(n, ['부적합', '불량', '기록', '건수']) &&
+      !includesAny(n, ['이상']))
   ) {
     return 'qty'
   }
-  // "불량 많이 나온" / "부적합 수량" → 부적합수량 (건수)
+
+  // 부적합수량: "불량이 가장 많이 발생/나온" (건수)
   if (
     includesAny(n, [
       '부적합수량',
@@ -2767,26 +2897,27 @@ function inferMetricFromText(n: string): AiMetric | null {
       '불량수량',
       '불량수',
       '발생수량',
-      '많이난',
-      '많이나온',
       '많이발생',
-    ]) ||
-    (includesAny(n, [
-      '많이나는',
-      '불량이많은',
-      '부적합이많은',
-      '불량많은',
-      '문제많은',
-      '문제많',
-    ]) &&
-      !includesAny(n, ['부적합률', '부적합율', '불량률', '불량율']))
+      '가장많이발생',
+      '제일많이발생',
+      '많이나온',
+      '가장많이나온',
+      '제일많이나온',
+      '많이난',
+    ])
   ) {
     return 'fail'
   }
-  // "불량 심한"은 애매 → clarify에서 확인 (지표 추론하지 않음)
-  if (includesAny(n, ['심한', '불량심한']) && !includesAny(n, ['많', '률', '율'])) {
+
+  // "문제 많은"만 있고 률/수량 미지정 → clarify (임의 지표 금지)
+  if (
+    includesAny(n, ['문제많은', '문제많', '문제있는품번']) &&
+    !includesAny(n, ['부적합률', '부적합율', '불량률', '부적합수량', '불량수량'])
+  ) {
     return null
   }
+
+  // 부적합률: 명시 + "불량 심한 품번" + "불량이 많이 나는"(발생≠나는)
   if (
     includesAny(n, [
       '부적합률',
@@ -2794,16 +2925,30 @@ function inferMetricFromText(n: string): AiMetric | null {
       '불량률',
       '불량율',
       'worst',
+      '많이나는',
+      '불량이많이나는',
+      '불량많이나는',
     ])
   ) {
     return 'failRate'
   }
+  // "불량 심한 품번/TOP" → 부적합률 (문맥이 품번 순위일 때)
+  if (
+    includesAny(n, ['심한', '불량심한', '제일심한', '가장심한']) &&
+    (includesAny(n, ['품번', '제품', '모델', 'top', '상위', 'worst']) ||
+      includesAny(n, ['높은']))
+  ) {
+    return 'failRate'
+  }
+
   if (
     includesAny(n, ['부적합', '불량']) &&
     !includesAny(n, ['불량유형', '불량종류'])
   ) {
     // "부적합 높은" = 률, "부적합 많은" = 수량
-    if (includesAny(n, ['많은', '많이', '수량'])) return 'fail'
+    if (includesAny(n, ['많은', '많이', '수량']) && !includesAny(n, ['높은', '심한'])) {
+      return 'fail'
+    }
     return 'failRate'
   }
   return null
@@ -2816,22 +2961,35 @@ function metricLabelOf(metric: AiMetric) {
       ? '폐기비용'
       : metric === 'fail'
         ? '부적합수량'
-        : '부적합률'
+        : metric === 'count'
+          ? '검사 기록(건수)'
+          : '부적합률'
 }
 
 function productMetricValue(p: ProductRow, metric: AiMetric) {
   if (metric === 'qty') return p.qty
   if (metric === 'scrapCost') return p.scrapCost
   if (metric === 'fail') return p.fail
+  if (metric === 'count') return p.count ?? 0
   return p.failRate
 }
 
+/**
+ * TOP 정렬: 주요 지표 → 검수량 → 품번 (6차 교육 동률 처리)
+ * 부적합률 TOP에서는 검수량 0(계산 불가) 행을 제외한다.
+ */
 function sortByMetric(rows: ProductRow[], metric: AiMetric, ascending = false) {
-  return [...rows].sort((a, b) =>
-    ascending
-      ? productMetricValue(a, metric) - productMetricValue(b, metric)
-      : productMetricValue(b, metric) - productMetricValue(a, metric),
-  )
+  const list =
+    metric === 'failRate' && !ascending
+      ? rows.filter((p) => p.qty > 0)
+      : [...rows]
+  return list.sort((a, b) => {
+    const av = productMetricValue(a, metric)
+    const bv = productMetricValue(b, metric)
+    if (av !== bv) return ascending ? av - bv : bv - av
+    if (a.qty !== b.qty) return ascending ? a.qty - b.qty : b.qty - a.qty
+    return a.name.localeCompare(b.name, 'ko')
+  })
 }
 
 /** 지정 품번을 기간 집계 후 ProductRow로 반환 (질문 순서 유지) */
@@ -2853,6 +3011,7 @@ function productRowsForNames(
       id: name,
       name,
       type: '-',
+      count: 0,
       qty: 0,
       pass: 0,
       fail: 0,
@@ -5128,10 +5287,64 @@ function splitQueryParts(q: string): string[] {
 
 function clarifyAmbiguousQuestion(text: string, n: string): AiBlock[] | null {
   const trimmed = text.trim()
-  // ── 애매한 품질 표현 (지표 미지정) ──
+
+  // ── 종료일만 있고 시작일 없음 ("9월 15일까지") — 5차 교육 ──
+  if (
+    /(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*까지/.test(text) &&
+    !/(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*(?:부터|에서)/.test(text) &&
+    !/(\d{1,2})\s*월\s*(\d{1,2})\s*일\s*[~～\-–—]\s*(\d{1,2})\s*일/.test(text)
+  ) {
+    return [
+      textBlock(
+        '시작일은 언제부터 볼까요?',
+        '예: "VINA 9월 1일부터 15일까지 검수량" / "VINA 9월 전체 검수량"',
+      ),
+    ]
+  }
+
+  // ── 단일 품번 + TOP N (무엇을 순위 매길지 불명) — TEST 414 ──
+  {
+    const codes = extractMentionedProductCodes(text)
+    const wantsTop =
+      /(?:top|worst)\s*\d+/i.test(text) ||
+      /상위\s*\d+/.test(text) ||
+      /\d+\s*개/.test(text)
+    if (
+      codes.length === 1 &&
+      wantsTop &&
+      !includesAny(n, [
+        '검사자',
+        '검사원',
+        '불량유형',
+        '불량종류',
+        '설비',
+        '금형',
+        '품번별',
+        '제품별',
+      ]) &&
+      includesAny(n, ['검수량', '검사량', '부적합', '불량', '폐기'])
+    ) {
+      return [
+        textBlock(
+          `"${codes[0]}"은 단일 품번이라 TOP 순위 대상이 모호합니다.`,
+          '검사자 TOP을 원하시면 예: "VINA YF9820을 가장 많이 검사한 검사자 TOP5"',
+          '불량유형 TOP이면 예: "VINA YF9820 불량유형 TOP5"',
+        ),
+      ]
+    }
+  }
+
+  // "불량 심한 품번 TOP5" 등 — 품번 순위 문맥이면 부적합률로 바로 분석 (확인 생략)
+  const severeProductRanking =
+    (/불량\s*심한|심한\s*(?:품번|제품)|제일\s*심한|가장\s*심한/.test(text) ||
+      includesAny(n, ['불량심한', '제일심한', '가장심한'])) &&
+    (includesAny(n, ['품번', '제품', '모델', 'top', '상위', 'worst']) ||
+      /\d+\s*개/.test(text))
+  if (severeProductRanking) return null
+
+  // ── 애매한 품질 표현 (지표 미지정) — "문제 많은" 등 ──
   if (
     includesAny(n, [
-      '불량심한',
       '문제있는품번',
       '상태안좋은',
       '품질안좋은',
@@ -5139,29 +5352,39 @@ function clarifyAmbiguousQuestion(text: string, n: string): AiBlock[] | null {
       '제일문제',
       '제일안좋',
       '뭐가제일안',
-      '요즘불량많이',
-      '불량많이나오는',
       '문제많은품번',
+      '문제많은',
       '요즘상태',
       '상태어때',
     ]) ||
-    /^(?:불량\s*심한\s*(?:거|것)?|문제\s*있는\s*품번|상태\s*안\s*좋은|품질\s*안\s*좋은|뭐가\s*제일\s*(?:문제|안\s*좋)|요즘\s*(?:불량|상태)|문제\s*있는\s*거)/i.test(
+    /^(?:문제\s*있는\s*품번|상태\s*안\s*좋은|품질\s*안\s*좋은|뭐가\s*제일\s*(?:문제|안\s*좋)|요즘\s*(?:상태)|문제\s*있는\s*거|문제\s*많은\s*품번)/i.test(
       trimmed,
     ) ||
-    (/불량\s*심한/.test(text) &&
-      !includesAny(n, ['부적합률', '부적합수량', '불량수량', '불량률']) &&
-      !includesAny(n, ['갑자기', '늘어', '급증'])) ||
     (/문제\s*많/.test(text) &&
-      !includesAny(n, ['부적합률', '부적합수량', '불량수량']))
+      !includesAny(n, ['부적합률', '부적합수량', '불량수량', '불량률']))
   ) {
-    // "갑자기 늘어난" 등은 이상치/증감 분기로
     if (includesAny(n, ['갑자기', '급증', '늘어난', '평소보다', '스파이크'])) {
       return null
     }
     return [
       textBlock(
-        '부적합수량 기준으로 볼까요, 부적합률 기준으로 볼까요?',
-        '예: "부적합수량 많은 품번 TOP10" / "부적합률 높은 품번 TOP10" / "이번 주 WORST5"',
+        '불량률 기준으로 볼까요, 아니면 불량 수량 기준으로 볼까요?',
+        '예: "부적합률 높은 품번 TOP10" / "부적합수량 많은 품번 TOP10"',
+      ),
+    ]
+  }
+
+  // "불량 심한"만 있고 대상·TOP이 없으면 확인
+  if (
+    (/불량\s*심한/.test(text) || includesAny(n, ['불량심한'])) &&
+    !includesAny(n, ['부적합률', '부적합수량', '불량수량', '불량률', '품번', '제품']) &&
+    !includesAny(n, ['갑자기', '늘어', '급증']) &&
+    !/\d+\s*개|top\s*\d+/i.test(text)
+  ) {
+    return [
+      textBlock(
+        '불량률 기준으로 볼까요, 아니면 불량 수량 기준으로 볼까요?',
+        '예: "VINA 불량 심한 품번 TOP5" (부적합률) / "VINA 불량 많이 발생한 품번 TOP5" (부적합수량)',
       ),
     ]
   }
@@ -5344,13 +5567,166 @@ function answerOne(
   priorContext?: AiConversationContext | null,
   defaultPeriod: AiQueryPeriod | null = null,
   now = new Date(),
+  /** VINA DATA 전용: 공장(본사/2공장) 그룹 필터를 쓰지 않음 */
+  forceAllGroups = false,
+  /** 기존 검사 DATA 품번 목록 — VINA 정규화 연결·사진용 (원본과 별도) */
+  linkCatalog: string[] | null = null,
 ): AiBlock[] {
   const text = normalizeQuestionText(q.trim())
   const n = compact(text)
   if (!text) return [textBlock('질문을 입력하세요.')]
 
+  const crossCatalog = [
+    ...new Set([
+      ...(linkCatalog ?? []),
+      ...records.map((r) => r.product).filter(Boolean),
+    ]),
+  ]
+
+  // ── 품번 표기 동일 여부 (VINA 조회 없이 itemMatchKey로 판단) ──
+  if (
+    includesAny(n, ['같은품번', '동일품번', '동일한품번', '같은거야']) ||
+    /같은\s*품번|동일\s*품번|같은\s*(거야|거\s*야|건가)/.test(text)
+  ) {
+    const codes =
+      text.match(/[A-Za-z][A-Za-z0-9\-]*(?:\s+[A-Za-z0-9\-]+)?/g) ?? []
+    const pair = codes
+      .map((c) => c.trim())
+      .filter((c) => /[0-9]/.test(c) && productCompact(c).length >= 3)
+      .slice(0, 2)
+    if (pair.length >= 2) {
+      const [a, b] = pair
+      const same = sameItemMatchKey(a, b)
+      const na = normalizeVinaItem(a)
+      const nb = normalizeVinaItem(b)
+      return [
+        textBlock(
+          same
+            ? `"${a}"와 "${b}"는 표기만 다르고 동일 품번으로 판단합니다.`
+            : `"${a}"와 "${b}"는 서로 다른 품번으로 판단합니다.`,
+          `원본 유지 · 매칭 KEY: ${itemMatchKey(a) || '-'} · ${itemMatchKey(b) || '-'}`,
+          na.mapped || nb.mapped
+            ? `정규화 참고: ${na.displayItem} / ${nb.displayItem}`
+            : '',
+        ),
+      ]
+    }
+  }
+
+  // ── VINA → 기존 품번 정규화·매칭 (3차 교육) ──
+  if (
+    forceAllGroups &&
+    (includesAny(n, ['기존품번', '기존데이터품번', '대응하는품번']) ||
+      /기존\s*품번/.test(text) ||
+      (includesAny(n, ['기존']) &&
+        includesAny(n, ['품번', '뭐야', '찾아줘', '알려줘']))) &&
+    (includesAny(n, ['품번', 'item']) ||
+      extractMentionedProductCodes(text).length > 0)
+  ) {
+    const code =
+      extractMentionedProductCodes(text)[0] ??
+      text.match(/[A-Za-z][A-Za-z0-9\-]*(?:\s+[A-Za-z0-9\-]+)?/)?.[0]
+    if (code) {
+      const catalog = linkCatalog?.length ? linkCatalog : crossCatalog
+      const match = matchVinaItemToCatalog(code.trim(), catalog)
+      if (match.status === 'MATCHED') {
+        return [
+          textBlock(
+            `원본 ITEM: ${match.originalItem}`,
+            `정규화 ITEM: ${match.normalizedItem}${match.mapped ? ' (변환 규칙 적용)' : ''}`,
+            `기존 DATA 품번: ${match.matchedItem} · 상태 MATCHED`,
+            '원본 VINA 품번은 변경하지 않습니다. 정규화는 검색·연결용입니다.',
+          ),
+        ]
+      }
+      if (match.status === 'AMBIGUOUS') {
+        return [
+          textBlock(
+            `품번 "${match.originalItem}"은 여러 후보가 있어 하나로 확정할 수 없습니다. (AMBIGUOUS)`,
+            `후보: ${match.candidates.join(', ')}`,
+            '임의로 하나를 선택하지 않습니다. 정확한 품번을 알려 주세요.',
+          ),
+        ]
+      }
+      return [
+        textBlock(
+          `원본 ITEM: ${match.originalItem}`,
+          match.mapped
+            ? `정규화 ITEM: ${match.normalizedItem}`
+            : '정의된 변환 규칙·정확 매칭으로 기존 품번을 찾지 못했습니다. (NOT_FOUND)',
+          '비슷하다는 이유로 다른 품번에 연결하지 않습니다.',
+        ),
+      ]
+    }
+  }
+
+  // ── 사진 질문 — 정확 매칭만, 다른 품번 사진 금지 ──
+  if (includesAny(n, ['사진', '이미지', 'photo'])) {
+    const mentioned = extractMentionedProductCodes(text)
+    const looseCode = text.match(
+      /\b[A-Za-z]{1,8}[\-]?[0-9]{2,}[A-Za-z0-9\-]*\b/,
+    )?.[0]
+    const code = mentioned[0] ?? looseCode
+    if (code) {
+      const photoCatalog = linkCatalog?.length
+        ? linkCatalog
+        : crossCatalog
+      const match = matchVinaItemToCatalog(code.trim(), photoCatalog)
+      if (match.status === 'AMBIGUOUS') {
+        return [
+          textBlock(
+            `품번 "${match.originalItem}" 사진: 후보가 여러 개라 연결하지 않습니다. (AMBIGUOUS)`,
+            `후보: ${match.candidates.join(', ')}`,
+            '부분·유사 일치로 다른 품번 사진을 보여주지 않습니다.',
+          ),
+        ]
+      }
+      if (match.status === 'NOT_FOUND' || match.status === 'INVALID') {
+        // 부분 문자열(YF98 등)로 여러 품번이 잡히는지 검사
+        const mk = itemMatchKey(code)
+        const prefixHits = photoCatalog.filter((p) => {
+          const pk = itemMatchKey(p)
+          return pk.startsWith(mk) && pk !== mk
+        })
+        if (prefixHits.length > 0 || mk.length < 5) {
+          return [
+            textBlock(
+              `품번 "${code}"은 정확한 품번으로 확정할 수 없어 사진을 연결하지 않습니다.`,
+              prefixHits.length
+                ? `부분 일치 후보 예: ${prefixHits.slice(0, 5).join(', ')}`
+                : '',
+              '부분 문자열만으로 품번·사진을 선택하지 않습니다.',
+            ),
+          ]
+        }
+        return [
+          textBlock(
+            `품번 "${normalizeVinaItem(code).displayItem || code}"에 연결된 기존 품번 사진이 없습니다.`,
+            '다른 품번 사진을 추측해 보여주지 않습니다. (사진 없음)',
+          ),
+        ]
+      }
+      // MATCHED — 검사 기록 유무와 무관하게 기존 사진 연결 안내
+      const vinaHit = records.find((r) =>
+        sameItemMatchKey(r.product, match.matchedItem || match.normalizedItem),
+      )
+      return [
+        textBlock(
+          `원본: ${match.originalItem} → 정규화/연결: ${match.matchedItem} (MATCHED)`,
+          `사진은 기존 품번 "${match.matchedItem}" 상세의 제품 사진으로 확인하세요.`,
+          forceAllGroups && !vinaHit
+            ? 'VINA 검사 기록과 별도로, 동일 품번 사진만 기존 DATA에서 연결합니다.'
+            : '사진은 복사·신규 생성 없이 기존 product_photos에 연결합니다.',
+          `매칭 KEY: ${match.matchKey}`,
+        ),
+      ]
+    }
+  }
+
   const limit = topN(text)
-  const { groups, grommetOverall } = detectGroups(n)
+  const { groups, grommetOverall } = forceAllGroups
+    ? { groups: [] as typeof GROUP_ALIASES, grommetOverall: false }
+    : detectGroups(n)
   const questionPeriod = parsePeriodFromQuestion(text, records, now)
   const period =
     questionPeriod ?? defaultPeriod ?? periodForAllRecords(records)
@@ -5361,6 +5737,31 @@ function answerOne(
   const ascending = wantsAscendingSort(n, text)
   const filters = parseQueryFilters(text, n)
   const filterNotes = filtersNote(filters)
+
+  // ── VINA 2차 교육: 없는 컬럼·지표는 추측하지 않음 ──
+  if (forceAllGroups) {
+    const unsupported = vinaUnsupportedRequestMessage(n, text)
+    if (unsupported) {
+      return [
+        textBlock(
+          unsupported,
+          'VINA DATA에 실제 존재하는 컬럼(ITEM·사원명·검사수량·NG수량·Work Day 등)만 기준으로 분석합니다.',
+        ),
+      ]
+    }
+    const scrapAsked =
+      includesAny(n, ['폐기', '폐기비용', '폐기금액', 'ng금액', 'ng비용']) &&
+      (includesAny(n, ['top', '상위', '높은', '알려', '보여', '순위', 'worst']) ||
+        includesAny(n, ['비용']))
+    if (scrapAsked && !vinaHasScrapCostData(records)) {
+      return [
+        textBlock(
+          'VINA DATA에는 폐기비용을 계산할 수 있는 필요한 데이터가 없습니다.',
+          'NG금액·단가가 없으면 기존 검사 DATA의 폐기비용을 VINA처럼 사용하지 않습니다.',
+        ),
+      ]
+    }
+  }
 
   // ── 데이터 품질·이상값 (데이터 유무 질문보다 우선) ──
   if (
@@ -5449,9 +5850,13 @@ function answerOne(
     if (!ok) {
       return [
         textBlock(
-          `해당 조건에는 조회 가능한 데이터가 없습니다.`,
+          forceAllGroups
+            ? '해당 기간의 VINA 검사 데이터가 없습니다.'
+            : '해당 조건에는 조회 가능한 데이터가 없습니다.',
           `${periodNote} · 범위: ${scope}`,
-          '다른 기간·공장으로 임의 대체하지 않습니다. (임의 데이터는 생성하지 않습니다.)',
+          forceAllGroups
+            ? 'VINA DATA에 없는 기간을 다른 출처로 채우지 않습니다.'
+            : '다른 기간·공장으로 임의 대체하지 않습니다. (임의 데이터는 생성하지 않습니다.)',
         ),
       ]
     }
@@ -5480,12 +5885,16 @@ function answerOne(
   ) {
     return [
       textBlock(
-        `해당 기간에는 조회 가능한 데이터가 없습니다.`,
+        forceAllGroups
+          ? '해당 기간의 VINA 검사 데이터가 없습니다.'
+          : '해당 기간에는 조회 가능한 데이터가 없습니다.',
         `요청 기간: ${questionPeriod.label}`,
         groups.length
           ? `범위: ${groups.map((g) => g.label).join(', ')}`
           : '',
-        '다른 기간의 데이터를 대신 보여주지 않습니다.',
+        forceAllGroups
+          ? '다른 기간·기존 검사 DATA로 대체하지 않습니다.'
+          : '다른 기간의 데이터를 대신 보여주지 않습니다.',
       ),
     ]
   }
@@ -6986,6 +7395,7 @@ function answerOne(
           id: key,
           name: found?.name ?? key,
           type: found?.type ?? '',
+          count: found?.count ?? 0,
           qty: avgQty,
           fail: avgFail,
           pass: Math.max(0, avgQty - avgFail),
@@ -7229,6 +7639,7 @@ function answerOne(
       n,
       scopedAnalytics,
       periodNote,
+      forceAllGroups,
     )
     if (namedCompare) return namedCompare
   }
@@ -8201,8 +8612,41 @@ function answerOne(
     }
   }
 
+  // ── VINA: 특정 품번이 없으면 기존 DATA로 넘어가지 않음 (정확 매칭만) ──
+  if (forceAllGroups) {
+    const codes = extractMentionedProductCodes(text)
+    if (
+      codes.length === 1 &&
+      includesAny(n, ['결과', '상세', '알려', '검사', '부적합', '검수', '보여', '분석']) &&
+      !includesAny(n, ['기존품번', '사진', '이미지', 'photo'])
+    ) {
+      const catalog = scopedAnalytics.filterOptions.products
+      const code = codes[0]!
+      const match = matchVinaItemToCatalog(code, catalog)
+      if (match.status !== 'MATCHED') {
+        return [
+          textBlock(
+            'VINA DATA에서 해당 품번을 찾을 수 없습니다.',
+            `요청 품번: ${match.originalItem}${
+              match.mapped ? ` → 정규화 ${match.normalizedItem}` : ''
+            } · ${match.status}`,
+            '부분·유사 일치로 다른 품번을 고르지 않으며, 기존 검사 DATA에서 임의로 검색하지 않습니다.',
+          ),
+        ]
+      }
+    }
+  }
+
   // ── 기존 규칙 기반 (차트 포함) ──
-  return legacyAnswer(text, n, limit, scopedAnalytics, records, periodNote)
+  return legacyAnswer(
+    text,
+    n,
+    limit,
+    scopedAnalytics,
+    records,
+    periodNote,
+    forceAllGroups,
+  )
 }
 
 function typeHint(text: string, types: string[]) {
@@ -8259,6 +8703,9 @@ function formatProduct(
   if (metric === 'qty') {
     return `${i + 1}. ${p.name}(${p.type}) · 검수량 ${p.qty.toLocaleString()} · 부적합률 ${formatPpm(p.failRate)}`
   }
+  if (metric === 'count') {
+    return `${i + 1}. ${p.name}(${p.type}) · 검사 기록 ${(p.count ?? 0).toLocaleString()}건 · 검수량 ${p.qty.toLocaleString()}`
+  }
   if (metric === 'fail') {
     return `${i + 1}. ${p.name}(${p.type}) · 부적합 ${p.fail.toLocaleString()} · 부적합률 ${formatPpm(p.failRate)} · ${p.mainDefect}`
   }
@@ -8275,6 +8722,7 @@ function legacyAnswer(
   analytics: Analytics,
   _records: InspectionRecord[],
   periodNote = '기간: 올해(연간)',
+  vinaMode = false,
 ): AiBlock[] {
   const hint = typeHint(text, analytics.filterOptions.productTypes)
   const excludeHint = excludedTypeHint(n)
@@ -8419,11 +8867,21 @@ function legacyAnswer(
   }
 
   if (includesAny(n, ['폐기', '비용']) && !n.includes('부적합률') && !n.includes('부적합율')) {
+    if (forceAllGroups && !vinaHasScrapCostData(records)) {
+      return [
+        textBlock(
+          'VINA DATA에는 폐기비용을 계산할 수 있는 필요한 데이터가 없습니다.',
+          '필요한 데이터가 없으면 추측하지 않습니다.',
+        ),
+      ]
+    }
     const rows = [...products].sort((a, b) => b.scrapCost - a.scrapCost).slice(0, limit)
     if (!rows.length) {
       return [
         textBlock(
-          `${scope}에서 해당 품번 데이터가 없습니다. (${periodNote})`,
+          forceAllGroups
+            ? `VINA DATA에서 해당 품번 데이터를 찾을 수 없습니다. (${periodNote})`
+            : `${scope}에서 해당 품번 데이터가 없습니다. (${periodNote})`,
         ),
       ]
     }
@@ -8462,7 +8920,13 @@ function legacyAnswer(
               .map((p, i) => [String(i + 1), p.product, `${p.qty.toLocaleString()} EA`]),
           },
         ]
-      : [textBlock('검사자 데이터가 없습니다.')]
+      : [
+          textBlock(
+            vinaMode
+              ? 'VINA DATA에서 해당 검사자의 검사 기록을 찾을 수 없습니다.'
+              : '검사자 데이터가 없습니다.',
+          ),
+        ]
   }
 
   if (includesAny(n, ['검사자', '검사원', '누구'])) {
@@ -8531,6 +8995,14 @@ function legacyAnswer(
   }
 
   if (includesAny(n, ['금형'])) {
+    if (vinaMode) {
+      return [
+        textBlock(
+          '현재 VINA DATA에는 금형번호 컬럼이 없어 금형별 분석을 할 수 없습니다.',
+          'VINA DATA에 없는 지표는 추측하지 않습니다.',
+        ),
+      ]
+    }
     const ranked = [...analytics.molds].sort((a, b) =>
       n.includes('부적합') ? b.failRate - a.failRate : b.qty - a.qty,
     )
@@ -8605,40 +9077,133 @@ export function answerQuestion(
   const text = q.trim()
   if (!text) return emptyAnswer('질문을 입력하세요.')
 
+  /**
+   * VINA DATA는 질문에 VINA/VN/베트남이 명시된 경우에만 사용.
+   * 문맥·후속 대화만으로 추측하지 않음.
+   */
+  const dataSource: AiDataSource = detectAiDataSource(text)
+  const vinaRecords = options.vinaRecords ?? []
+
+  if (dataSource === 'vina' || dataSource === 'compare') {
+    if (!vinaRecords.length) {
+      return emptyAnswer(
+        dataSource === 'compare'
+          ? 'VINA DATA가 없어 기존 검사 DATA와 비교할 수 없습니다. VINA 메뉴에서 엑셀을 업로드한 뒤 다시 질문해 주세요.'
+          : 'VINA DATA가 없습니다. VINA 메뉴에서 엑셀을 업로드한 뒤 다시 질문해 주세요.',
+      )
+    }
+  }
+
+  const now = options.now ?? new Date()
+  const defaultPeriod = options.defaultPeriod ?? null
+  const vinaAnalytics =
+    dataSource === 'vina' || dataSource === 'compare'
+      ? analyzeRecords(vinaRecords, baseFilters('all', null))
+      : null
+
+  const mainProductCatalog = [
+    ...new Set(records.map((r) => r.product).filter(Boolean)),
+  ]
+
+  // 비교: 출처를 나눠 각각 분석 (값을 하나로 합치지 않음)
+  if (dataSource === 'compare' && vinaAnalytics) {
+    const analysisPart =
+      stripAiDataSourcePhrases(text) || '부적합률 TOP5 알려줘'
+    const blocks: AiBlock[] = [
+      textBlock(
+        `데이터 출처: ${aiDataSourceLabel('compare')}`,
+        '기존 검사 DATA와 VINA DATA를 구분해 비교합니다. 컬럼·지표를 혼용하지 않습니다.',
+        '품번 표기가 달라도 정규화·matchKey로 동일 품번만 연결하며, 원본은 유지합니다.',
+      ),
+      textBlock('── 기존 검사 DATA ──'),
+      ...answerOne(
+        analysisPart,
+        analytics,
+        records,
+        priorContext,
+        defaultPeriod,
+        now,
+        false,
+        null,
+      ),
+      textBlock('── VINA DATA ──'),
+      textBlock(
+        ...vinaSourceAttributionLines(defaultPeriod?.label ?? null).slice(1),
+      ),
+      ...answerOne(
+        analysisPart,
+        vinaAnalytics,
+        vinaRecords,
+        null,
+        defaultPeriod,
+        now,
+        true,
+        mainProductCatalog,
+      ),
+    ]
+    const ctx = buildContextFromBlocks(text, blocks)
+    return { blocks, context: ctx ?? priorContext ?? undefined }
+  }
+
+  const activeRecords = dataSource === 'vina' ? vinaRecords : records
+  const activeAnalytics =
+    dataSource === 'vina' && vinaAnalytics ? vinaAnalytics : analytics
+  const forceAllGroups = dataSource === 'vina'
+  const linkCatalog = forceAllGroups ? mainProductCatalog : null
+
   const parts = splitQueryParts(text)
   let ctx: AiConversationContext | null | undefined = priorContext ?? null
   const blocks: AiBlock[] = []
+
+  if (dataSource === 'vina') {
+    const stripped = stripAiDataSourcePhrases(text) || text
+    const vinaPeriod =
+      parsePeriodFromQuestion(
+        normalizeQuestionText(stripped),
+        vinaRecords,
+        now,
+      ) ??
+      defaultPeriod ??
+      periodForAllRecords(vinaRecords)
+    const periodLabel = vinaPeriod
+      ? `${vinaPeriod.startDate} ~ ${vinaPeriod.endDate} (${vinaPeriod.label})`
+      : null
+    blocks.push(textBlock(...vinaSourceAttributionLines(periodLabel)))
+  }
 
   if (parts.length > 1) {
     blocks.push(textBlock(`질문 ${parts.length}건을 나눠 분석했습니다.`))
   }
 
-  const now = options.now ?? new Date()
-  const defaultPeriod = options.defaultPeriod ?? null
-
   parts.forEach((part, i) => {
     if (parts.length > 1) {
       blocks.push(textBlock(`── Q${i + 1}. ${part} ──`))
     }
+    const partForEngine =
+      dataSource === 'vina' ? stripAiDataSourcePhrases(part) || part : part
     const partBlocks = answerOne(
-      part,
-      analytics,
-      records,
+      partForEngine,
+      activeAnalytics,
+      activeRecords,
       ctx,
       defaultPeriod,
       now,
+      forceAllGroups,
+      linkCatalog,
     )
     blocks.push(...partBlocks)
     const next = buildContextFromBlocks(part, partBlocks)
     if (next) {
-      const partNorm = normalizeQuestionText(part)
+      const partNorm = normalizeQuestionText(partForEngine)
       const period =
-        parsePeriodFromQuestion(partNorm, records, now) ??
+        parsePeriodFromQuestion(partNorm, activeRecords, now) ??
         ctx?.lastPeriod ??
         defaultPeriod ??
         null
       const pn = compact(partNorm)
-      const { groups: partGroups } = detectGroups(pn)
+      const { groups: partGroups } = forceAllGroups
+        ? { groups: [] as typeof GROUP_ALIASES }
+        : detectGroups(pn)
       ctx = {
         ...next,
         lastPeriod: period ?? next.lastPeriod,
@@ -8718,6 +9283,8 @@ export type AiQuestionIntent = {
     previous: AiQueryPeriod
     label: string
   } | null
+  /** main = 기존 검사 DATA만 / vina = VINA만 / compare = 둘 다 */
+  dataSource: AiDataSource
 }
 
 function periodKindOf(period: AiQueryPeriod | null): AiQuestionIntent['periodKind'] {
@@ -8760,10 +9327,15 @@ export function interpretQuestion(
   records: InspectionRecord[] = [],
 ): AiQuestionIntent {
   const question = q.trim()
-  const normalized = normalizeQuestionText(question)
+  const dataSource = detectAiDataSource(question)
+  const forParse =
+    dataSource === 'main'
+      ? question
+      : stripAiDataSourcePhrases(question) || question
+  const normalized = normalizeQuestionText(forParse)
   const n = compact(normalized)
   const period = parsePeriodFromQuestion(normalized, records, now)
-  const { groups } = detectGroups(n)
+  const { groups } = dataSource === 'vina' ? { groups: [] } : detectGroups(n)
   const metric = inferMetricFromText(n)
   const ascending = wantsAscendingSort(n, normalized)
   const filters = parseQueryFilters(normalized, n)
@@ -8787,6 +9359,7 @@ export function interpretQuestion(
     chart,
     target: inferTargetEntity(n),
     compare,
+    dataSource,
   }
 }
 
@@ -8799,3 +9372,8 @@ export function trendMetricFromDaily(t: DailyTrend, key: keyof DailyTrend) {
 }
 
 export { groupLabel, BAR_COLOR, GROUP_COLORS }
+export {
+  detectAiDataSource,
+  hasVinaCallKeyword,
+  type AiDataSource,
+} from './aiDataSource'

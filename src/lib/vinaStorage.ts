@@ -1,4 +1,5 @@
 import type { InspectionRecord, UploadResult } from '../types'
+import { reconcileVinaMappedItem } from './vinaItemNormalize'
 
 /**
  * VINA 대용량 데이터 저장.
@@ -46,12 +47,12 @@ function normalizeRecords(parsed: InspectionRecord[]): InspectionRecord[] {
         : r.fail > 0
           ? { [r.mainDefect || '기타']: r.fail }
           : {}
-    return {
+    return reconcileVinaMappedItem({
       ...r,
       defects,
       rowClass: r.rowClass ?? 'ok',
       issues: r.issues ?? [],
-    }
+    })
   })
 }
 

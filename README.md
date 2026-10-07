@@ -59,6 +59,7 @@ npm run dev
 | --- | :---: | :---: | :---: |
 | 기본 데이터 조회 | ✅ | ✅ | ✅ |
 | 주간업무 보고 · 데이터 업로드 | ❌¹ | ✅ | ✅ |
+| **VINA 분석 · VINA 데이터 업로드** | ❌¹ | ✅ | ✅ |
 | 고객사 부적합 · 승인서류 · 측정현황 · 정보공유 · WORST 주간 ISSUE 편집 | ❌ | ✅ | ✅ |
 | 품번 사진 업로드·변경 | ❌ | ✅ | ✅ |
 | 품번 사진 삭제 | ❌ | ❌ | ✅ |
@@ -183,6 +184,7 @@ npm run admin:hash -- "비밀번호"   # ADMIN_PASSWORD_HASH 생성
 - **이어 질문** — TOP N·공장·필터·기간·차트만 덮어쓰기, 품번→불량유형→공장→설비→금형→LOT→검사자 drill-down
 - 애매한 「불량 심한」 등은 확인 질문. 데이터 없음·미래일은 임의 대체·생성하지 않음
 - 첫 질문에 기간이 없으면 업로드 유효 DATA의 **전체 기간**. 좁은 창에서도 차트 축·라벨 자동 조정
+- **VINA DATA** — 질문에 **VINA / VN / 베트남**이 명시된 경우에만 사용. 해외·현지·공장 등으로 추측하지 않음. 비교 요청 시 기존 검사 DATA와 출처를 구분해 답변. 품번은 `itemMatchKey`·VINA 정규화 매핑으로 연결. **2~5차**: 컬럼·정규화·자연어·기간. **6차**: 부적합률=합산부적합÷합산검수량, 검수량≠검사기록(건수), qty=0 부적합률 TOP 제외, TOP 동률 시 검수량·품번 보조정렬
 
 ### 7. 주간업무 보고
 
@@ -194,7 +196,8 @@ npm run admin:hash -- "비밀번호"   # ADMIN_PASSWORD_HASH 생성
 - **고객사 부적합 현황** — 표(발생일·장소·수량·부적합명·조치). 품번 찾기·부적합 사진(라벨=품번). 스냅샷 포함
 - **승인서류 제출현황** · **측정현황** · **정보공유 및 대외일정** — ISSUE와 같은 제목+불릿(품번·사진 없음). `period_key`+`issues` jsonb SoT
 - **전체화면 보기** — 월별·실적·ISSUE·WORST 5·메모 섹션 오버레이
-- **확정 스냅샷** — Supabase에 저장·월별 목록·`snapshotId` 드릴다운 (ISSUE·고객사 NC·승인서류·측정·정보공유·월별·WORST5·detailRecords 포함)
+- **확정 스냅샷** — Supabase에 저장·월별 목록·`snapshotId` 드릴다운 (ISSUE·고객사 NC·승인서류·측정·정보공유·월별·WORST5·detailRecords · **VINA 3-2 현황·vinaDetailRecords** 포함)
+- **3-2. VINA 부적합 현황** — VINA IndexedDB 기준 월별(SEAL/GROMMET) · 생산/검사 실적 · WORST 5 (기타 유형 제외)
 - **WORST 주간 ISSUE** — Supabase가 원본(`period_key`당 1행 덮어쓰기). 저장 시에만 업로드, 빈 내용은 행 삭제. 편집 시 **품번 찾기**로 제품 사진 연결
 - **WORST 5** — 막대 아래(품번 위)에 등록된 제품 사진 썸네일
 - 조회 조건 URL·localStorage 유지 (품번 상세 복귀 시에도 기간 복원)
@@ -210,6 +213,7 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 - 소속 정규화(예: `구지공장` → `2공장`)
 - 제품유형 정규화(예: `유압` → `GROMMET`)
 - 근무일지 실제 컬럼명 별칭 지원
+- **VINA 데이터는 이 메뉴가 아니라** 「VINA 분석 → 데이터 업로드」에서만 올립니다
 
 ### 8-1. 검사 DATA · 오류 DATA · 관리자 모드
 
@@ -228,6 +232,22 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 - **설정 모달** — 테마·관리자 모드 통합 (헤더 단독 테마 토글 없음)
 - **반응형 차트·그리드** — KPI·카드 자동 열 배치, AI 차트 라벨 최적화
 - **다크 모드 가독성** — 주간 보고 선택 열·현재 행, 입력창, 차트 축·범례·툴팁까지 테마 대응
+
+### 10. VINA 분석 (별도 데이터 영역)
+
+베트남(VINA) 검사 Excel을 **기존 MES 검사 DATA와 완전히 분리**해 저장·분석합니다. 실무자·관리자만 접근합니다.
+
+- **하위 메뉴**: VINA 분석 · 품질 분석 · 품번 분석 · 검사자 분석 · 설비 분석 · 비용 분석 · 스마트 비교 · 검사 DATA · 오류 DATA · 데이터 업로드
+- **공지 배너** — 모든 VINA 탭에 동일: 「공지사항 / VINA 데이터만 집계합니다.」
+- **저장** — 대용량 records는 브라우저 **IndexedDB**, meta는 localStorage. 기존 `inspection-analytics-records`와 섞이지 않음
+- **업로드** — VINA 전용 엑셀(Work Day·ITEM·사원명·설비·검사수량·NG수량·검사금액·NG금액 등). 새 업로드 시 기존 VINA 데이터 **교체**. **시드 복원**으로 초기화
+- **ITEM 정규화** — 명시적 매핑 테이블(`vinaItemNormalize`)로 시스템 품번 형식으로 변환(예: `YF9820`→`YF 9820`, `NX4N9080-1`→`NX4 N9080`, `MV-DORBBSB`→`MVDORBBSB`). 원본은 `extras.원본ITEM` 보관. 미매핑 ITEM은 원본 유지(임의 변환 없음)
+- **품번 매칭 KEY** — 표시용 품번과 별도 `itemMatchKey`(공백·하이픈 제거). VINA `YF9820` ↔ 기존 `YF 9820`을 동일 품번으로 검색·집계·상세·사진 연결(복사 없음)
+- **검사 / 오류 DATA** — 정상·경고 vs 오류 행 분리 · Excel 다운로드는 헤더 고정·필터·서식(`downloadStyledExcel`)
+- **비용 분석** — 품번별 **검사금액·폐기금액** TOP·목록
+- **검사자 분석** — 검수량 TOP 10(소속·유형 필터), 상세는 `/vina/inspectors/:id`
+- **제품 사진** — `itemMatchKey`로 기존 `product_photos`에 **연결**
+- **주간업무 보고** — 「**3-2. VINA 부적합 현황**」: 월별(SEAL/GROMMET·TOTAL, 기타 제외) · VINA 생산/검사 실적 · VINA WORST 5. 확정 스냅샷에 `vina*` · `vinaDetailRecords` 포함
 
 ---
 
@@ -266,8 +286,9 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 | 비용 분석 | 재무적 손실 가시화 | 폐기비용 품번 TOP · 다차원 폐기비용(원) | 현장 책임자 |
 | 성형작업자 분석 | 성형 실적·부적합 | 부적합수량 TOP · 작업자 상세(·품번 복귀) | 생산·품질관리자 |
 | AI 챗봇 | 자연어 품질 질의 | 인사/팁/추천칩 · %p·가중평균·기여·주간추이 · 조건덮어쓰기·drill-down · 현장식 해석 | 전 관리자 |
-| 주간업무 보고 | 주간 품질 보고 | 1~4 구역·정보공유 · WORST ISSUE·WORST 5 · 스냅샷·전체화면 | 품질·검사관리자 |
+| 주간업무 보고 | 주간 품질 보고 | 1~4 구역·정보공유 · **3-2 VINA 부적합** · WORST ISSUE·WORST 5 · 스냅샷·전체화면 | 품질·검사관리자 |
 | 스마트 비교 | 조건별 즉시 비교 | 품번 기간 비교 · 검사자 UPH | 품질·검사관리자 |
+| **VINA 분석** | VINA 전용 품질 분석 | 분리 저장(IndexedDB) · 품질/품번/검사자/설비/비용 · 검사·오류 DATA · 업로드 | 실무자·관리자 |
 | 검사 DATA | 원본 검사 이력 조회 | 정상·경고 검색·정렬·Excel · (관리자) 수정·변경 이력 | 검사·품질관리자 |
 | 오류 DATA | 오류 행 점검·수정 | 오류 전용 목록 · (관리자) 재검증 후 검사 DATA 이동 | 검사·품질관리자 |
 | 데이터 업로드 | Excel 검증·반영 | MES 공지·헤더 자동 인식·오류 제외·경고 확인·검수량0/제품유형#N/A 예외 | 검사관리자 |
@@ -280,13 +301,14 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 
 - Excel 파싱·집계·AI 질의는 **브라우저**에서 처리합니다. (외부 LLM 불필요)
 - 업로드 데이터는 `localStorage`의 `inspection-analytics-records`에 저장하고, 없으면 번들 시드 데이터로 시작합니다.
+- **VINA 데이터**는 IndexedDB(`vina` records) + localStorage(meta)에 **별도** 저장합니다. MES 업로드·시드와 섞이지 않으며, 시크릿/다른 브라우저/캐시 삭제 시 재업로드가 필요합니다.
 - 전역 필터·일부 목록 조회 상태는 `sessionStorage`, 테마·AI 팝업 대화·주간 보고 일부 설정은 `localStorage`에 보관합니다.
 - **WORST 주간 ISSUE**는 Supabase `weekly_report_issues`가 원본입니다. 로컬은 캐시이며, 원격이 없을 때 로컬을 자동 재업로드하지 않습니다. 저장(실무자·관리자) 시에만 upsert하고, 빈 내용은 원격 행을 삭제합니다.
 - **고객사 부적합 현황**은 Supabase `weekly_report_customer_nc`가 원본입니다. ISSUE와 동일하게 `period_key`당 1행·빈 내용 시 행 삭제. SQL: `supabase/weekly_report_customer_nc.sql`
 - **승인서류 제출현황** · **측정현황** · **정보공유 및 대외일정**은 각각 `weekly_report_approval_docs` · `weekly_report_measurement_status` · `weekly_report_info_share`가 원본입니다. ISSUE와 동일하게 `period_key`당 1행·**`issues` jsonb**·빈 내용 시 행 삭제. SQL: `supabase/weekly_report_approval_docs.sql` 등
 - **부적합 사진**은 Storage `nonconformity-images` + DB `nonconformity_photos`에 두고, 경로 `부적합/{품번}/부적합사진/{uuid}.jpg`로 품번별 분리합니다. 품번 변경 시 파일을 이동하고 `storage_path`를 갱신합니다. SQL: `supabase/nonconformity_photos.sql`
 - **제품 사진**은 Supabase Storage(`product-photos`) + DB(`product_photos`)에 두고, WORST 주간 ISSUE·고객사 부적합·WORST 5는 품번 키로 조회만 합니다.
-- **주간 스냅샷**은 Supabase `weekly_report_snapshots`에 저장합니다. (ISSUE·고객사 부적합·사진 메타·승인서류·측정현황·정보공유·월별·WORST 5·detailRecords 등 포함)
+- **주간 스냅샷**은 Supabase `weekly_report_snapshots`에 저장합니다. (ISSUE·고객사 부적합·사진 메타·승인서류·측정현황·정보공유·월별·WORST 5·detailRecords · **VINA 월별/실적/WORST5·vinaDetailRecords** 등 포함)
 - **관리자 로그인·변경 이력**만 서버 API(`/api/admin/*`, `/api/inspection-data/*`)를 사용합니다. 로컬은 Vite 플러그인, 배포는 Vercel Serverless입니다.
 - 브라우저 저장 공간이 부족하면 현재 메모리 분석은 유지되지만 새로고침 후 시드 데이터로 돌아갈 수 있습니다.
 - 분석·조회만 쓸 때는 환경변수가 없어도 됩니다. 관리자 수정 기능을 쓰려면 `ADMIN_PASSWORD_HASH`·`ADMIN_SESSION_SECRET`이 필요합니다.
@@ -313,7 +335,7 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 
 ## 문서
 
-- [화면설계서](./화면설계서.md) — UI/UX·화면·지표·메뉴 명세 (최신 V41)
+- [화면설계서](./화면설계서.md) — UI/UX·화면·지표·메뉴 명세 (최신 V42)
 
 ---
 

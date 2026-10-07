@@ -1,6 +1,11 @@
-/** 부적합률(ppm) = 부적합 수량 ÷ 검수량 × 1,000,000 */
+/**
+ * 부적합률(ppm) = 부적합 수량 ÷ 검수량 × 1,000,000
+ * (집계 시 합산 fail ÷ 합산 qty — 행별 률 평균 금지)
+ * 검수량 0이면 나누지 않고 0 반환(순위에서는 별도 제외).
+ */
 export function failRatePpm(fail: number, qty: number) {
-  return qty > 0 ? Math.round((fail / qty) * 1_000_000) : 0
+  if (!(qty > 0) || !Number.isFinite(qty) || !Number.isFinite(fail)) return 0
+  return Math.round((fail / qty) * 1_000_000)
 }
 
 export function formatPpm(n: number | undefined | null) {

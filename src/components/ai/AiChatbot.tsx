@@ -14,6 +14,7 @@ import {
   type AiConversationContext,
 } from '../../lib/aiAsk'
 import { openAiChatbotPopup } from '../../lib/aiChatbotPopup'
+import { loadVinaRecords } from '../../lib/vinaStorage'
 import { AiAnswerBlocks } from './AiAnswerCharts'
 
 type ChatMessage = {
@@ -34,8 +35,8 @@ const quickQuestions = [
   '이번 주 부적합률 TOP5 보여줘',
   '지난주랑 이번 주 부적합률 비교해줘',
   '2공장 검수량 1000개 이상 · 부적합률 5% 넘는 품번',
-  '최근 8주 부적합률 추이 보여줘',
-  '이번 주 품질 이슈를 보고용으로 정리해줘',
+  'VINA 품번 중 부적합률 TOP5 알려줘',
+  'VINA와 기존 데이터의 부적합률 비교해줘',
 ]
 
 function messageTime() {
@@ -116,19 +117,30 @@ export function AiChatbot({ popupMode = false }: { popupMode?: boolean }) {
     const text = question.trim()
     if (!text) return
 
-    const answer = answerQuestion(text, analytics, records, context)
-    messageId.current += 1
-    setMessages((current) => [
-      ...current,
-      {
-        id: messageId.current,
-        question: text,
-        answer,
-        time: messageTime(),
-      },
-    ])
-    if (answer.context) setContext(answer.context)
-    setInput('')
+    void (async () => {
+      // VINA/VN/베트남 키워드가 있을 때만 엔진이 사용. 없으면 로드해도 무시됨.
+      let vinaRecords: typeof records = []
+      try {
+        vinaRecords = await loadVinaRecords()
+      } catch {
+        vinaRecords = []
+      }
+      const answer = answerQuestion(text, analytics, records, context, {
+        vinaRecords,
+      })
+      messageId.current += 1
+      setMessages((current) => [
+        ...current,
+        {
+          id: messageId.current,
+          question: text,
+          answer,
+          time: messageTime(),
+        },
+      ])
+      if (answer.context) setContext(answer.context)
+      setInput('')
+    })()
   }
 
   const resetChat = () => {
@@ -240,7 +252,9 @@ export function AiChatbot({ popupMode = false }: { popupMode?: boolean }) {
               <div className="rounded-2xl rounded-tl-sm bg-surface px-3.5 py-3 text-[13px] leading-5 text-ink shadow-sm">
                 안녕하세요! Qualitics AI입니다.
                 <br />
-                업로드된 검사 DATA를 기준으로 품질 현황을 표·차트로 바로 답해 드려요.
+                기본은 업로드된 검사 DATA입니다. VINA DATA는 질문에{' '}
+                <span className="font-semibold">VINA / VN / 베트남</span>을
+                명시한 경우에만 사용합니다.
               </div>
             </div>
           </div>
@@ -263,8 +277,26 @@ export function AiChatbot({ popupMode = false }: { popupMode?: boolean }) {
                     {' — '}본사·1공장, 2공장(구지), SEAL, 유압·GROMMET
                   </li>
                   <li>
+                    <span className="font-medium text-ink">VINA</span>
+                    {' — '}질문에 VINA / VN / 베트남이 있을 때만 VINA DATA
+                    <br />
+                    <span className="text-[11px]">
+                      ※ 해외·현지·공장만으로는 VINA를 추측하지 않습니다
+                    </span>
+                    <br />
+                    <span className="text-[11px]">
+                      ※ VINA는 ITEM·사원명·검사수량·NG수량·Work Day 등 실제
+                      컬럼 기준으로만 분석합니다 (없는 값은 추측하지 않음)
+                    </span>
+                  </li>
+                  <li>
                     <span className="font-medium text-ink">지표</span>
                     {' — '}부적합률 · 부적합수량 · 검수량 · 폐기비용
+                    <br />
+                    <span className="text-[11px]">
+                      ※ “검사 많이”=검수량 · “불량 많이 발생”=부적합수량 ·
+                      “불량 심한/불량률”=부적합률
+                    </span>
                     <br />
                     <span className="text-[11px]">
                       ※ %p(포인트 차이)와 %(상대 증감률)은 다르게 답합니다

@@ -2,6 +2,10 @@ import * as XLSX from 'xlsx'
 import type { InspectionRecord, QualityCheckItem, UploadResult } from '../types'
 import { failRatePpm } from './format'
 import { normalizeProductType } from './groups'
+import {
+  normalizeVinaItem,
+  reconcileVinaMappedItems,
+} from './vinaItemNormalize'
 
 /**
  * VINA 전용 엑셀 파서 (vn 검사일지 / 일일 검사공정 실적 현황).
@@ -9,7 +13,7 @@ import { normalizeProductType } from './groups'
  * 컬럼 매핑:
  * - Work Day      → 검사일자
  * - 1차/2차       → 1차만 정상, 2차는 오류
- * - ITEM          → 품번
+ * - ITEM          → 품번 (명시적 매핑으로 정규화, 원본은 extras.원본ITEM)
  * - 종류          → 제품유형
  * - 사원명        → 검사작업자
  * - 설비          → 설비
@@ -411,7 +415,12 @@ export async function parseVinaExcel(file: File): Promise<ParseVinaExcelResult> 
     const dateRaw = cell(row, headerMap.date)
     const inspector = str(cell(row, headerMap.inspector))
     const productRaw = str(cell(row, headerMap.product))
-    const product = isPlaceholder(productRaw) ? '' : productRaw
+    const originalItem = isPlaceholder(productRaw) ? '' : productRaw.trim()
+    const itemNorm = originalItem
+      ? normalizeVinaItem(originalItem)
+      : { originalItem: '', normalizedItem: '', mapped: false }
+    // 매핑되면 정규화 품번, 미매핑이면 원본 유지(임의 변환 금지)
+    const product = itemNorm.normalizedItem
     const qty = toNumber(cell(row, headerMap.qty))
     const passRoundRaw = cell(row, headerMap.passRound)
 
@@ -593,6 +602,10 @@ export async function parseVinaExcel(file: File): Promise<ParseVinaExcelResult> 
 
     // 대용량 저장·메모리 절약: 필수 extras만 유지 (미매핑 전체 덤프 금지)
     const extras: Record<string, string> = {}
+    if (itemNorm.originalItem) {
+      extras['원본ITEM'] = itemNorm.originalItem
+      if (itemNorm.mapped) extras['정규화ITEM'] = itemNorm.normalizedItem
+    }
     if (unitPrice !== null) extras['단가'] = String(unitPrice)
     if (inspectCost > 0) extras['검사금액'] = String(inspectCost)
     if (empNo) extras['사원번호'] = empNo
@@ -630,6 +643,9 @@ export async function parseVinaExcel(file: File): Promise<ParseVinaExcelResult> 
     })
   }
 
+  // 과거 「품번 변환 확인 필요」 이슈 제거 + 정규화 품번 반영
+  const reconciled = reconcileVinaMappedItems(records)
+
   const qualityChecks: QualityCheckItem[] = [
     {
       label: '필수값 누락(Work Day, 사원명, ITEM, 검사수량)',
@@ -662,18 +678,18 @@ export async function parseVinaExcel(file: File): Promise<ParseVinaExcelResult> 
     { label: '설비 누락', count: quality.equipmentMissing, severity: 'warn' },
   ]
 
-  const valid = records.filter((r) => r.rowClass === 'ok').length
-  const warn = records.filter((r) => r.rowClass === 'warn').length
-  const excluded = records.filter((r) => r.rowClass === 'excluded').length
-  const error = records.filter((r) => r.rowClass === 'error').length
+  const valid = reconciled.filter((r) => r.rowClass === 'ok').length
+  const warn = reconciled.filter((r) => r.rowClass === 'warn').length
+  const excluded = reconciled.filter((r) => r.rowClass === 'excluded').length
+  const error = reconciled.filter((r) => r.rowClass === 'error').length
   const issueTotal = qualityChecks.reduce((s, c) => s + c.count, 0)
   const score =
-    records.length === 0
+    reconciled.length === 0
       ? 0
-      : Math.max(0, Math.round((100 - (issueTotal / records.length) * 20) * 10) / 10)
+      : Math.max(0, Math.round((100 - (issueTotal / reconciled.length) * 20) * 10) / 10)
 
   return {
-    records,
+    records: reconciled,
     uploadResult: {
       total: records.length,
       valid,
@@ -694,12 +710,25 @@ export async function parseVinaExcel(file: File): Promise<ParseVinaExcelResult> 
   }
 }
 
+/** 경고(분석 포함) 이슈 — 오류 DATA 이슈 열에서는 숨김 */
+export const VINA_WARN_ISSUES = new Set<string>([
+  '설비 누락',
+  'NG수량 > 검사수량',
+  '검사수량 0 (NG 있음)',
+  '합격+NG ≠ 검사수량',
+])
+
+/** 오류 DATA용: 경고 이슈를 제외한 오류 이슈만 */
+export function filterVinaErrorIssues(issues: string[] | undefined): string[] {
+  return (issues ?? []).filter((issue) => !VINA_WARN_ISSUES.has(issue))
+}
+
 export function createVinaSampleWorkbook(): Blob {
   const rows = [
     {
       'Work Day': '2026-08-01',
       '1차/2차': '1차',
-      ITEM: 'A-001',
+      ITEM: 'YF9820',
       종류: 'GROMMET',
       사원명: 'VINA김',
       설비: 'B10-1',
@@ -718,7 +747,7 @@ export function createVinaSampleWorkbook(): Blob {
     {
       'Work Day': '2026-08-02',
       '1차/2차': '1차',
-      ITEM: 'A-001',
+      ITEM: 'NX4N9080-1',
       종류: 'SEAL',
       사원명: 'VINA이',
       설비: 'C6-1',
@@ -736,7 +765,7 @@ export function createVinaSampleWorkbook(): Blob {
     {
       'Work Day': '2026-08-03',
       '1차/2차': '2차',
-      ITEM: 'B-002',
+      ITEM: 'MV-DORBBSB',
       종류: 'GROMMET',
       사원명: 'VINA김',
       설비: 'INJ2',

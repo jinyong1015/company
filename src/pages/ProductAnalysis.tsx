@@ -9,6 +9,7 @@ import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
 import { buildProductDetailHref } from '../lib/productDetailNav'
 import type { ProductRow } from '../types'
 import { formatPpm, formatWonSuffix } from '../lib/format'
+import { itemMatchKey } from '../lib/itemMatchKey'
 
 const ALL_TYPES = ''
 const VIEW_STATE_KEY = 'product-analysis'
@@ -92,7 +93,11 @@ export function ProductAnalysis() {
       const type = r.type || '미지정'
       if (activeType && type !== activeType) return false
       if (!q) return true
-      return r.name.toLowerCase().includes(q)
+      const qKey = itemMatchKey(q)
+      return (
+        r.name.toLowerCase().includes(q) ||
+        itemMatchKey(r.name).includes(qKey)
+      )
     })
     return [...list].sort((a, b) => {
       const av = a[sortKey as keyof ProductRow]

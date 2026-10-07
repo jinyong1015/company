@@ -53,6 +53,10 @@ import {
 } from "../lib/analyze";
 import { fromEntityId, toEntityId } from "../lib/entityId";
 import {
+  preferDisplayItem,
+  sameItemMatchKey,
+} from "../lib/itemMatchKey";
+import {
   parseProductDetailFrom,
   PRODUCT_DETAIL_FROM_LABELS,
   PRODUCT_DETAIL_FROM_PATHS,
@@ -219,7 +223,7 @@ export function ProductDetail() {
     () =>
       filterRecords(sourceRecords, effectiveFilters, true, filterOpts).filter(
         (r) => {
-          if (r.product !== name) return false;
+          if (!sameItemMatchKey(r.product, name)) return false;
           if (urlWorker) return r.worker === urlWorker && r.qty > 0;
           if (urlInspector) return r.inspector === urlInspector && r.qty > 0;
           return true;
@@ -252,9 +256,23 @@ export function ProductDetail() {
     ],
   );
 
+  const displayName = useMemo(() => {
+    if (!name) return "";
+    const fromScoped = preferDisplayItem(scoped.map((r) => r.product));
+    if (fromScoped) return fromScoped;
+    const fromAnalytics = productAnalytics.products.find((p) =>
+      sameItemMatchKey(p.name, name),
+    )?.name;
+    return fromAnalytics || name;
+  }, [name, scoped, productAnalytics.products]);
+
   const product =
     productAnalytics.products.find(
-      (p) => p.id === id || p.id === toEntityId("prd", name) || p.name === name,
+      (p) =>
+        p.id === id ||
+        p.id === toEntityId("prd", name) ||
+        p.id === toEntityId("prd", displayName) ||
+        sameItemMatchKey(p.name, name),
     ) ?? null;
   const trendRange = resolvePeriodRange(effectiveFilters);
 
@@ -335,7 +353,7 @@ export function ProductDetail() {
         {snapshotBanner}
         <DetailHero
           eyebrow="품번 상세"
-          title={name}
+          title={displayName || name}
           description={
             personScope
               ? `${personScope.label} ${personScope.value} · 선택한 기간에 이 품번 실적이 없습니다.`
@@ -357,7 +375,7 @@ export function ProductDetail() {
     <>
       {snapshotBanner ? <div className="mb-5">{snapshotBanner}</div> : null}
       <ProductDetailBody
-        name={name}
+        name={displayName || name}
         product={product}
         scoped={scoped}
         analytics={productAnalytics}
@@ -482,7 +500,7 @@ function ProductDetailBody({
   const workerUph = analytics.workerProductUph
     .filter(
       (w) =>
-        w.product === name &&
+        sameItemMatchKey(w.product, name) &&
         (personScope?.label !== "성형작업자" || w.worker === personScope.value),
     )
     .sort(
@@ -492,7 +510,7 @@ function ProductDetailBody({
   const inspectorUph = analytics.inspectorProductUph
     .filter(
       (row) =>
-        row.product === name &&
+        sameItemMatchKey(row.product, name) &&
         (personScope?.label !== "검사자" ||
           row.inspector === personScope.value),
     )

@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/common/PageHeader'
 import { Panel } from '../components/common/Panel'
@@ -10,9 +10,44 @@ import { useFilters } from '../context/FilterContext'
 import { filterRecords } from '../lib/analyze'
 import { downloadExcel } from '../lib/download'
 import { toEntityId } from '../lib/entityId'
+import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
 import { buildProductDetailHref } from '../lib/productDetailNav'
 import type { EquipmentRow } from '../types'
 import { formatPpm } from '../lib/format'
+
+const VIEW_STATE_KEY = 'equipment-analysis'
+
+type EquipmentAnalysisViewState = {
+  query: string
+  sortKey: string
+  asc: boolean
+  page: number
+  pageSize: number
+}
+
+const defaultViewState: EquipmentAnalysisViewState = {
+  query: '',
+  sortKey: 'qty',
+  asc: false,
+  page: 1,
+  pageSize: 10,
+}
+
+function readViewState(): EquipmentAnalysisViewState {
+  const stored = loadPageViewState<Partial<EquipmentAnalysisViewState>>(VIEW_STATE_KEY)
+  if (!stored) return defaultViewState
+  return {
+    query: typeof stored.query === 'string' ? stored.query : defaultViewState.query,
+    sortKey:
+      typeof stored.sortKey === 'string' ? stored.sortKey : defaultViewState.sortKey,
+    asc: typeof stored.asc === 'boolean' ? stored.asc : defaultViewState.asc,
+    page: typeof stored.page === 'number' && stored.page >= 1 ? stored.page : defaultViewState.page,
+    pageSize:
+      typeof stored.pageSize === 'number' && stored.pageSize > 0
+        ? stored.pageSize
+        : defaultViewState.pageSize,
+  }
+}
 
 const sortKeys = [
   { id: 'name', label: '설비' },
@@ -28,12 +63,17 @@ const sortKeys = [
 export function EquipmentAnalysis() {
   const { analytics, records } = useData()
   const { filters } = useFilters()
-  const [query, setQuery] = useState('')
-  const [sortKey, setSortKey] = useState('qty')
-  const [asc, setAsc] = useState(false)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [view, setView] = useState<EquipmentAnalysisViewState>(readViewState)
+  const { query, sortKey, asc, page, pageSize } = view
   const [openId, setOpenId] = useState<string | null>(null)
+
+  useEffect(() => {
+    savePageViewState(VIEW_STATE_KEY, view)
+  }, [view])
+
+  function patchView(patch: Partial<EquipmentAnalysisViewState>) {
+    setView((prev) => ({ ...prev, ...patch }))
+  }
 
   const heatmapRecords = useMemo(
     () => filterRecords(records, filters, true),
@@ -59,7 +99,8 @@ export function EquipmentAnalysis() {
   }, [analytics.equipment, query, sortKey, asc])
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
-  const pageRows = rows.slice((page - 1) * pageSize, page * pageSize)
+  const safePage = Math.min(page, totalPages)
+  const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize)
 
   return (
     <div className="space-y-5">
@@ -72,19 +113,17 @@ export function EquipmentAnalysis() {
       <SortSearchBar
         query={query}
         onQuery={(v) => {
-          setQuery(v)
-          setPage(1)
+          patchView({ query: v, page: 1 })
         }}
         placeholder="설비 / 품번 검색"
         sortKey={sortKey}
         sortKeys={sortKeys}
         asc={asc}
-        onSortKey={setSortKey}
-        onToggleDir={() => setAsc((v) => !v)}
+        onSortKey={(key) => patchView({ sortKey: key })}
+        onToggleDir={() => patchView({ asc: !asc })}
         pageSize={pageSize}
         onPageSize={(size) => {
-          setPageSize(size)
-          setPage(1)
+          patchView({ pageSize: size, page: 1 })
         }}
         onDownload={() =>
           downloadExcel(
@@ -169,7 +208,12 @@ export function EquipmentAnalysis() {
             </tbody>
           </table>
         </div>
-        <Pager page={page} totalPages={totalPages} total={rows.length} onPage={setPage} />
+        <Pager
+          page={safePage}
+          totalPages={totalPages}
+          total={rows.length}
+          onPage={(p) => patchView({ page: p })}
+        />
       </SortSearchBar>
     </div>
   )

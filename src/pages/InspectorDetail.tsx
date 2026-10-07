@@ -26,6 +26,7 @@ import { DEFECT_TYPE_COLORS } from '../lib/defectColors'
 import { cloneFilterState, useFilters, type FilterState } from '../context/FilterContext'
 import { filterRecords, buildPeriodTrends, resolvePeriodRange } from '../lib/analyze'
 import { fromEntityId, toEntityId } from '../lib/entityId'
+import { itemMatchKey, sameItemMatchKey } from '../lib/itemMatchKey'
 import {
   buildProductDetailHref,
   buildProductDetailReturnHref,
@@ -216,14 +217,15 @@ export function InspectorDetail() {
 
   useEffect(() => {
     if (!productFromUrl) return
-    if (productOptions.some((p) => p.product === productFromUrl)) {
-      setSelectedProduct(productFromUrl)
-    }
+    const hit = productOptions.find((p) =>
+      sameItemMatchKey(p.product, productFromUrl),
+    )
+    if (hit) setSelectedProduct(hit.product)
   }, [productFromUrl, productOptions])
 
-  const activeProduct = productOptions.some((p) => p.product === selectedProduct)
-    ? selectedProduct
-    : ''
+  const activeProduct =
+    productOptions.find((p) => sameItemMatchKey(p.product, selectedProduct))
+      ?.product ?? ''
   const hasSelection = Boolean(activeProduct)
 
   const backNavProduct = productFromUrl || ''
@@ -252,17 +254,23 @@ export function InspectorDetail() {
   const visibleProducts = useMemo(() => {
     const q = productQuery.trim().toLowerCase()
     if (!q) return productOptions
-    return productOptions.filter((p) => p.product.toLowerCase().includes(q))
+    const qKey = itemMatchKey(q)
+    return productOptions.filter((p) => {
+      const name = p.product.toLowerCase()
+      return name.includes(q) || itemMatchKey(p.product).includes(qKey)
+    })
   }, [productOptions, productQuery])
 
   const filtered = useMemo(() => {
     if (!hasSelection) return scoped
-    return scoped.filter((r) => r.product === activeProduct)
+    return scoped.filter((r) => sameItemMatchKey(r.product, activeProduct))
   }, [scoped, hasSelection, activeProduct])
 
   const selectedStats = useMemo(() => {
     if (!hasSelection) return productOptions
-    return productOptions.filter((p) => p.product === activeProduct)
+    return productOptions.filter((p) =>
+      sameItemMatchKey(p.product, activeProduct),
+    )
   }, [productOptions, hasSelection, activeProduct])
 
   const { trends: byDate, grain: trendGrain } = useMemo(

@@ -16,6 +16,7 @@ import { downloadExcel } from '../../lib/download'
 import { toEntityId } from '../../lib/entityId'
 import { failRatePpm, formatPpm, formatWon, roundWon } from '../../lib/format'
 import { analysisGroupColor, normalizeProductType } from '../../lib/groups'
+import { itemMatchKey, preferDisplayItem } from '../../lib/itemMatchKey'
 import { loadPageViewState, savePageViewState } from '../../lib/pageViewState'
 import { getProductPhotoUrlMap } from '../../lib/productPhotos'
 import { isCloudSyncEnabled } from '../../lib/supabase'
@@ -146,7 +147,7 @@ function aggregateProductCosts(
   }
   const map = new Map<string, Acc>()
   for (const r of records) {
-    const key = r.product
+    const key = itemMatchKey(r.product) || r.product
     const cur = map.get(key)
     const type = normalizeProductType(r.productType) || r.productType || '미지정'
     if (cur) {
@@ -154,6 +155,7 @@ function aggregateProductCosts(
       cur.fail += r.fail
       cur.inspectCost += readInspectCost(r)
       cur.scrapCost += r.scrapCost
+      cur.name = preferDisplayItem([cur.name, r.product])
       if (r.mainDefect && r.mainDefect !== '-' && r.mainDefect !== '기타') {
         cur.defectCounts.set(
           r.mainDefect,
@@ -166,7 +168,7 @@ function aggregateProductCosts(
         defectCounts.set(r.mainDefect, r.fail)
       }
       map.set(key, {
-        name: key,
+        name: r.product,
         type,
         qty: r.qty,
         fail: r.fail,

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PageHeader } from '../../components/common/PageHeader'
 import { SortSearchBar } from '../../components/common/SortSearchBar'
@@ -7,8 +7,44 @@ import { VinaNotice } from '../../components/vina/VinaNotice'
 import { VinaSubNav } from '../../components/vina/VinaSubNav'
 import { useVinaData } from '../../context/VinaDataContext'
 import { downloadExcel } from '../../lib/download'
+import { loadPageViewState, savePageViewState } from '../../lib/pageViewState'
 import type { ProductRow } from '../../types'
 import { formatPpm, formatWonSuffix } from '../../lib/format'
+import { itemMatchKey } from '../../lib/itemMatchKey'
+
+const VIEW_STATE_KEY = 'vina-product-analysis'
+
+type VinaProductViewState = {
+  query: string
+  sortKey: string
+  asc: boolean
+  page: number
+  pageSize: number
+}
+
+const defaultViewState: VinaProductViewState = {
+  query: '',
+  sortKey: 'qty',
+  asc: false,
+  page: 1,
+  pageSize: 10,
+}
+
+function readViewState(): VinaProductViewState {
+  const stored = loadPageViewState<Partial<VinaProductViewState>>(VIEW_STATE_KEY)
+  if (!stored) return defaultViewState
+  return {
+    query: typeof stored.query === 'string' ? stored.query : defaultViewState.query,
+    sortKey:
+      typeof stored.sortKey === 'string' ? stored.sortKey : defaultViewState.sortKey,
+    asc: typeof stored.asc === 'boolean' ? stored.asc : defaultViewState.asc,
+    page: typeof stored.page === 'number' && stored.page >= 1 ? stored.page : defaultViewState.page,
+    pageSize:
+      typeof stored.pageSize === 'number' && stored.pageSize > 0
+        ? stored.pageSize
+        : defaultViewState.pageSize,
+  }
+}
 
 const sortKeys = [
   { id: 'name', label: '품번' },
@@ -20,16 +56,25 @@ const sortKeys = [
 
 export function VinaProductAnalysis() {
   const { analytics, hasUploadedData } = useVinaData()
-  const [query, setQuery] = useState('')
-  const [sortKey, setSortKey] = useState('qty')
-  const [asc, setAsc] = useState(false)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
+  const [view, setView] = useState<VinaProductViewState>(readViewState)
+  const { query, sortKey, asc, page, pageSize } = view
+
+  useEffect(() => {
+    savePageViewState(VIEW_STATE_KEY, view)
+  }, [view])
+
+  function patchView(patch: Partial<VinaProductViewState>) {
+    setView((prev) => ({ ...prev, ...patch }))
+  }
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase()
+    const qKey = itemMatchKey(q)
     const list = analytics.products.filter(
-      (r) => !q || r.name.toLowerCase().includes(q),
+      (r) =>
+        !q ||
+        r.name.toLowerCase().includes(q) ||
+        itemMatchKey(r.name).includes(qKey),
     )
     return [...list].sort((a, b) => {
       const av = a[sortKey as keyof ProductRow]
@@ -63,19 +108,17 @@ export function VinaProductAnalysis() {
         <SortSearchBar
           query={query}
           onQuery={(v) => {
-            setQuery(v)
-            setPage(1)
+            patchView({ query: v, page: 1 })
           }}
           placeholder="VINA 품번 검색"
           sortKey={sortKey}
           sortKeys={sortKeys}
           asc={asc}
-          onSortKey={setSortKey}
-          onToggleDir={() => setAsc((v) => !v)}
+          onSortKey={(key) => patchView({ sortKey: key })}
+          onToggleDir={() => patchView({ asc: !asc })}
           pageSize={pageSize}
           onPageSize={(size) => {
-            setPageSize(size)
-            setPage(1)
+            patchView({ pageSize: size, page: 1 })
           }}
           onDownload={() =>
             downloadExcel(
@@ -137,7 +180,7 @@ export function VinaProductAnalysis() {
             page={safePage}
             totalPages={totalPages}
             total={rows.length}
-            onPage={setPage}
+            onPage={(p) => patchView({ page: p })}
           />
         </SortSearchBar>
       )}

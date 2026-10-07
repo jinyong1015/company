@@ -8,13 +8,14 @@ import {
   type AiAnswer,
   type AiConversationContext,
 } from "../lib/aiAsk";
+import { loadVinaRecords } from "../lib/vinaStorage";
 
 const samples = [
   "이번 주 부적합률 TOP5 보여줘.",
   "지난주랑 이번 주 부적합률 비교해줘.",
   "2공장 검수량 1000개 이상 · 부적합률 5% 넘는 품번 TOP10",
-  "최근 8주 부적합률 추이 보여줘.",
-  "이번 주 품질 이슈를 보고용으로 정리해줘.",
+  "VINA 품번 중 부적합률 TOP5 알려줘.",
+  "VINA와 기존 데이터의 부적합률 비교해줘.",
 ];
 
 export function AiAsk() {
@@ -26,17 +27,27 @@ export function AiAsk() {
   const ask = (q: string) => {
     const text = q.trim();
     if (!text) return;
-    const a = answerQuestion(text, analytics, records, context);
-    setMessages((prev) => [...prev, { q: text, a }]);
-    if (a.context) setContext(a.context);
-    setInput("");
+    void (async () => {
+      let vinaRecords = [] as typeof records;
+      try {
+        vinaRecords = await loadVinaRecords();
+      } catch {
+        vinaRecords = [];
+      }
+      const a = answerQuestion(text, analytics, records, context, {
+        vinaRecords,
+      });
+      setMessages((prev) => [...prev, { q: text, a }]);
+      if (a.context) setContext(a.context);
+      setInput("");
+    })();
   };
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="AI CHATBOT"
-        description="질문에서 공장·지표·TOP N·그래프 유형을 해석해 표와 차트로 답합니다. (1공장 SEAL=본사(SEAL), 1공장 GROMMET=본사(GROMMET))"
+        description="질문에서 공장·지표·TOP N·그래프 유형을 해석해 표와 차트로 답합니다. VINA DATA는 질문에 VINA/VN/베트남이 있을 때만 사용합니다."
       />
       <Panel>
         <div className="mb-4 flex flex-wrap gap-2">

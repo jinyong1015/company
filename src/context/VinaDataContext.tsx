@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
@@ -20,6 +21,12 @@ import {
   type VinaDataMeta,
 } from '../lib/vinaStorage'
 import type { Analytics, InspectionRecord, UploadResult } from '../types'
+import {
+  reconcileVinaMappedItems,
+  syncVinaUploadResultItemUnmapped,
+  vinaRecordsNeedItemReconcile,
+  VINA_ITEM_MAP_REVISION,
+} from '../lib/vinaItemNormalize'
 import { useFilters, type FilterState } from './FilterContext'
 
 /**
@@ -27,6 +34,7 @@ import { useFilters, type FilterState } from './FilterContext'
  * - 대용량 records: IndexedDB (새로고침 유지)
  * - meta: localStorage
  * - /vina* 진입 시에만 로드·집계
+ * - 품번 변환 규칙이 추가되면 저장된 데이터에도 즉시 재적용
  */
 
 export interface VinaPendingUpload {
@@ -72,11 +80,25 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
   const { filters } = useFilters()
 
   const [meta, setMeta] = useState<VinaDataMeta>(() => loadVinaMeta())
-  const [records, setRecords] = useState<InspectionRecord[]>([])
+  /** IndexedDB에서 읽은 원본(규칙 재적용 전) */
+  const [rawRecords, setRawRecords] = useState<InspectionRecord[]>([])
   const [hydrated, setHydrated] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [pending, setPending] = useState<VinaPendingUpload | null>(null)
+  const persistGen = useRef(0)
+
+  // 최신 변환 규칙으로 항상 재적용 (규칙 추가 시 MAP_REVISION 변경 → 재계산)
+  const records = useMemo(
+    () => reconcileVinaMappedItems(rawRecords),
+    [rawRecords, VINA_ITEM_MAP_REVISION],
+  )
+
+  const displayMeta = useMemo<VinaDataMeta>(() => {
+    const synced = syncVinaUploadResultItemUnmapped(meta.uploadResult, records)
+    if (!synced || synced === meta.uploadResult) return meta
+    return { ...meta, uploadResult: synced }
+  }, [meta, records])
 
   useEffect(() => {
     if (!onVinaRoute || hydrated) return
@@ -86,9 +108,8 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
         const loaded = await loadVinaRecords()
         if (cancelled) return
         startTransition(() => {
-          setRecords(loaded)
+          setRawRecords(loaded)
           setHydrated(true)
-          // meta에 upload라고 되어 있는데 records가 비면(과거 localStorage 유실) 표시 정리
           if (loaded.length === 0 && loadVinaMeta().storageLimited) {
             setUploadError(
               '이전에 브라우저 저장 용량 부족으로 VINA 데이터가 유실되었을 수 있습니다. 다시 업로드해 주세요.',
@@ -106,6 +127,53 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
     }
   }, [onVinaRoute, hydrated])
 
+  // 규칙 반영으로 바뀐 내용을 IndexedDB·meta에 저장 (새로고침 후에도 경고 제거 유지)
+  useEffect(() => {
+    if (!hydrated || !onVinaRoute) return
+    const needsRecords = vinaRecordsNeedItemReconcile(rawRecords, records)
+    const synced = syncVinaUploadResultItemUnmapped(meta.uploadResult, records)
+    const hadUnmappedCheck = (meta.uploadResult?.qualityChecks ?? []).some(
+      (c) =>
+        c.label === '품번 변환 확인 필요' ||
+        c.label.replace(/\s+/g, '') === '품번변환확인필요',
+    )
+    const needsMeta =
+      Boolean(synced) &&
+      (hadUnmappedCheck ||
+        synced!.warn !== meta.uploadResult?.warn ||
+        synced!.valid !== meta.uploadResult?.valid)
+
+    if (!needsRecords && !needsMeta) return
+
+    const nextMeta: VinaDataMeta = {
+      ...meta,
+      lastUpdated: needsRecords ? nowStamp() : meta.lastUpdated,
+      uploadResult: synced ?? meta.uploadResult,
+    }
+    const gen = ++persistGen.current
+    if (needsRecords) {
+      setRawRecords(records)
+      setMeta(nextMeta)
+      void saveVinaRecords(records, nextMeta).then(() => {
+        if (gen !== persistGen.current) return
+      })
+    } else {
+      setMeta(nextMeta)
+      try {
+        saveVinaMeta(nextMeta)
+      } catch {
+        // ignore
+      }
+    }
+  }, [
+    hydrated,
+    onVinaRoute,
+    rawRecords,
+    records,
+    meta,
+    VINA_ITEM_MAP_REVISION,
+  ])
+
   const analytics = useMemo(() => {
     if (!onVinaRoute || !records.length) return emptyAnalytics()
     return analyzeRecords(records, vinaFilters(filters))
@@ -117,16 +185,20 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
       fileName: string,
       uploadResult: UploadResult,
     ) => {
+      const reconciled = reconcileVinaMappedItems(parsed)
+      const syncedResult =
+        syncVinaUploadResultItemUnmapped(uploadResult, reconciled) ??
+        uploadResult
       const nextMeta: VinaDataMeta = {
         fileName,
         lastUpdated: nowStamp(),
         source: 'upload',
-        uploadResult,
+        uploadResult: syncedResult,
       }
 
-      const saved = await saveVinaRecords(parsed, nextMeta)
+      const saved = await saveVinaRecords(reconciled, nextMeta)
       startTransition(() => {
-        setRecords(parsed)
+        setRawRecords(reconciled)
         setMeta(
           saved.storageLimited
             ? { ...nextMeta, storageLimited: true }
@@ -156,27 +228,32 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
           throw new Error('유효한 VINA 데이터가 없습니다.')
         }
 
+        const reconciled = reconcileVinaMappedItems(parsed)
+        const syncedResult =
+          syncVinaUploadResultItemUnmapped(uploadResult, reconciled) ??
+          uploadResult
+
         const nextPending: VinaPendingUpload = {
           fileName: file.name,
-          records: parsed,
-          uploadResult,
+          records: reconciled,
+          uploadResult: syncedResult,
         }
         setPending(nextPending)
         setHydrated(true)
 
-        if (uploadResult.blocked) {
+        if (syncedResult.blocked) {
           setUploadError(
-            `오류 DATA ${uploadResult.error.toLocaleString()}건이 있습니다. 전체 저장 시 오류 행은 분석에서 제외됩니다.`,
+            `오류 DATA ${syncedResult.error.toLocaleString()}건이 있습니다. 전체 저장 시 오류 행은 분석에서 제외됩니다.`,
           )
           return
         }
 
-        if (uploadResult.warn > 0) {
+        if (syncedResult.warn > 0) {
           setUploadError(null)
           return
         }
 
-        await commitRecords(parsed, file.name, uploadResult)
+        await commitRecords(reconciled, file.name, syncedResult)
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'VINA 업로드에 실패했습니다.'
@@ -215,7 +292,7 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
       source: 'empty',
       uploadResult: null,
     }
-    setRecords([])
+    setRawRecords([])
     setMeta(nextMeta)
     setHydrated(true)
     setPending(null)
@@ -229,7 +306,7 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const updateRecord = useCallback((next: InspectionRecord) => {
-    setRecords((prev) => {
+    setRawRecords((prev) => {
       const updated = prev.map((r) => (r.id === next.id ? next : r))
       setMeta((prevMeta) => {
         const nextMeta: VinaDataMeta = {
@@ -243,19 +320,33 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  // pending 미리보기도 최신 규칙 반영
+  const displayPending = useMemo(() => {
+    if (!pending) return null
+    const reconciled = reconcileVinaMappedItems(pending.records)
+    const synced =
+      syncVinaUploadResultItemUnmapped(pending.uploadResult, reconciled) ??
+      pending.uploadResult
+    return {
+      ...pending,
+      records: reconciled,
+      uploadResult: synced,
+    }
+  }, [pending, VINA_ITEM_MAP_REVISION])
+
   const value = useMemo<VinaDataContextValue>(
     () => ({
       records,
       analytics,
-      meta,
+      meta: displayMeta,
       hasUploadedData:
-        meta.source === 'upload' &&
+        displayMeta.source === 'upload' &&
         (records.length > 0 ||
-          (hydrated === false && Boolean(meta.uploadResult?.total))),
+          (hydrated === false && Boolean(displayMeta.uploadResult?.total))),
       loading: onVinaRoute && !hydrated,
       uploading,
       uploadError,
-      pending,
+      pending: displayPending,
       uploadExcel,
       confirmUpload,
       confirmExcludeErrors,
@@ -266,12 +357,12 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
     [
       records,
       analytics,
-      meta,
+      displayMeta,
       hydrated,
       onVinaRoute,
       uploading,
       uploadError,
-      pending,
+      displayPending,
       uploadExcel,
       confirmUpload,
       confirmExcludeErrors,

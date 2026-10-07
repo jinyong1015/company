@@ -2,6 +2,11 @@ import type { FilterState } from "../context/FilterContext";
 import { ANALYSIS_GROUPS, isAnalyzable, matchesAnalysisGroup, normalizeProductType, type AnalysisGroupId } from "./groups";
 import { toEntityId } from "./entityId";
 import { failRatePpm, formatPpm, formatPpmDelta, formatWonSuffix, statusByPpm } from "./format";
+import {
+  itemMatchKey,
+  preferDisplayItem,
+  sameItemMatchKey,
+} from "./itemMatchKey";
 import type {
   Analytics,
   AnomalyItem,
@@ -158,13 +163,18 @@ function applyMultiFilters(records: InspectionRecord[], filters: FilterState) {
   const match = (selected: string[], value: string) =>
     selected.length === 0 || selected.includes(value);
 
+  const matchProduct = (selected: string[], value: string) =>
+    selected.length === 0 ||
+    selected.includes(value) ||
+    selected.some((s) => sameItemMatchKey(s, value));
+
   return records.filter(
     (r) =>
       match(filters.teams, r.team) &&
       match(filters.inspectors, r.inspector) &&
       match(filters.workTypes, r.workType) &&
       match(filters.productTypes, r.productType) &&
-      match(filters.products, r.product) &&
+      matchProduct(filters.products, r.product) &&
       match(filters.molds, r.moldNo) &&
       match(filters.equipment, r.equipment) &&
       match(filters.workers, r.worker) &&
@@ -262,15 +272,22 @@ function buildKpis(
   ];
 }
 
-function productBreakdown(records: InspectionRecord[]): ProductBreakdown[] {
+function groupRecordsByItemMatchKey(records: InspectionRecord[]) {
   const map = new Map<string, InspectionRecord[]>();
   for (const r of records) {
-    const list = map.get(r.product) ?? [];
+    const mk = itemMatchKey(r.product) || r.product;
+    const list = map.get(mk) ?? [];
     list.push(r);
-    map.set(r.product, list);
+    map.set(mk, list);
   }
-  return [...map.entries()]
-    .map(([product, list]) => {
+  return map;
+}
+
+function productBreakdown(records: InspectionRecord[]): ProductBreakdown[] {
+  const map = groupRecordsByItemMatchKey(records);
+  return [...map.values()]
+    .map((list) => {
+      const product = preferDisplayItem(list.map((r) => r.product));
       const qty = sum(list, "qty");
       const fail = sum(list, "fail");
       const hours = sum(list, "hours");
@@ -500,21 +517,12 @@ function buildProducts(
   records: InspectionRecord[],
   previous: InspectionRecord[],
 ): ProductRow[] {
-  const map = new Map<string, InspectionRecord[]>();
-  for (const r of records) {
-    const list = map.get(r.product) ?? [];
-    list.push(r);
-    map.set(r.product, list);
-  }
-  const prevMap = new Map<string, InspectionRecord[]>();
-  for (const r of previous) {
-    const list = prevMap.get(r.product) ?? [];
-    list.push(r);
-    prevMap.set(r.product, list);
-  }
+  const map = groupRecordsByItemMatchKey(records);
+  const prevMap = groupRecordsByItemMatchKey(previous);
 
   return [...map.entries()]
-    .map(([name, list]) => {
+    .map(([mk, list]) => {
+      const name = preferDisplayItem(list.map((r) => r.product));
       const qty = sum(list, "qty");
       const pass = sum(list, "pass");
       const fail = sum(list, "fail");
@@ -522,11 +530,12 @@ function buildProducts(
       const failRate = failRatePpm(fail, qty);
       const defects = aggregateDefects(list);
       const failTotal = defects.reduce((s, d) => s + d.count, 0);
-      const prevRate = failRateOf(prevMap.get(name) ?? []);
+      const prevRate = failRateOf(prevMap.get(mk) ?? []);
       return {
         id: toEntityId("prd", name),
         name,
         type: list[0]?.productType || "미지정",
+        count: list.length,
         qty,
         pass,
         fail,
@@ -551,7 +560,8 @@ function buildWorkerProductUph(
 ): WorkerProductUph[] {
   const map = new Map<string, InspectionRecord[]>();
   for (const r of records) {
-    const key = `${r.worker}||${r.product}`;
+    const mk = itemMatchKey(r.product) || r.product;
+    const key = `${r.worker}||${mk}`;
     const list = map.get(key) ?? [];
     list.push(r);
     map.set(key, list);
@@ -559,13 +569,14 @@ function buildWorkerProductUph(
 
   return [...map.entries()]
     .map(([key, list]) => {
-      const [worker, product] = key.split("||");
+      const worker = key.slice(0, key.indexOf("||"));
+      const product = preferDisplayItem(list.map((r) => r.product));
       const qty = sum(list, "qty");
       const fail = sum(list, "fail");
       const hours = sum(list, "hours");
       const defects = aggregateDefects(list);
       return {
-        id: toEntityId("wrk", key),
+        id: toEntityId("wrk", `${worker}||${product}`),
         worker,
         product,
         productType: list[0]?.productType || "미지정",
@@ -591,7 +602,8 @@ function buildInspectorProductUph(
 ): InspectorProductUph[] {
   const map = new Map<string, InspectionRecord[]>();
   for (const r of records) {
-    const key = `${r.inspector}||${r.product}`;
+    const mk = itemMatchKey(r.product) || r.product;
+    const key = `${r.inspector}||${mk}`;
     const list = map.get(key) ?? [];
     list.push(r);
     map.set(key, list);
@@ -599,13 +611,14 @@ function buildInspectorProductUph(
 
   return [...map.entries()]
     .map(([key, list]) => {
-      const [inspector, product] = key.split("||");
+      const inspector = key.slice(0, key.indexOf("||")) || "-";
+      const product = preferDisplayItem(list.map((r) => r.product));
       const qty = sum(list, "qty");
       const fail = sum(list, "fail");
       const hours = sum(list, "hours");
       const defects = aggregateDefects(list);
       return {
-        id: toEntityId("ins", key),
+        id: toEntityId("ins", `${inspector}||${product}`),
         inspector: inspector || "-",
         team: list[0]?.team || "미지정",
         product,
@@ -759,6 +772,27 @@ function topCosts(
   key: keyof InspectionRecord,
   limit = 5,
 ): CostPoint[] {
+  if (key === "product") {
+    const map = new Map<string, { display: string; value: number }>();
+    for (const r of records) {
+      const mk = itemMatchKey(r.product) || r.product || "기타";
+      const cur = map.get(mk);
+      if (cur) {
+        cur.value += r.scrapCost;
+        cur.display = preferDisplayItem([cur.display, r.product || "기타"]);
+      } else {
+        map.set(mk, { display: r.product || "기타", value: r.scrapCost });
+      }
+    }
+    return [...map.values()]
+      .map(({ display, value }) => ({
+        name: display,
+        value: Math.round(value / 1000),
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, limit);
+  }
+
   const map = new Map<string, number>();
   for (const r of records) {
     const name = String(r[key] || "기타");
@@ -833,7 +867,7 @@ function buildAnomalies(
       products: riskyProduct.name,
       molds:
         molds
-          .filter((m) => m.product === riskyProduct.name)
+          .filter((m) => sameItemMatchKey(m.product, riskyProduct.name))
           .map((m) => m.moldNo)
           .join(", ") || "-",
       equipment: "-",
@@ -1162,7 +1196,11 @@ export function analyzeRecords(
       inspectors: uniqueSorted(allRecords.map((r) => r.inspector)),
       workTypes: uniqueSorted(allRecords.map((r) => r.workType)),
       productTypes: uniqueSorted(allRecords.map((r) => r.productType)),
-      products: uniqueSorted(allRecords.map((r) => r.product)),
+      products: uniqueSorted(
+        [
+          ...groupRecordsByItemMatchKey(allRecords).values(),
+        ].map((list) => preferDisplayItem(list.map((r) => r.product))),
+      ),
       molds: uniqueSorted(allRecords.map((r) => r.moldNo)),
       equipment: uniqueSorted(allRecords.map((r) => r.equipment)),
       workers: uniqueSorted(allRecords.map((r) => r.worker)),
@@ -1218,7 +1256,7 @@ export function summarizeProductPeriod(
   const allProducts = !product || product === "__all__";
   const list = records.filter((r) => {
     if (!isAnalyzable(r)) return false;
-    if (!allProducts && r.product !== product) return false;
+    if (!allProducts && !sameItemMatchKey(r.product, product)) return false;
     if (!matchesAnalysisGroup(r, analysisGroup)) return false;
     if (start && r.date < start) return false;
     if (end && r.date > end) return false;
@@ -1244,15 +1282,21 @@ export function productsInPeriod(
 ): string[] {
   const start = startDate.trim();
   const end = endDate.trim();
-  const names = new Set<string>();
+  const byKey = new Map<string, string[]>();
   for (const r of records) {
     if (!isAnalyzable(r)) continue;
     if (!matchesAnalysisGroup(r, analysisGroup)) continue;
     if (start && r.date < start) continue;
     if (end && r.date > end) continue;
-    if (r.product) names.add(r.product);
+    if (!r.product) continue;
+    const mk = itemMatchKey(r.product) || r.product;
+    const list = byKey.get(mk) ?? [];
+    list.push(r.product);
+    byKey.set(mk, list);
   }
-  return [...names].sort((a, b) => a.localeCompare(b, "ko"));
+  return [...byKey.values()]
+    .map((list) => preferDisplayItem(list))
+    .sort((a, b) => a.localeCompare(b, "ko"));
 }
 
 /** 스마트 비교: 품번×기간 기준 검사자 UPH */
@@ -1268,7 +1312,7 @@ export function summarizeInspectorProductUph(
   const end = endDate.trim();
   const list = records.filter((r) => {
     if (!isAnalyzable(r)) return false;
-    if (r.product !== product) return false;
+    if (!sameItemMatchKey(r.product, product)) return false;
     if (!matchesAnalysisGroup(r, analysisGroup)) return false;
     if (start && r.date < start) return false;
     if (end && r.date > end) return false;

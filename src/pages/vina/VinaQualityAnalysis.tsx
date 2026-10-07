@@ -11,6 +11,7 @@ import { useVinaData } from '../../context/VinaDataContext'
 import { useFilters } from '../../context/FilterContext'
 import { filterRecords } from '../../lib/analyze'
 import { toEntityId } from '../../lib/entityId'
+import { itemMatchKey, preferDisplayItem } from '../../lib/itemMatchKey'
 import { loadPageViewState, savePageViewState } from '../../lib/pageViewState'
 import { formatPpm, failRatePpm } from '../../lib/format'
 import { defectTypeColor } from '../../lib/defectColors'
@@ -110,17 +111,19 @@ export function VinaQualityAnalysis() {
     for (const r of scoped) {
       const count = defectCountOf(r, activeDefect)
       if (count <= 0) continue
-      const cur = map.get(r.product) ?? {
+      const key = itemMatchKey(r.product) || r.product
+      const cur = map.get(key) ?? {
         product: r.product,
         type: r.productType || '미지정',
         qty: 0,
         fail: 0,
         defectCount: 0,
       }
+      cur.product = preferDisplayItem([cur.product, r.product])
       cur.qty += r.qty
       cur.fail += r.fail
       cur.defectCount += count
-      map.set(r.product, cur)
+      map.set(key, cur)
     }
     const all = [...map.values()]
     const totalDefect = all.reduce((s, r) => s + r.defectCount, 0)
