@@ -8720,7 +8720,7 @@ function legacyAnswer(
   n: string,
   limit: number,
   analytics: Analytics,
-  _records: InspectionRecord[],
+  records: InspectionRecord[],
   periodNote = '기간: 올해(연간)',
   vinaMode = false,
 ): AiBlock[] {
@@ -8867,7 +8867,7 @@ function legacyAnswer(
   }
 
   if (includesAny(n, ['폐기', '비용']) && !n.includes('부적합률') && !n.includes('부적합율')) {
-    if (forceAllGroups && !vinaHasScrapCostData(records)) {
+    if (vinaMode && !vinaHasScrapCostData(records)) {
       return [
         textBlock(
           'VINA DATA에는 폐기비용을 계산할 수 있는 필요한 데이터가 없습니다.',
@@ -8879,7 +8879,7 @@ function legacyAnswer(
     if (!rows.length) {
       return [
         textBlock(
-          forceAllGroups
+          vinaMode
             ? `VINA DATA에서 해당 품번 데이터를 찾을 수 없습니다. (${periodNote})`
             : `${scope}에서 해당 품번 데이터가 없습니다. (${periodNote})`,
         ),
