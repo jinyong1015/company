@@ -20,6 +20,11 @@ import {
   analysisGroupColor,
   plantSiteOf,
 } from '../../lib/groups'
+import {
+  buildInspectorDetailHref,
+  buildProductDetailHref,
+  periodOptionsFromFilters,
+} from '../../lib/productDetailNav'
 import { loadPageViewState, savePageViewState } from '../../lib/pageViewState'
 import type { InspectorRow } from '../../types'
 
@@ -155,6 +160,10 @@ function aggregateInspectorQty(
 export function VinaInspectorAnalysis() {
   const { analytics, records, hasUploadedData } = useVinaData()
   const { filters } = useFilters()
+  const periodOpts = useMemo(
+    () => periodOptionsFromFilters(filters),
+    [filters.startDate, filters.endDate],
+  )
   const [view, setView] = useState<VinaInspectorViewState>(readViewState)
   const { query, sortKey, asc, page, pageSize, topPlant, topType } = view
   const [openId, setOpenId] = useState<string | null>(null)
@@ -463,7 +472,18 @@ export function VinaInspectorAnalysis() {
                       >
                         <td className="px-2 py-3 font-medium">
                           <Link
-                            to={`/vina/inspectors/${row.id}?from=vina-inspectors`}
+                            to={buildInspectorDetailHref(row.id, {
+                              vina: true,
+                              carryFrom: new URLSearchParams({
+                                from: 'vina-inspectors',
+                                ...(periodOpts.startDate
+                                  ? {
+                                      startDate: periodOpts.startDate,
+                                      endDate: periodOpts.endDate!,
+                                    }
+                                  : {}),
+                              }),
+                            })}
                             className="text-accent hover:underline"
                             onClick={(e) => e.stopPropagation()}
                           >
@@ -497,7 +517,16 @@ export function VinaInspectorAnalysis() {
                                   <tr key={p.product}>
                                     <td className="py-1 font-medium">
                                       <Link
-                                        to={`/vina/products/${toEntityId('prd', p.product)}?from=vina-inspectors`}
+                                        to={buildProductDetailHref(
+                                          toEntityId('prd', p.product),
+                                          'vina-inspectors',
+                                          {
+                                            ...periodOpts,
+                                            vina: true,
+                                            inspector: row.name,
+                                            inspectorId: row.id,
+                                          },
+                                        )}
                                         className="text-accent hover:underline"
                                         onClick={(e) => e.stopPropagation()}
                                       >

@@ -12,6 +12,10 @@ import { useFilters } from '../../context/FilterContext'
 import { filterRecords } from '../../lib/analyze'
 import { toEntityId } from '../../lib/entityId'
 import { itemMatchKey, preferDisplayItem } from '../../lib/itemMatchKey'
+import {
+  buildProductDetailHref,
+  periodOptionsFromFilters,
+} from '../../lib/productDetailNav'
 import { loadPageViewState, savePageViewState } from '../../lib/pageViewState'
 import { formatPpm, failRatePpm } from '../../lib/format'
 import { defectTypeColor } from '../../lib/defectColors'
@@ -58,6 +62,10 @@ type ProductTop10Row = SplitTop10RowBase & {
 export function VinaQualityAnalysis() {
   const { analytics, records, hasUploadedData, loading } = useVinaData()
   const { filters } = useFilters()
+  const periodOpts = useMemo(
+    () => periodOptionsFromFilters(filters),
+    [filters.startDate, filters.endDate],
+  )
   const { defectTypes } = analytics
   const [view, setView] = useState<QualityAnalysisViewState>(readViewState)
   const { selected } = view
@@ -139,13 +147,17 @@ export function VinaQualityAnalysis() {
           totalDefect > 0
             ? Math.round((row.defectCount / totalDefect) * 1000) / 10
             : 0,
-        href: `/vina/products/${toEntityId('prd', row.product)}?from=vina-quality`,
+        href: buildProductDetailHref(
+          toEntityId('prd', row.product),
+          'vina-quality',
+          { ...periodOpts, vina: true },
+        ),
         type: row.type,
         qty: row.qty,
         failRate: failRatePpm(row.fail, row.qty),
         defectCount: row.defectCount,
       }))
-  }, [scoped, activeDefect])
+  }, [scoped, activeDefect, periodOpts])
 
   const activeMeta = defectTypes.find((d) => d.name === activeDefect)
   const activeDefectIndex = Math.max(

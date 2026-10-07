@@ -46,6 +46,9 @@ function storagePath(productKey: string) {
 /**
  * 요청 품번과 동일 matchKey인 기존 product_photos 행을 찾는다.
  * 복사하지 않고 기존 product_key 행에 연결한다.
+ *
+ * 7차 사진 매칭: 정확 일치 → matchKey 일치만 허용.
+ * 부분 문자열·유사 품번·여러 다른 matchKey 후보는 연결하지 않는다.
  */
 function resolvePhotoRow<T extends PhotoRowLite>(
   rows: T[],
@@ -54,16 +57,17 @@ function resolvePhotoRow<T extends PhotoRowLite>(
   const key = productKey.trim()
   if (!key || !rows.length) return null
 
-  // 1) 정확한 품번 일치
+  // 1순위: 정확한 품번 일치
   const exact = rows.find((r) => r.product_key === key)
   if (exact) return exact
 
-  // 2) 정규화·공백/하이픈 무시 — 동일 matchKey만 (다른 품번 사진 금지)
+  // 2·3순위: 정규화·공백/하이픈 무시 — 동일 matchKey만 (다른 품번 사진 금지)
   const mk = itemMatchKey(key)
   if (!mk) return null
   const sameKey = rows.filter((r) => itemMatchKey(r.product_key) === mk)
   if (!sameKey.length) return null
   if (sameKey.length === 1) return sameKey[0]!
+  // 동일 matchKey의 표기 차이만 있음 → 표시용 품번 우선 (AMBIGUOUS 아님)
   const preferred = preferDisplayItem(sameKey.map((r) => r.product_key))
   return sameKey.find((r) => r.product_key === preferred) ?? sameKey[0]!
 }

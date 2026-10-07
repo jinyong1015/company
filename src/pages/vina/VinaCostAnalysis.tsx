@@ -17,6 +17,10 @@ import { toEntityId } from '../../lib/entityId'
 import { failRatePpm, formatPpm, formatWon, roundWon } from '../../lib/format'
 import { analysisGroupColor, normalizeProductType } from '../../lib/groups'
 import { itemMatchKey, preferDisplayItem } from '../../lib/itemMatchKey'
+import {
+  buildProductDetailHref,
+  periodOptionsFromFilters,
+} from '../../lib/productDetailNav'
 import { loadPageViewState, savePageViewState } from '../../lib/pageViewState'
 import { getProductPhotoUrlMap } from '../../lib/productPhotos'
 import { isCloudSyncEnabled } from '../../lib/supabase'
@@ -204,6 +208,10 @@ function aggregateProductCosts(
 export function VinaCostAnalysis() {
   const { records, hasUploadedData } = useVinaData()
   const { filters } = useFilters()
+  const periodOpts = useMemo(
+    () => periodOptionsFromFilters(filters),
+    [filters.startDate, filters.endDate],
+  )
   const [view, setView] = useState<VinaCostViewState>(readViewState)
   const { query, sortKey, asc, page, pageSize, topType, topMetric } = view
 
@@ -255,10 +263,13 @@ export function VinaCostAnalysis() {
         rank: idx + 1,
         value: p[topMetric],
         sharePercent: total > 0 ? (p[topMetric] / total) * 100 : 0,
-        href: `/vina/products/${p.id}?from=vina-cost`,
+        href: buildProductDetailHref(p.id, 'vina-cost', {
+          ...periodOpts,
+          vina: true,
+        }),
         product: p,
       }))
-  }, [products, topType, topMetric])
+  }, [products, topType, topMetric, periodOpts])
 
   const productKeys = useMemo(
     () => [...new Set(topRows.map((r) => r.name.trim()).filter(Boolean))].sort(),
@@ -457,7 +468,10 @@ export function VinaCostAnalysis() {
                     <tr key={row.id} className="border-b border-line/70">
                       <td className="px-2 py-3 font-medium">
                         <Link
-                          to={`/vina/products/${row.id}?from=vina-cost`}
+                          to={buildProductDetailHref(row.id, 'vina-cost', {
+                            ...periodOpts,
+                            vina: true,
+                          })}
                           className="text-accent hover:underline"
                         >
                           {row.name}

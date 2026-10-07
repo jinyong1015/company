@@ -18,6 +18,10 @@ import {
   normalizeProductType,
 } from '../../lib/groups'
 import { failRatePpm, formatPpm, formatWon } from '../../lib/format'
+import {
+  buildProductDetailHref,
+  periodOptionsFromFilters,
+} from '../../lib/productDetailNav'
 import { getProductPhotoUrlMap } from '../../lib/productPhotos'
 import { isCloudSyncEnabled } from '../../lib/supabase'
 import {
@@ -375,6 +379,11 @@ function VinaProductTop10({
   onSortChange: (sort: ProductSortId) => void
   groupLabel: string
 }) {
+  const { filters } = useFilters()
+  const periodOpts = useMemo(
+    () => periodOptionsFromFilters(filters),
+    [filters.startDate, filters.endDate],
+  )
   const [typeTab, setTypeTab] = useState<ProductTypeTab>('all')
 
   const filteredProducts = useMemo(
@@ -407,14 +416,17 @@ function VinaProductTop10({
       rank: idx + 1,
       value: p[sort],
       sharePercent: total > 0 ? (p[sort] / total) * 100 : 0,
-      href: `/vina/products/${p.id}?from=vina-products`,
+      href: buildProductDetailHref(p.id, 'vina-products', {
+        ...periodOpts,
+        vina: true,
+      }),
     }))
     return {
       sortLabel: productSortOptions.find((o) => o.id === sort)?.label ?? '',
       tabLabel: productTypeTabs.find((t) => t.id === typeTab)?.label ?? '전체',
       rows: mapped,
     }
-  }, [filteredProducts, sort, typeTab])
+  }, [filteredProducts, sort, typeTab, periodOpts])
 
   // 대시보드와 동일: 품번명(product_key) 기준 기존 사진 공유
   const productKeys = useMemo(

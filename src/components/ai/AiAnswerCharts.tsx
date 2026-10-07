@@ -18,7 +18,7 @@ import {
   YAxis,
   ZAxis,
 } from 'recharts'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   BAR_COLOR,
   formatAiBarTopLabel,
@@ -48,6 +48,8 @@ function AiBarBlock({
   format,
   valueLabel,
   layout = 'vertical',
+  nameHrefs,
+  detailNav,
 }: Extract<AiBlock, { type: 'bar' }>) {
   const hostRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
@@ -173,6 +175,28 @@ function AiBarBlock({
           ? '왼쪽: 항목명 · 오른쪽: 수치'
           : '하단: 제품명 · 상단: 수치'}
       </p>
+      {nameHrefs && Object.keys(nameHrefs).length ? (
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+          {detailNav ? (
+            <span className="text-muted">
+              {detailNav.source}
+              {detailNav.period
+                ? ` · ${detailNav.period.start} ~ ${detailNav.period.end}`
+                : ''}
+              :
+            </span>
+          ) : null}
+          {data.map((d) => {
+            const href = nameHrefs[d.name]
+            if (!href) return null
+            return (
+              <AiDetailLink key={d.name} href={href}>
+                {d.name}
+              </AiDetailLink>
+            )
+          })}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -960,10 +984,47 @@ function AiComposedBlock({
   )
 }
 
-function AiTableBlock({ title, headers, rows }: Extract<AiBlock, { type: 'table' }>) {
+function AiDetailLink({
+  href,
+  children,
+}: {
+  href: string
+  children: ReactNode
+}) {
+  // AI 챗봇 팝업에서도 메인 앱 상세로 열리도록 새 탭 사용 (7차)
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-accent hover:underline"
+    >
+      {children}
+    </a>
+  )
+}
+
+function AiTableBlock({
+  title,
+  headers,
+  rows,
+  rowHrefs,
+  linkColumn,
+  detailNav,
+}: Extract<AiBlock, { type: 'table' }>) {
+  const col = linkColumn ?? 1
   return (
     <div className="rounded-xl border border-line p-3">
       <p className="mb-2 text-sm font-medium">{title}</p>
+      {detailNav ? (
+        <p className="mb-2 text-xs text-muted">
+          데이터 출처: {detailNav.source}
+          {detailNav.period
+            ? ` · ${detailNav.period.start} ~ ${detailNav.period.end}`
+            : ''}
+          {' · 행 클릭 시 상세페이지'}
+        </p>
+      ) : null}
       {rows.length === 0 ? (
         <p className="text-sm text-muted">해당 조건의 품번이 없습니다.</p>
       ) : (
@@ -981,14 +1042,21 @@ function AiTableBlock({ title, headers, rows }: Extract<AiBlock, { type: 'table'
             <tbody>
               {rows.map((row, i) => (
                 <tr key={`${row[1]}-${i}`} className="border-b border-line/70">
-                  {row.map((cell, j) => (
-                    <td
-                      key={`${i}-${j}`}
-                      className={`px-2 py-2 ${j === 0 || j >= 3 ? 'num' : ''} ${j === 1 ? 'font-medium' : ''}`}
-                    >
-                      {cell}
-                    </td>
-                  ))}
+                  {row.map((cell, j) => {
+                    const href = j === col ? rowHrefs?.[i] : null
+                    return (
+                      <td
+                        key={`${i}-${j}`}
+                        className={`px-2 py-2 ${j === 0 || j >= 3 ? 'num' : ''} ${j === col ? 'font-medium' : ''}`}
+                      >
+                        {href ? (
+                          <AiDetailLink href={href}>{cell}</AiDetailLink>
+                        ) : (
+                          cell
+                        )}
+                      </td>
+                    )
+                  })}
                 </tr>
               ))}
             </tbody>

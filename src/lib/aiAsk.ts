@@ -17,6 +17,7 @@ import {
   vinaUnsupportedRequestMessage,
   type AiDataSource,
 } from './aiDataSource'
+import { attachAiDetailLinks } from './aiDetailNav'
 import { KNOWN_DEFECT_TYPES } from './excel'
 import { itemMatchKey, sameItemMatchKey } from './itemMatchKey'
 import {
@@ -59,6 +60,13 @@ export type AiChartSeries = {
   color: string
 }
 
+/** 7차: AI 결과 → 상세페이지 네비게이션 메타 */
+export type AiDetailNavMeta = {
+  source: 'VINA' | 'EXISTING'
+  entity: 'product' | 'inspector'
+  period: { start: string; end: string } | null
+}
+
 export type AiBlock =
   | { type: 'text'; lines: string[] }
   | {
@@ -69,6 +77,9 @@ export type AiBlock =
       valueLabel?: string
       /** 가로 막대 (긴 품번명 등) */
       layout?: 'vertical' | 'horizontal'
+      /** 막대 이름 → 상세페이지 href (7차) */
+      nameHrefs?: Record<string, string>
+      detailNav?: AiDetailNavMeta
     }
   | {
       type: 'pie'
@@ -119,6 +130,11 @@ export type AiBlock =
       title: string
       headers: string[]
       rows: string[][]
+      /** 행별 상세페이지 href (linkColumn 셀) — 7차 */
+      rowHrefs?: (string | null)[]
+      /** rowHrefs가 가리키는 열 인덱스 */
+      linkColumn?: number
+      detailNav?: AiDetailNavMeta
     }
 
 /** 직전 답변의 품번 리스트 등 — 후속 질문("방금 알려준 리스트에서…")용 */
@@ -152,6 +168,8 @@ export type AiConversationContext = {
     | 'group'
   /** 직전 정렬 방향 (true=낮은/적은 순) */
   lastAscending?: boolean
+  /** 직전 데이터 출처 (7차: 상세 이동 source 유지) */
+  lastDataSource?: AiDataSource
 }
 
 export type AiAnswer = {
@@ -9109,14 +9127,19 @@ export function answerQuestion(
   if (dataSource === 'compare' && vinaAnalytics) {
     const analysisPart =
       stripAiDataSourcePhrases(text) || '부적합률 TOP5 알려줘'
-    const blocks: AiBlock[] = [
-      textBlock(
-        `데이터 출처: ${aiDataSourceLabel('compare')}`,
-        '기존 검사 DATA와 VINA DATA를 구분해 비교합니다. 컬럼·지표를 혼용하지 않습니다.',
-        '품번 표기가 달라도 정규화·matchKey로 동일 품번만 연결하며, 원본은 유지합니다.',
-      ),
-      textBlock('── 기존 검사 DATA ──'),
-      ...answerOne(
+    const comparePeriod =
+      parsePeriodFromQuestion(
+        normalizeQuestionText(analysisPart),
+        records,
+        now,
+      ) ??
+      defaultPeriod ??
+      periodForAllRecords(records)
+    const linkPeriod = comparePeriod
+      ? { startDate: comparePeriod.startDate, endDate: comparePeriod.endDate }
+      : null
+    const mainBlocks = attachAiDetailLinks(
+      answerOne(
         analysisPart,
         analytics,
         records,
@@ -9126,11 +9149,10 @@ export function answerQuestion(
         false,
         null,
       ),
-      textBlock('── VINA DATA ──'),
-      textBlock(
-        ...vinaSourceAttributionLines(defaultPeriod?.label ?? null).slice(1),
-      ),
-      ...answerOne(
+      { dataSource: 'main', period: linkPeriod },
+    )
+    const vinaBlocks = attachAiDetailLinks(
+      answerOne(
         analysisPart,
         vinaAnalytics,
         vinaRecords,
@@ -9140,9 +9162,32 @@ export function answerQuestion(
         true,
         mainProductCatalog,
       ),
+      { dataSource: 'vina', period: linkPeriod },
+    )
+    const blocks: AiBlock[] = [
+      textBlock(
+        `데이터 출처: ${aiDataSourceLabel('compare')}`,
+        '기존 검사 DATA와 VINA DATA를 구분해 비교합니다. 컬럼·지표를 혼용하지 않습니다.',
+        '품번 표기가 달라도 정규화·matchKey로 동일 품번만 연결하며, 원본은 유지합니다.',
+        '상세페이지는 출처별로 분리됩니다(분석 합산 금지, 사진은 동일 품번만 재사용).',
+      ),
+      textBlock('── 기존 검사 DATA ──'),
+      ...mainBlocks,
+      textBlock('── VINA DATA ──'),
+      textBlock(
+        ...vinaSourceAttributionLines(defaultPeriod?.label ?? null).slice(1),
+      ),
+      ...vinaBlocks,
     ]
     const ctx = buildContextFromBlocks(text, blocks)
-    return { blocks, context: ctx ?? priorContext ?? undefined }
+    return {
+      blocks,
+      context: ctx
+        ? { ...ctx, lastDataSource: 'compare', lastPeriod: comparePeriod ?? ctx.lastPeriod }
+        : priorContext
+          ? { ...priorContext, lastDataSource: 'compare' }
+          : undefined,
+    }
   }
 
   const activeRecords = dataSource === 'vina' ? vinaRecords : records
@@ -9181,25 +9226,34 @@ export function answerQuestion(
     }
     const partForEngine =
       dataSource === 'vina' ? stripAiDataSourcePhrases(part) || part : part
-    const partBlocks = answerOne(
-      partForEngine,
-      activeAnalytics,
-      activeRecords,
-      ctx,
-      defaultPeriod,
-      now,
-      forceAllGroups,
-      linkCatalog,
+    const partNorm = normalizeQuestionText(partForEngine)
+    const period =
+      parsePeriodFromQuestion(partNorm, activeRecords, now) ??
+      ctx?.lastPeriod ??
+      defaultPeriod ??
+      periodForAllRecords(activeRecords)
+    const linkPeriod = period
+      ? { startDate: period.startDate, endDate: period.endDate }
+      : null
+    const partBlocks = attachAiDetailLinks(
+      answerOne(
+        partForEngine,
+        activeAnalytics,
+        activeRecords,
+        ctx,
+        defaultPeriod,
+        now,
+        forceAllGroups,
+        linkCatalog,
+      ),
+      {
+        dataSource: forceAllGroups ? 'vina' : 'main',
+        period: linkPeriod,
+      },
     )
     blocks.push(...partBlocks)
     const next = buildContextFromBlocks(part, partBlocks)
     if (next) {
-      const partNorm = normalizeQuestionText(partForEngine)
-      const period =
-        parsePeriodFromQuestion(partNorm, activeRecords, now) ??
-        ctx?.lastPeriod ??
-        defaultPeriod ??
-        null
       const pn = compact(partNorm)
       const { groups: partGroups } = forceAllGroups
         ? { groups: [] as typeof GROUP_ALIASES }
@@ -9207,6 +9261,7 @@ export function answerQuestion(
       ctx = {
         ...next,
         lastPeriod: period ?? next.lastPeriod,
+        lastDataSource: dataSource,
         lastMetric:
           next.lastMetric ??
           ctx?.lastMetric ??
@@ -9236,6 +9291,7 @@ export function answerQuestion(
       ctx = {
         ...ctx,
         lastQuestion: part,
+        lastDataSource: dataSource,
       }
     }
   })

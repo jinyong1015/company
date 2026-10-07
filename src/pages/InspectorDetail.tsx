@@ -306,9 +306,14 @@ export function InspectorDetail() {
         <InspectorDetailBackNav {...backNavProps} />
         {snapshotBanner}
         <DetailHero
-          eyebrow="검사자 상세"
+          eyebrow={isVina ? 'VINA 검사자 상세' : '검사자 상세'}
           title={name}
-          description="선택한 기간/분석 그룹에 이 검사자의 DATA가 없습니다."
+          description={
+            isVina
+              ? '선택한 기간의 VINA DATA에 이 검사자가 없습니다.'
+              : '선택한 기간/분석 그룹에 이 검사자의 DATA가 없습니다.'
+          }
+          chips={isVina ? ['데이터 출처: VINA'] : undefined}
         />
         <Panel>
           <p className="text-sm text-muted">
@@ -417,10 +422,18 @@ export function InspectorDetail() {
       <InspectorDetailBackNav {...backNavProps} />
       {snapshotBanner}
       <DetailHero
-        eyebrow="검사자 상세"
+        eyebrow={isVina ? 'VINA 검사자 상세' : '검사자 상세'}
         title={row.name}
-        description={`${row.team} · 선택한 기간/분석 그룹 기준 · ${scopeLabel}`}
-        chips={[row.team, scopeLabel]}
+        description={
+          isVina
+            ? `${row.team} · VINA DATA · ${scopeLabel}`
+            : `${row.team} · 선택한 기간/분석 그룹 기준 · ${scopeLabel}`
+        }
+        chips={[
+          ...(isVina ? ['데이터 출처: VINA'] : []),
+          row.team,
+          scopeLabel,
+        ]}
       />
 
       <DetailProductPicker

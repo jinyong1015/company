@@ -1326,6 +1326,135 @@ export function summarizeInspectorProductUph(
   );
 }
 
+/** 스마트 비교: 일별 부적합률(ppm) TOP 품번 행 */
+export interface DailyProductFailRateRow {
+  id: string;
+  name: string;
+  type: string;
+  qty: number;
+  pass: number;
+  fail: number;
+  failRate: number;
+  mainDefect: string;
+  worker: string;
+  equipment: string;
+  lot: string;
+  rank: number;
+}
+
+function topFieldByQty(
+  list: InspectionRecord[],
+  field: "worker" | "equipment",
+): string {
+  const map = new Map<string, number>();
+  for (const r of list) {
+    const key = String(r[field] ?? "").trim() || "미지정";
+    map.set(key, (map.get(key) ?? 0) + r.qty);
+  }
+  const sorted = [...map.entries()].sort(
+    (a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ko"),
+  );
+  if (!sorted.length) return "-";
+  const names = sorted
+    .map(([name]) => name)
+    .filter((name) => name && name !== "미지정");
+  if (!names.length) return "-";
+  // 작업자: 검사이력 표처럼 공백으로 나열. 설비: 대표 1 + 외 N.
+  if (field === "worker") {
+    return names.length <= 4
+      ? names.join(" ")
+      : `${names.slice(0, 3).join(" ")} 외 ${names.length - 3}`;
+  }
+  if (names.length === 1) return names[0]!;
+  return `${names[0]} 외 ${names.length - 1}`;
+}
+
+function formatProductionLotLabel(list: InspectionRecord[]): string {
+  const lots = [
+    ...new Set(
+      list
+        .map((r) => String(r.lot ?? "").trim())
+        .filter((v) => v && v !== "-"),
+    ),
+  ];
+  if (!lots.length) return "-";
+  if (lots.length === 1) return lots[0]!;
+  const numeric = lots.every((l) => /^\d+$/.test(l));
+  if (numeric) {
+    const sorted = [...lots].sort((a, b) => Number(a) - Number(b));
+    return `${sorted[0]} - ${sorted[sorted.length - 1]}`;
+  }
+  const sorted = [...lots].sort((a, b) => a.localeCompare(b, "ko"));
+  return `${sorted[0]} 외 ${lots.length - 1}`;
+}
+
+function representativeDefectLabel(list: InspectionRecord[]): string {
+  const defects = aggregateDefects(list).filter((d) => d.name && d.name !== "-");
+  if (!defects.length) {
+    const fallback = mainDefectOf(list);
+    return fallback && fallback !== "기타" ? fallback : "-";
+  }
+  return defects
+    .slice(0, 2)
+    .map((d) => d.name)
+    .join(", ");
+}
+
+/**
+ * 특정 일자 기준 부적합률(ppm) 높은 품번 TOP.
+ * qty=0 품번은 제외. 동률 시 부적합수량·검수량 보조정렬.
+ */
+export function summarizeDailyProductFailRateTop(
+  records: InspectionRecord[],
+  day: string,
+  topN: number,
+  analysisGroup: AnalysisGroupId = "all",
+): DailyProductFailRateRow[] {
+  const date = day.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+  const limit = Math.min(500, Math.max(1, Math.floor(topN) || 10));
+
+  const dayRecords = records.filter((r) => {
+    if (!isAnalyzable(r)) return false;
+    if (!matchesAnalysisGroup(r, analysisGroup)) return false;
+    return r.date === date;
+  });
+
+  const map = groupRecordsByItemMatchKey(dayRecords);
+  const rows = [...map.values()]
+    .map((list) => {
+      const name = preferDisplayItem(list.map((r) => r.product));
+      const qty = sum(list, "qty");
+      const pass = sum(list, "pass");
+      const fail = sum(list, "fail");
+      return {
+        id: toEntityId("prd", name),
+        name,
+        type: list[0]?.productType || "미지정",
+        qty,
+        pass,
+        fail,
+        failRate: failRatePpm(fail, qty),
+        mainDefect: representativeDefectLabel(list),
+        worker: topFieldByQty(list, "worker"),
+        equipment: topFieldByQty(list, "equipment"),
+        lot: formatProductionLotLabel(list),
+        rank: 0,
+      };
+    })
+    .filter((r) => r.qty > 0)
+    .sort(
+      (a, b) =>
+        b.failRate - a.failRate ||
+        b.fail - a.fail ||
+        b.qty - a.qty ||
+        a.name.localeCompare(b.name, "ko"),
+    )
+    .slice(0, limit);
+
+  return rows.map((r, i) => ({ ...r, rank: i + 1 }));
+}
+
 /** 불량 유형 비중 항목 */
 export interface DefectShareItem {
   name: string;

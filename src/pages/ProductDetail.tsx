@@ -93,10 +93,14 @@ const BACK_NAV_ICONS: Record<ProductDetailFromId, LucideIcon> = {
   inspectors: Users,
   cost: Coins,
   equipment: Factory,
+  ai: Package,
+  compare: Activity,
   "vina-products": Package,
   "vina-quality": Activity,
   "vina-inspectors": Users,
   "vina-cost": Coins,
+  "vina-ai": Package,
+  "vina-compare": Activity,
 };
 
 function buildBackNav(
@@ -286,10 +290,12 @@ export function ProductDetail() {
     backFrom === "inspectors" || backFrom === "vina-inspectors";
   const rangeStart = searchParams.get("startDate");
   const rangeEnd = searchParams.get("endDate");
-  const periodRange =
-    (fromWeeklyReport || fromWorkers || fromInspectors) &&
-    rangeStart &&
-    rangeEnd
+  // 7차: URL에 기간이 있으면(AI·VINA 목록 등) 상세에도 동일 기간 표시
+  const periodRange = urlDateRange
+    ? { start: urlDateRange.startDate, end: urlDateRange.endDate }
+    : (fromWeeklyReport || fromWorkers || fromInspectors) &&
+        rangeStart &&
+        rangeEnd
       ? { start: rangeStart, end: rangeEnd }
       : null;
 
@@ -425,6 +431,14 @@ function ProductDetailBody({
   const defects = product?.defects ?? [];
   const status = product?.status ?? statusByPpm(failRate);
   const type = product?.type ?? scoped[0]?.productType ?? "미지정";
+  const originalItem = useMemo(() => {
+    if (!isVina) return null;
+    for (const r of scoped) {
+      const raw = String(r.extras?.["원본ITEM"] ?? "").trim();
+      if (raw && raw !== name) return raw;
+    }
+    return null;
+  }, [isVina, scoped, name]);
 
   /** 빈 문자열 = 전체 불량 (초기 진입 기본값) */
   const [selectedDefect, setSelectedDefect] = useState("");
@@ -542,17 +556,19 @@ function ProductDetailBody({
       />
 
       <DetailHero
-        eyebrow="품번 상세"
+        eyebrow={isVina ? "VINA 품번 상세" : "품번 상세"}
         title={name}
         description={
           personScope
             ? `${type} · ${personScope.label} ${personScope.value} · 선택 기간 실적 기준`
             : periodRange
-              ? `${type} · 선택 주차 품번 상세`
-              : `${type} · 선택한 기간/분석 그룹 기준`
+              ? `${type} · ${isVina ? "VINA" : "선택"} 기간 품번 상세`
+              : `${type} · ${isVina ? "VINA DATA" : "선택한 기간/분석 그룹"} 기준`
         }
         chips={[
+          ...(isVina ? ["데이터 출처: VINA"] : []),
           type,
+          ...(originalItem ? [`원본 ITEM: ${originalItem}`] : []),
           ...(personScope ? [`${personScope.label} ${personScope.value}`] : []),
           ...(periodRange
             ? [`${periodRange.start} ~ ${periodRange.end}`]
@@ -562,6 +578,7 @@ function ProductDetailBody({
       />
 
       <div className="detail-top">
+        {/* 사진은 matchKey로 기존 품번 재사용 가능. 집계 KPI는 VINA/기존 source만 사용(7차) */}
         <ProductPhotoPanel productKey={name} />
         <DetailKpiStrip
           items={[

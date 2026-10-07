@@ -10,10 +10,14 @@ export type ProductDetailFromId =
   | 'inspectors'
   | 'cost'
   | 'equipment'
+  | 'ai'
+  | 'compare'
   | 'vina-products'
   | 'vina-quality'
   | 'vina-inspectors'
   | 'vina-cost'
+  | 'vina-ai'
+  | 'vina-compare'
 
 export const PRODUCT_DETAIL_FROM_LABELS: Record<ProductDetailFromId, string> = {
   'weekly-report': '주간업무 보고',
@@ -24,10 +28,14 @@ export const PRODUCT_DETAIL_FROM_LABELS: Record<ProductDetailFromId, string> = {
   inspectors: '검사자 분석',
   cost: '비용 분석',
   equipment: '설비 분석',
+  ai: 'AI 질문',
+  compare: '스마트 비교',
   'vina-products': 'VINA 품번 분석',
   'vina-quality': 'VINA 품질 분석',
   'vina-inspectors': 'VINA 검사자 분석',
   'vina-cost': 'VINA 비용 분석',
+  'vina-ai': 'AI 질문 (VINA)',
+  'vina-compare': 'VINA 스마트 비교',
 }
 
 export const PRODUCT_DETAIL_FROM_PATHS: Record<ProductDetailFromId, string> = {
@@ -39,10 +47,14 @@ export const PRODUCT_DETAIL_FROM_PATHS: Record<ProductDetailFromId, string> = {
   inspectors: '/inspectors',
   cost: '/costs',
   equipment: '/equipment',
+  ai: '/products',
+  compare: '/compare',
   'vina-products': '/vina/products',
   'vina-quality': '/vina/quality',
   'vina-inspectors': '/vina/inspectors',
   'vina-cost': '/vina/costs',
+  'vina-ai': '/vina/products',
+  'vina-compare': '/vina/compare',
 }
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
@@ -68,14 +80,37 @@ export function parseProductDetailFrom(
     value === 'inspectors' ||
     value === 'cost' ||
     value === 'equipment' ||
+    value === 'ai' ||
+    value === 'compare' ||
     value === 'vina-products' ||
     value === 'vina-quality' ||
     value === 'vina-inspectors' ||
-    value === 'vina-cost'
+    value === 'vina-cost' ||
+    value === 'vina-ai' ||
+    value === 'vina-compare'
   ) {
     return value
   }
   return options?.vina ? 'vina-products' : 'products'
+}
+
+/** 전역 필터 기간을 상세 URL에 실을 때 사용 (7차: 목록→상세 기간 유지) */
+export function periodOptionsFromFilters(filters: {
+  startDate?: string
+  endDate?: string
+}): { startDate?: string; endDate?: string } {
+  const startDate = filters.startDate?.trim()
+  const endDate = filters.endDate?.trim()
+  if (
+    !startDate ||
+    !endDate ||
+    !DATE_PATTERN.test(startDate) ||
+    !DATE_PATTERN.test(endDate) ||
+    startDate > endDate
+  ) {
+    return {}
+  }
+  return { startDate, endDate }
 }
 
 /** URL의 startDate·endDate (유효할 때만) */
@@ -102,9 +137,9 @@ function appendCarriedPeriodParams(
     const value = source.get(key)
     if (value) params.set(key, value)
   }
-  if (source.get('from') === 'weekly-report') {
-    params.set('from', 'weekly-report')
-  }
+  // 7차: AI·VINA 목록 등 from 값을 상세 URL에 유지
+  const from = source.get('from')
+  if (from) params.set('from', from)
 }
 
 export function buildProductDetailHref(
