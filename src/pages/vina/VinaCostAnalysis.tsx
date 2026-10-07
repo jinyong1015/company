@@ -210,7 +210,7 @@ export function VinaCostAnalysis() {
   const { filters } = useFilters()
   const periodOpts = useMemo(
     () => periodOptionsFromFilters(filters),
-    [filters.startDate, filters.endDate],
+    [filters.period, filters.startDate, filters.endDate],
   )
   const [view, setView] = useState<VinaCostViewState>(readViewState)
   const { query, sortKey, asc, page, pageSize, topType, topMetric } = view

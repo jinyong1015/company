@@ -64,7 +64,7 @@ export function VinaProductAnalysis() {
   const { filters } = useFilters()
   const periodOpts = useMemo(
     () => periodOptionsFromFilters(filters),
-    [filters.startDate, filters.endDate],
+    [filters.period, filters.startDate, filters.endDate],
   )
   const [view, setView] = useState<VinaProductViewState>(readViewState)
   const { query, sortKey, asc, page, pageSize } = view

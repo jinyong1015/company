@@ -382,7 +382,7 @@ function VinaProductTop10({
   const { filters } = useFilters()
   const periodOpts = useMemo(
     () => periodOptionsFromFilters(filters),
-    [filters.startDate, filters.endDate],
+    [filters.period, filters.startDate, filters.endDate],
   )
   const [typeTab, setTypeTab] = useState<ProductTypeTab>('all')
 

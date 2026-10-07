@@ -107,14 +107,19 @@ function parseDate(value: string) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function formatDateInput(d: Date) {
+export function formatDateInput(d: Date) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
-export function resolvePeriodRange(filters: FilterState) {
+export type PeriodRangeFilters = Pick<
+  FilterState,
+  "period" | "startDate" | "endDate"
+>;
+
+export function resolvePeriodRange(filters: PeriodRangeFilters) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   let start = new Date(today);
@@ -143,6 +148,15 @@ export function resolvePeriodRange(filters: FilterState) {
   }
 
   return { start, end };
+}
+
+/** 프리셋(올해·이번달 등)을 포함해 실제 조회 시작·종료일을 YYYY-MM-DD로 반환 */
+export function resolvedPeriodDateStrings(filters: PeriodRangeFilters) {
+  const { start, end } = resolvePeriodRange(filters);
+  return {
+    startDate: formatDateInput(start),
+    endDate: formatDateInput(end),
+  };
 }
 
 function previousRange(start: Date, end: Date) {

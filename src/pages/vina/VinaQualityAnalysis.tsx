@@ -64,7 +64,7 @@ export function VinaQualityAnalysis() {
   const { filters } = useFilters()
   const periodOpts = useMemo(
     () => periodOptionsFromFilters(filters),
-    [filters.startDate, filters.endDate],
+    [filters.period, filters.startDate, filters.endDate],
   )
   const { defectTypes } = analytics
   const [view, setView] = useState<QualityAnalysisViewState>(readViewState)

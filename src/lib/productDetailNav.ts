@@ -1,3 +1,7 @@
+import {
+  resolvedPeriodDateStrings,
+  type PeriodRangeFilters,
+} from './analyze'
 import type { WeeklyReportPeriodState } from './weeklyReportPeriod'
 import { buildWeeklyReportHref } from './weeklyReportPeriod'
 
@@ -94,16 +98,19 @@ export function parseProductDetailFrom(
   return options?.vina ? 'vina-products' : 'products'
 }
 
-/** 전역 필터 기간을 상세 URL에 실을 때 사용 (7차: 목록→상세 기간 유지) */
-export function periodOptionsFromFilters(filters: {
-  startDate?: string
-  endDate?: string
-}): { startDate?: string; endDate?: string } {
-  const startDate = filters.startDate?.trim()
-  const endDate = filters.endDate?.trim()
+/** 전역 필터 기간을 상세 URL에 실을 때 사용 (7차: 목록→상세 기간 유지)
+ * 프리셋(올해·이번달 등)은 startDate/endDate 필드가 갱신되지 않을 수 있으므로
+ * resolvePeriodRange로 실제 구간을 계산한다.
+ */
+export function periodOptionsFromFilters(
+  filters: PeriodRangeFilters,
+): { startDate?: string; endDate?: string } {
+  const { startDate, endDate } = resolvedPeriodDateStrings({
+    period: filters.period,
+    startDate: filters.startDate?.trim() ?? '',
+    endDate: filters.endDate?.trim() ?? '',
+  })
   if (
-    !startDate ||
-    !endDate ||
     !DATE_PATTERN.test(startDate) ||
     !DATE_PATTERN.test(endDate) ||
     startDate > endDate

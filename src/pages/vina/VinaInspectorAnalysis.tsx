@@ -162,7 +162,7 @@ export function VinaInspectorAnalysis() {
   const { filters } = useFilters()
   const periodOpts = useMemo(
     () => periodOptionsFromFilters(filters),
-    [filters.startDate, filters.endDate],
+    [filters.period, filters.startDate, filters.endDate],
   )
   const [view, setView] = useState<VinaInspectorViewState>(readViewState)
   const { query, sortKey, asc, page, pageSize, topPlant, topType } = view
@@ -227,10 +227,21 @@ export function VinaInspectorAnalysis() {
         rank: idx + 1,
         value: r.qty,
         sharePercent: totalQty > 0 ? (r.qty / totalQty) * 100 : 0,
-        href: `/vina/inspectors/${r.id}?from=vina-inspectors`,
+        href: buildInspectorDetailHref(r.id, {
+          vina: true,
+          carryFrom: new URLSearchParams({
+            from: 'vina-inspectors',
+            ...(periodOpts.startDate
+              ? {
+                  startDate: periodOpts.startDate,
+                  endDate: periodOpts.endDate!,
+                }
+              : {}),
+          }),
+        }),
         inspector: r,
       }))
-  }, [filteredForTop])
+  }, [filteredForTop, periodOpts])
 
   const plantTabCounts = useMemo(() => {
     const counts: Record<string, number> = {
