@@ -18,10 +18,7 @@ import {
   normalizeProductType,
 } from '../../lib/groups'
 import { failRatePpm, formatPpm, formatWon } from '../../lib/format'
-import {
-  buildProductDetailHref,
-  periodOptionsFromFilters,
-} from '../../lib/productDetailNav'
+import { buildProductDetailHref } from '../../lib/productDetailNav'
 import { getProductPhotoUrlMap } from '../../lib/productPhotos'
 import { isCloudSyncEnabled } from '../../lib/supabase'
 import {
@@ -379,11 +376,6 @@ function VinaProductTop10({
   onSortChange: (sort: ProductSortId) => void
   groupLabel: string
 }) {
-  const { filters } = useFilters()
-  const periodOpts = useMemo(
-    () => periodOptionsFromFilters(filters),
-    [filters.period, filters.startDate, filters.endDate],
-  )
   const [typeTab, setTypeTab] = useState<ProductTypeTab>('all')
 
   const filteredProducts = useMemo(
@@ -417,7 +409,6 @@ function VinaProductTop10({
       value: p[sort],
       sharePercent: total > 0 ? (p[sort] / total) * 100 : 0,
       href: buildProductDetailHref(p.id, 'vina-products', {
-        ...periodOpts,
         vina: true,
       }),
     }))
@@ -426,7 +417,7 @@ function VinaProductTop10({
       tabLabel: productTypeTabs.find((t) => t.id === typeTab)?.label ?? '전체',
       rows: mapped,
     }
-  }, [filteredProducts, sort, typeTab, periodOpts])
+  }, [filteredProducts, sort, typeTab])
 
   // 대시보드와 동일: 품번명(product_key) 기준 기존 사진 공유
   const productKeys = useMemo(

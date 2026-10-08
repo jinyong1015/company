@@ -23,7 +23,6 @@ import {
 import {
   buildInspectorDetailHref,
   buildProductDetailHref,
-  periodOptionsFromFilters,
 } from '../../lib/productDetailNav'
 import { loadPageViewState, savePageViewState } from '../../lib/pageViewState'
 import type { InspectorRow } from '../../types'
@@ -160,10 +159,6 @@ function aggregateInspectorQty(
 export function VinaInspectorAnalysis() {
   const { analytics, records, hasUploadedData } = useVinaData()
   const { filters } = useFilters()
-  const periodOpts = useMemo(
-    () => periodOptionsFromFilters(filters),
-    [filters.period, filters.startDate, filters.endDate],
-  )
   const [view, setView] = useState<VinaInspectorViewState>(readViewState)
   const { query, sortKey, asc, page, pageSize, topPlant, topType } = view
   const [openId, setOpenId] = useState<string | null>(null)
@@ -229,19 +224,11 @@ export function VinaInspectorAnalysis() {
         sharePercent: totalQty > 0 ? (r.qty / totalQty) * 100 : 0,
         href: buildInspectorDetailHref(r.id, {
           vina: true,
-          carryFrom: new URLSearchParams({
-            from: 'vina-inspectors',
-            ...(periodOpts.startDate
-              ? {
-                  startDate: periodOpts.startDate,
-                  endDate: periodOpts.endDate!,
-                }
-              : {}),
-          }),
+          carryFrom: new URLSearchParams({ from: 'vina-inspectors' }),
         }),
         inspector: r,
       }))
-  }, [filteredForTop, periodOpts])
+  }, [filteredForTop])
 
   const plantTabCounts = useMemo(() => {
     const counts: Record<string, number> = {
@@ -487,12 +474,6 @@ export function VinaInspectorAnalysis() {
                               vina: true,
                               carryFrom: new URLSearchParams({
                                 from: 'vina-inspectors',
-                                ...(periodOpts.startDate
-                                  ? {
-                                      startDate: periodOpts.startDate,
-                                      endDate: periodOpts.endDate!,
-                                    }
-                                  : {}),
                               }),
                             })}
                             className="text-accent hover:underline"
@@ -532,7 +513,6 @@ export function VinaInspectorAnalysis() {
                                           toEntityId('prd', p.product),
                                           'vina-inspectors',
                                           {
-                                            ...periodOpts,
                                             vina: true,
                                             inspector: row.name,
                                             inspectorId: row.id,

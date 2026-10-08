@@ -5,14 +5,10 @@ import { SortSearchBar } from '../../components/common/SortSearchBar'
 import { Pager } from '../../components/common/Pager'
 import { VinaNotice } from '../../components/vina/VinaNotice'
 import { VinaSubNav } from '../../components/vina/VinaSubNav'
-import { useFilters } from '../../context/FilterContext'
 import { useVinaData } from '../../context/VinaDataContext'
 import { downloadExcel } from '../../lib/download'
 import { loadPageViewState, savePageViewState } from '../../lib/pageViewState'
-import {
-  buildProductDetailHref,
-  periodOptionsFromFilters,
-} from '../../lib/productDetailNav'
+import { buildProductDetailHref } from '../../lib/productDetailNav'
 import type { ProductRow } from '../../types'
 import { formatPpm, formatWonSuffix } from '../../lib/format'
 import { itemMatchKey } from '../../lib/itemMatchKey'
@@ -61,11 +57,6 @@ const sortKeys = [
 
 export function VinaProductAnalysis() {
   const { analytics, hasUploadedData } = useVinaData()
-  const { filters } = useFilters()
-  const periodOpts = useMemo(
-    () => periodOptionsFromFilters(filters),
-    [filters.period, filters.startDate, filters.endDate],
-  )
   const [view, setView] = useState<VinaProductViewState>(readViewState)
   const { query, sortKey, asc, page, pageSize } = view
 
@@ -170,7 +161,6 @@ export function VinaProductAnalysis() {
                       <td className="px-2 py-3">
                         <Link
                           to={buildProductDetailHref(row.id, 'vina-products', {
-                            ...periodOpts,
                             vina: true,
                           })}
                           className="font-medium text-accent hover:underline"

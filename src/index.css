@@ -4588,6 +4588,15 @@ select {
 .group:hover .detail-back-label {
   color: var(--color-accent);
 }
+/* 조회기간·품번·검사자·작업자 메타를 오른쪽 끝에 배치 */
+.detail-back-trailing {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  margin-left: auto;
+  min-width: 0;
+  flex-shrink: 0;
+}
 .detail-back-meta {
   display: none;
   flex-shrink: 0;

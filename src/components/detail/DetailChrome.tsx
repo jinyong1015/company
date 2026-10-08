@@ -52,19 +52,24 @@ export function DetailBackNav({
           <span className="detail-back-label">{label}</span>
         </span>
 
-        {desktopMetas.map((meta) => {
-          const shown = displayMetaValue(meta.label, meta.value)
-          return (
-            <span key={`${meta.label}:${meta.value}`} className="detail-back-meta">
-              <span className="detail-back-meta-label">{meta.label}</span>
-              <span className="detail-back-meta-value" title={shown}>
-                {shown}
+        <span className="detail-back-trailing">
+          {desktopMetas.map((meta) => {
+            const shown = displayMetaValue(meta.label, meta.value)
+            return (
+              <span
+                key={`${meta.label}:${meta.value}`}
+                className="detail-back-meta"
+              >
+                <span className="detail-back-meta-label">{meta.label}</span>
+                <span className="detail-back-meta-value" title={shown}>
+                  {shown}
+                </span>
               </span>
-            </span>
-          )
-        })}
+            )
+          })}
 
-        <ChevronRight size={18} className="detail-back-chevron" aria-hidden />
+          <ChevronRight size={18} className="detail-back-chevron" aria-hidden />
+        </span>
       </Link>
 
       {metas.length > 0 ? (

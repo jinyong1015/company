@@ -38,9 +38,33 @@ function requireClient() {
   return supabase
 }
 
+/**
+ * Storage object key는 ASCII만 허용됨.
+ * encodeURIComponent는 `%`를 남겨 Invalid key가 되므로 사용하지 않는다.
+ * DB product_key는 한글 원문을 유지하고, 경로 폴더만 안전하게 만든다.
+ */
+function sanitizeStorageFolder(productKey: string): string {
+  const ascii = productKey
+    .trim()
+    .replace(/[/\\]/g, '_')
+    .replace(/[^a-zA-Z0-9._\-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+  if (/[a-zA-Z0-9]/.test(ascii)) return ascii
+
+  // 한글만 있는 품번 등 — 동일 품번은 같은 폴더로 모이도록 matchKey 해시
+  const mk = itemMatchKey(productKey) || productKey.trim()
+  let hash = 0
+  for (let i = 0; i < mk.length; i += 1) {
+    hash = (Math.imul(31, hash) + mk.charCodeAt(i)) | 0
+  }
+  return `k${(hash >>> 0).toString(36)}`
+}
+
 function storagePath(productKey: string) {
-  const folder = encodeURIComponent(productKey.trim())
-  return `${folder}/${Date.now()}.jpg`
+  const folder = sanitizeStorageFolder(productKey)
+  const id = crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+  return `${folder}/${Date.now()}-${id}.jpg`
 }
 
 /**

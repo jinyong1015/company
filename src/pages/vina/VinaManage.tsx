@@ -32,6 +32,7 @@ export function VinaManage() {
   const {
     meta,
     records,
+    analytics,
     uploading,
     uploadError,
     uploadExcel,
@@ -131,14 +132,30 @@ export function VinaManage() {
       <VinaNotice />
 
       <section className="manage-panel">
+        <div className="manage-panel-head">
+          <div>
+            <h2 className="manage-panel-title">Excel Upload</h2>
+            <p className="manage-panel-sub">
+              .xlsx / .xls · Work Day · ITEM · 사원명 · 설비 · 검사수량 · NG수량 등
+            </p>
+          </div>
+        </div>
         <div className="manage-panel-body">
           <div
+            role="button"
+            tabIndex={0}
             className={`manage-dropzone${dragging ? ' is-dragging' : ''}${uploading ? ' is-busy' : ''}`}
-            onDragEnter={(e) => {
+            onClick={() => {
+              if (!uploading) inputRef.current?.click()
+            }}
+            onKeyDown={(e) => {
+              if (uploading) return
+              if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click()
+            }}
+            onDragOver={(e) => {
               e.preventDefault()
               setDragging(true)
             }}
-            onDragOver={(e) => e.preventDefault()}
             onDragLeave={() => setDragging(false)}
             onDrop={(e) => {
               e.preventDefault()
@@ -147,6 +164,21 @@ export function VinaManage() {
               if (file) void handleFile(file)
             }}
           >
+            <div className="manage-dropzone-icon" aria-hidden>
+              {uploading ? (
+                <Upload size={22} className="animate-pulse" />
+              ) : (
+                <Upload size={22} />
+              )}
+            </div>
+            <p className="manage-dropzone-title">
+              {uploading
+                ? 'VINA 엑셀 분석 중…'
+                : 'VINA 검사 엑셀을 드래그하거나 클릭하여 업로드'}
+            </p>
+            <p className="manage-dropzone-hint">
+              Work Day · ITEM · 사원명 · 설비 · 검사수량 · NG수량 · 검사금액 등
+            </p>
             <input
               ref={inputRef}
               type="file"
@@ -158,42 +190,37 @@ export function VinaManage() {
                 e.target.value = ''
               }}
             />
-            <div className="manage-dropzone-icon" aria-hidden>
-              {uploading ? <Upload size={22} className="animate-pulse" /> : <FileSpreadsheet size={22} />}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="manage-dropzone-title">
-                {uploading ? 'VINA 엑셀 분석 중…' : 'VINA 검사 엑셀을 끌어다 놓거나 클릭하여 선택'}
-              </p>
-              <p className="manage-dropzone-sub">
-                Work Day · ITEM · 사원명 · 설비 · 검사수량 · NG수량 · 검사금액 등
-              </p>
-            </div>
-            <button
-              type="button"
-              className="manage-action-btn manage-action-btn-primary"
-              disabled={uploading}
-              onClick={() => inputRef.current?.click()}
-            >
-              파일 선택
-            </button>
           </div>
 
           {showFileStatus ? (
-            <div className="manage-file-status">
-              <span className="manage-file-status-label">선택 파일</span>
-              <span className="manage-file-status-name">{displayName ?? '—'}</span>
+            <div className="manage-file-card">
+              <FileSpreadsheet size={18} style={{ color: 'var(--accent)' }} />
+              <div className="min-w-0 flex-1">
+                <p
+                  className="truncate text-sm font-semibold"
+                  style={{ color: 'var(--text)' }}
+                >
+                  {displayName ?? '파일'}
+                </p>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  {uploading
+                    ? '파일 구조 검증 · 컬럼 매핑 · 중복/누락/타입 검사 중…'
+                    : pending
+                      ? pending.uploadResult.blocked
+                        ? '오류 행 포함 · 전체 저장 후 VINA 오류 DATA에서 확인'
+                        : pending.uploadResult.warn > 0
+                          ? '경고 DATA 확인 후 저장하세요'
+                          : '검증 완료'
+                      : hasUploadedData
+                        ? `업로드 완료 · 분석 레코드 ${analytics.summary.recordCount.toLocaleString()}건 반영`
+                        : '대기 중'}
+                </p>
+              </div>
               {!uploading && !pending && hasUploadedData ? (
-                <span className="manage-file-status-ok">
-                  <CheckCircle2 size={14} aria-hidden />
-                  저장됨
-                </span>
+                <CheckCircle2 size={18} style={{ color: 'var(--success)' }} />
               ) : null}
               {!uploading && pending?.uploadResult.blocked ? (
-                <span className="manage-file-status-warn">
-                  <AlertTriangle size={14} aria-hidden />
-                  오류 있음
-                </span>
+                <AlertTriangle size={18} style={{ color: 'var(--error)' }} />
               ) : null}
             </div>
           ) : null}

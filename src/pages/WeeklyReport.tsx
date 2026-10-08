@@ -1578,7 +1578,6 @@ export function WeeklyReport() {
               metric={metric}
               onMetricChange={setMetric}
               selectedMonthKey={shownSelectedMonthKey}
-              onMonthSelect={handleMonthSelect}
             />
 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -1676,9 +1675,6 @@ export function WeeklyReport() {
                     metric={vinaMetric}
                     onMetricChange={setVinaMetric}
                     selectedMonthKey={shownSelectedMonthKey}
-                    onMonthSelect={
-                      viewingSnapshot ? undefined : handleMonthSelect
-                    }
                     title="VINA 월별 현황"
                     descriptionPrefix="VINA 데이터 · 제품유형 기준 · "
                     orgs={VINA_MONTHLY_ORGS}

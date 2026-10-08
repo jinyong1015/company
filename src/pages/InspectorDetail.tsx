@@ -24,7 +24,7 @@ import {
 } from '../components/detail/DetailChrome'
 import { DEFECT_TYPE_COLORS } from '../lib/defectColors'
 import { cloneFilterState, useFilters, type FilterState } from '../context/FilterContext'
-import { filterRecords, buildPeriodTrends, resolvePeriodRange } from '../lib/analyze'
+import { filterRecords, buildPeriodTrends } from '../lib/analyze'
 import { fromEntityId, toEntityId } from '../lib/entityId'
 import { itemMatchKey, sameItemMatchKey } from '../lib/itemMatchKey'
 import {
@@ -37,13 +37,6 @@ import { useWeeklySnapshotSourceRecords } from '../hooks/useWeeklySnapshotSource
 import { useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { failRatePpm, formatPpm, formatWon } from '../lib/format'
 import type { ProductBreakdown } from '../types'
-
-function toDateInput(d: Date) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
 
 function InspectorDetailBackNav({
   productName,
@@ -387,12 +380,10 @@ export function InspectorDetail() {
 
   const scopeLabel = hasSelection ? `품번 ${activeProduct}` : '전체 품번'
   const totalQty = productOptions.reduce((s, p) => s + p.qty, 0)
-  const period = resolvePeriodRange(effectiveFilters)
-  const periodStart = toDateInput(period.start)
-  const periodEnd = toDateInput(period.end)
   const inspectorId = row.id
 
   function productDetailHref(productName: string) {
+    // 주간보고·URL 기간 딥링크만 날짜를 유지. 일반 목록→상세는 FilterContext 프리셋 유지.
     if (urlDateRange || searchParams.get('from') === 'weekly-report') {
       return buildProductDetailReturnHref(
         toEntityId('prd', productName),
@@ -408,8 +399,6 @@ export function InspectorDetail() {
       toEntityId('prd', productName),
       isVina ? 'vina-inspectors' : 'inspectors',
       {
-        startDate: periodStart,
-        endDate: periodEnd,
         inspector: name,
         inspectorId,
         vina: isVina,

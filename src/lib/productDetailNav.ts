@@ -98,9 +98,12 @@ export function parseProductDetailFrom(
   return options?.vina ? 'vina-products' : 'products'
 }
 
-/** 전역 필터 기간을 상세 URL에 실을 때 사용 (7차: 목록→상세 기간 유지)
- * 프리셋(올해·이번달 등)은 startDate/endDate 필드가 갱신되지 않을 수 있으므로
- * resolvePeriodRange로 실제 구간을 계산한다.
+/**
+ * 전역 필터 기간을 상세 URL에 실을 때 사용.
+ * 주간보고·AI·스냅샷 등 FilterContext를 공유하지 않는 딥링크에만 쓴다.
+ * 같은 분석 세션의 목록→상세(품번/검사자 분석·VINA 포함)는 URL에 넣지 말고
+ * FilterContext period 프리셋을 그대로 유지한다. (넣으면 setCustomDateRange로
+ * 「사용자 지정」이 되어 불필요 재조회가 발생한다.)
  */
 export function periodOptionsFromFilters(
   filters: PeriodRangeFilters,
