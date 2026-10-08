@@ -59,8 +59,8 @@ function compactAxisTick(value: number): string {
 
 function estimateAxisWidth(labels: string[]) {
   const longest = Math.max(1, ...labels.map((s) => s.length));
-  // 한글·숫자 혼합 기준 대략 폭
-  return Math.max(44, Math.min(112, Math.ceil(longest * 11) + 12));
+  // 라벨 폭 + 그래프와의 간격(여유 패딩)
+  return Math.max(56, Math.min(128, Math.ceil(longest * 12) + 28));
 }
 
 function ChartAxisTick({
@@ -297,7 +297,7 @@ export function SplitTop10Panel<TRow extends SplitTop10RowBase>({
                 margin={{
                   top: 36,
                   right: 16,
-                  left: 4,
+                  left: 12,
                   bottom: chartBottom,
                 }}
               >
@@ -345,6 +345,7 @@ export function SplitTop10Panel<TRow extends SplitTop10RowBase>({
                   }}
                   tickFormatter={(v) => axisTick(Number(v))}
                   width={yAxisWidth}
+                  tickMargin={10}
                   axisLine={false}
                   tickLine={false}
                 />

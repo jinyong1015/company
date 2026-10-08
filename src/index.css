@@ -767,8 +767,13 @@ select {
 }
 
 .weekly-selected-column {
-  background-color: rgba(255, 251, 235, 0.9);
-  box-shadow: inset 0 0 0 1px rgba(252, 211, 77, 0.7);
+  /* solid fill — alpha + inset shadow bled into adjacent columns with border-collapse */
+  background-color: #fffbeb !important;
+  box-shadow: none;
+  outline: 2px solid rgba(245, 158, 11, 0.75);
+  outline-offset: -2px;
+  position: relative;
+  z-index: 1;
 }
 
 .weekly-current-row {
@@ -776,8 +781,10 @@ select {
 }
 
 .dark .weekly-selected-column {
-  background-color: #252018;
-  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.45);
+  background-color: #252018 !important;
+  box-shadow: none;
+  outline: 2px solid rgba(251, 191, 36, 0.55);
+  outline-offset: -2px;
 }
 
 .dark .weekly-current-row {

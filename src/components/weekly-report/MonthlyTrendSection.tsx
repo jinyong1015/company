@@ -159,10 +159,17 @@ function MonthlyTrendBody({
   const rowAccent = rowAccentMap(orgs)
   const legendOrder = [...orgs.map((o) => o.id), 'total']
   const selectedKey = normalizeMonthKey(selectedMonthKey)
-  // 동일 키가 중복이어도 한 열만 하이라이트 (표시 라벨 기준)
-  const selectedMonthIndex = selectedKey
-    ? view.months.findIndex((m) => canonicalMonthKey(m) === selectedKey)
-    : -1
+  // 한 열만 하이라이트. monthKey·라벨이 둘 다 맞는 열 우선 (스냅샷 키 어긋남 대비)
+  const selectedMonthIndex = (() => {
+    if (!selectedKey) return -1
+    const bothMatch = view.months.findIndex((m) => {
+      const byKey = normalizeMonthKey(m.monthKey) === selectedKey
+      const byLabel = monthKeyFromLabel(m.monthLabel) === selectedKey
+      return byKey && (byLabel || !m.monthLabel)
+    })
+    if (bothMatch >= 0) return bothMatch
+    return view.months.findIndex((m) => canonicalMonthKey(m) === selectedKey)
+  })()
 
   const chartHeight = large ? 'min(52vh, 520px)' : '380px'
   const tickSize = large ? 12 : 11
@@ -231,9 +238,14 @@ function MonthlyTrendBody({
                 cursor={onMonthSelect ? 'pointer' : undefined}
                 onClick={
                   onMonthSelect
-                    ? (_data, index) => {
-                        const item = chartData[index]
-                        if (item?.monthKey) onMonthSelect(item.monthKey)
+                    ? (data) => {
+                        // index는 0높이 막대 필터 후와 어긋날 수 있어 payload.monthKey 사용
+                        const row = data as {
+                          monthKey?: string
+                          payload?: { monthKey?: string }
+                        }
+                        const key = row.monthKey ?? row.payload?.monthKey
+                        if (key) onMonthSelect(key)
                       }
                     : undefined
                 }
@@ -291,10 +303,12 @@ function MonthlyTrendBody({
         </div>
 
         <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-          <table className={`w-max min-w-full border-collapse ${tableText}`}>
+          <table
+            className={`w-max min-w-full border-separate border-spacing-0 ${tableText}`}
+          >
             <thead>
               <tr className="border-b border-line bg-slate-50/90 text-left text-xs text-muted">
-                <th className="sticky left-0 z-20 min-w-[148px] bg-slate-50 px-3 py-3 font-semibold whitespace-nowrap text-ink shadow-[4px_0_8px_-4px_rgba(15,23,42,0.12)]">
+                <th className="sticky left-0 z-20 min-w-[148px] border-b border-line bg-slate-50 px-3 py-3 font-semibold whitespace-nowrap text-ink shadow-[4px_0_8px_-4px_rgba(15,23,42,0.12)]">
                   구분
                 </th>
                 {view.months.map((m, monthIndex) => {
@@ -302,12 +316,14 @@ function MonthlyTrendBody({
                   return (
                     <th
                       key={`${m.monthKey}-${monthIndex}`}
-                      className={`min-w-[5.5rem] px-2.5 py-3 text-right font-semibold whitespace-nowrap transition-colors ${
+                      className={`min-w-[5.5rem] border-b border-line px-2.5 py-3 text-right font-semibold whitespace-nowrap ${
                         isSelected
                           ? `${selectedColumnClass(true)} text-ink`
-                          : onMonthSelect
-                            ? 'cursor-pointer hover:bg-white hover:text-accent'
-                            : ''
+                          : `bg-slate-50/90 ${
+                              onMonthSelect
+                                ? 'cursor-pointer hover:bg-white hover:text-accent'
+                                : ''
+                            }`
                       }`}
                       onClick={
                         onMonthSelect
@@ -328,19 +344,20 @@ function MonthlyTrendBody({
               {view.tableRows.map((row, rowIndex) => {
                 const accent = rowAccent[row.id]
                 const isTotal = accent?.isTotal
+                const rowBg = isTotal
+                  ? 'bg-red-50/35'
+                  : rowIndex % 2 === 0
+                    ? 'bg-white'
+                    : 'bg-slate-50/45'
                 return (
                   <tr
                     key={row.id}
-                    className={`border-b border-line/50 transition-colors ${
-                      isTotal
-                        ? 'border-t-2 border-t-line bg-red-50/35'
-                        : rowIndex % 2 === 0
-                          ? 'bg-white'
-                          : 'bg-slate-50/45'
+                    className={`border-b border-line/50 ${
+                      isTotal ? 'border-t-2 border-t-line' : ''
                     }`}
                   >
                     <td
-                      className={`sticky left-0 z-10 min-w-[148px] px-3 py-3 font-medium whitespace-nowrap shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] ${
+                      className={`sticky left-0 z-10 min-w-[148px] border-b border-line/50 px-3 py-3 font-medium whitespace-nowrap shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] ${
                         isTotal
                           ? 'bg-red-50 font-semibold text-danger'
                           : rowIndex % 2 === 0
@@ -374,8 +391,10 @@ function MonthlyTrendBody({
                       return (
                         <td
                           key={`${m.monthKey}-${monthIndex}`}
-                          className={`num min-w-[5.5rem] px-2.5 py-3 text-right whitespace-nowrap transition-colors ${cellText} ${
-                            isSelected ? selectedColumnClass(true) : ''
+                          className={`num min-w-[5.5rem] border-b border-line/50 px-2.5 py-3 text-right whitespace-nowrap ${cellText} ${
+                            isSelected
+                              ? selectedColumnClass(true)
+                              : rowBg
                           } ${
                             isTotal
                               ? 'font-semibold text-danger'
