@@ -17,11 +17,7 @@ import { downloadExcel } from '../../lib/download'
 import { toEntityId } from '../../lib/entityId'
 import { failRatePpm, formatPpm, formatWon, roundWon } from '../../lib/format'
 import { analysisGroupColor, normalizeProductType } from '../../lib/groups'
-import {
-  itemMatchKey,
-  preferDisplayItem,
-  sameItemMatchKey,
-} from '../../lib/itemMatchKey'
+import { itemMatchKey, preferDisplayItem } from '../../lib/itemMatchKey'
 import { buildProductDetailHref } from '../../lib/productDetailNav'
 import { loadPageViewState, savePageViewState } from '../../lib/pageViewState'
 import { getProductPhotoUrlMap } from '../../lib/productPhotos'
@@ -42,7 +38,11 @@ type VinaCostViewState = {
   pageSize: number
   topType: ProductTypeTab
   topMetric: 'scrapCost' | 'inspectCost'
-  /** 일별 불량금액 품번 선택 */
+  /** 전체 일별 불량금액 월(YYYY-MM), 상단 조회조건과 무관 */
+  dailyOverallMonth: string
+  /** 품번별 일별 불량금액 월(YYYY-MM), 상단 조회조건과 무관 */
+  dailyMonth: string
+  /** 품번별 일별 불량금액 품번 */
   dailyProduct: string
 }
 
@@ -54,6 +54,8 @@ const defaultViewState: VinaCostViewState = {
   pageSize: 10,
   topType: 'all',
   topMetric: 'scrapCost',
+  dailyOverallMonth: '',
+  dailyMonth: '',
   dailyProduct: '',
 }
 
@@ -113,6 +115,14 @@ function readViewState(): VinaCostViewState {
         : defaultViewState.pageSize,
     topType,
     topMetric,
+    dailyOverallMonth:
+      typeof stored.dailyOverallMonth === 'string'
+        ? stored.dailyOverallMonth
+        : defaultViewState.dailyOverallMonth,
+    dailyMonth:
+      typeof stored.dailyMonth === 'string'
+        ? stored.dailyMonth
+        : defaultViewState.dailyMonth,
     dailyProduct:
       typeof stored.dailyProduct === 'string'
         ? stored.dailyProduct
@@ -226,6 +236,8 @@ export function VinaCostAnalysis() {
     pageSize,
     topType,
     topMetric,
+    dailyOverallMonth,
+    dailyMonth,
     dailyProduct,
   } = view
 
@@ -247,32 +259,6 @@ export function VinaCostAnalysis() {
     () => aggregateProductCosts(scopedRecords),
     [scopedRecords],
   )
-
-  const dailyProductOptions = useMemo(() => {
-    const map = new Map<string, string[]>()
-    for (const r of scopedRecords) {
-      const name = r.product?.trim()
-      if (!name) continue
-      const key = itemMatchKey(name) || name
-      const list = map.get(key) ?? []
-      list.push(name)
-      map.set(key, list)
-    }
-    return [...map.values()]
-      .map((names) => preferDisplayItem(names))
-      .filter(Boolean)
-      .sort((a, b) => a.localeCompare(b, 'ko'))
-  }, [scopedRecords])
-
-  // 조회조건 변경으로 선택 품번이 사라지면 초기화
-  useEffect(() => {
-    if (!dailyProduct) return
-    const stillThere = dailyProductOptions.some((p) =>
-      sameItemMatchKey(p, dailyProduct),
-    )
-    if (!stillThere) patchView({ dailyProduct: '' })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dailyProductOptions, dailyProduct])
 
   const typeTabCounts = useMemo(() => {
     const counts: Record<ProductTypeTab, number> = {
@@ -459,11 +445,31 @@ export function VinaCostAnalysis() {
           />
 
           <VinaDailyScrapCostPanels
-            records={scopedRecords}
-            filters={filters}
-            productOptions={dailyProductOptions}
+            allRecords={records}
+            overallMonth={dailyOverallMonth}
+            onSelectOverallMonth={(month) => {
+              setView((prev) =>
+                prev.dailyOverallMonth === month
+                  ? prev
+                  : { ...prev, dailyOverallMonth: month },
+              )
+            }}
+            productMonth={dailyMonth}
+            onSelectProductMonth={(month) => {
+              setView((prev) =>
+                prev.dailyMonth === month
+                  ? prev
+                  : { ...prev, dailyMonth: month, dailyProduct: '' },
+              )
+            }}
             selectedProduct={dailyProduct}
-            onSelectProduct={(product) => patchView({ dailyProduct: product })}
+            onSelectProduct={(product) =>
+              setView((prev) =>
+                prev.dailyProduct === product
+                  ? prev
+                  : { ...prev, dailyProduct: product },
+              )
+            }
           />
 
           <SortSearchBar

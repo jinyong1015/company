@@ -194,11 +194,12 @@ npm run admin:hash -- "비밀번호"   # ADMIN_PASSWORD_HASH 생성
 - 구역 제목(굵은 글씨+파란 바): **1. 고객사 부적합** → **2. 승인서류** → **3. 사내 부적합** → **4. 측정현황** → **정보공유 및 대외일정**
 - **3. 사내 부적합** 아래에 월별 추세 · 주간 생산/검사 실적 · **WORST 주간 ISSUE** · 조직별 부적합 WORST 5
 - 주차 모드 / **사용자 지정 기간** (`period_key`로 메모 섹션 연동)
+- **월 선택** — 상단 월 드롭다운·주차(또는 조회기간)로만 변경. **사내·VINA 월별 표/차트 클릭은 조회 월을 바꾸지 않으며**, 선택 월 열 **하이라이트만** 상단 선택에 맞춤(한 열만 강조)
 - **고객사 부적합 현황** — 표(발생일·장소·수량·부적합명·조치). 품번 찾기·부적합 사진(라벨=품번). 스냅샷 포함
 - **승인서류 제출현황** · **측정현황** · **정보공유 및 대외일정** — ISSUE와 같은 제목+불릿(품번·사진 없음). `period_key`+`issues` jsonb SoT
 - **전체화면 보기** — 월별·실적·ISSUE·WORST 5·메모 섹션 오버레이
 - **확정 스냅샷** — Supabase에 저장·월별 목록·`snapshotId` 드릴다운 (ISSUE·고객사 NC·승인서류·측정·정보공유·월별·WORST5·detailRecords · **VINA 3-2 현황·vinaDetailRecords** 포함)
-- **3-2. VINA 부적합 현황** — VINA IndexedDB 기준 월별(SEAL/GROMMET) · 생산/검사 실적 · WORST 5 (기타 유형 제외)
+- **3-2. VINA 부적합 현황** — VINA IndexedDB 기준 월별(SEAL/GROMMET) · 생산/검사 실적 · WORST 5 (기타 유형 제외). 월별 하이라이트 규칙은 사내와 동일
 - **WORST 주간 ISSUE** — Supabase가 원본(`period_key`당 1행 덮어쓰기). 저장 시에만 업로드, 빈 내용은 행 삭제. 편집 시 **품번 찾기**로 제품 사진 연결
 - **WORST 5** — 막대 아래(품번 위)에 등록된 제품 사진 썸네일
 - 조회 조건 URL·localStorage 유지 (품번 상세 복귀 시에도 기간 복원)
@@ -229,6 +230,7 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 
 - **분석 목록 상태 유지** — 검사자·품번·품질 분석의 검색·정렬·페이지(·유형 필터)를 세션에 저장해 상세에서 돌아와도 복원
 - **전역 필터 유지** — 분석 그룹·기간을 세션에 저장 (데이터 초기화·재업로드 시 함께 초기화)
+- **메뉴 스코프** — 목록↔세부(품번/검사자/성형작업자·VINA 동등)에서는 필터 유지, **다른 메뉴로 이동하면 조회조건 초기화** (`filterScopeKey`)
 - **반응형 상단 내비게이션** — 화면 폭에 맞춰 주요 메뉴를 자동 배치하고 나머지는 **더보기**에 수용
 - **설정 모달** — 테마·관리자 모드 통합 (헤더 단독 테마 토글 없음)
 - **반응형 차트·그리드** — KPI·카드 자동 열 배치, AI 차트 라벨 최적화
@@ -245,10 +247,11 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 - **ITEM 정규화** — 명시적 매핑 테이블(`vinaItemNormalize`)로 시스템 품번 형식으로 변환(예: `YF9820`→`YF 9820`, `NX4N9080-1`→`NX4 N9080`, `MV-DORBBSB`→`MVDORBBSB`). 원본은 `extras.원본ITEM` 보관. 미매핑 ITEM은 원본 유지(임의 변환 없음)
 - **품번 매칭 KEY** — 표시용 품번과 별도 `itemMatchKey`(공백·하이픈 제거). VINA `YF9820` ↔ 기존 `YF 9820`을 동일 품번으로 검색·집계·상세·사진 연결(복사 없음)
 - **검사 / 오류 DATA** — 정상·경고 vs 오류 행 분리 · Excel 다운로드는 헤더 고정·필터·서식(`downloadStyledExcel`)
-- **비용 분석** — 품번별 **검사금액·폐기금액** TOP·목록
+- **비용 분석** — 품번별 **검사금액·폐기금액** TOP·목록 · **일·월별 폐기금액 추이**. TOP10 Y축은 큰 금액을 `억`/`만`으로 축약하고 축↔막대 간격을 확보
 - **검사자 분석** — 검수량 TOP 10(소속·유형 필터), 상세는 `/vina/inspectors/:id`
-- **제품 사진** — `itemMatchKey`로 기존 `product_photos`에 **연결**(분석 수치와 무관, 부분·유사 품번 금지)
+- **제품 사진** — `itemMatchKey`로 기존 `product_photos`에 **연결**(분석 수치와 무관, 부분·유사 품번 금지). Storage 경로는 ASCII 안전 폴더(`sanitizeStorageFolder`)
 - **품번/검사자 상세** — `/vina/products/:id`, `/vina/inspectors/:id`. UI는 기존 상세와 동일, 집계는 VINA만. 목록·AI에서 넘긴 `startDate`·`endDate` 유지. 원본 ITEM은 `extras.원본ITEM`으로 보존·표시
+- **VINA 분석 홈 월별** — 표/차트에서 월을 누르면 해당 월 **사용자 지정 기간**으로 조회(주간보고의 「하이라이트만」과 다름)
 - **주간업무 보고** — 「**3-2. VINA 부적합 현황**」: 월별(SEAL/GROMMET·TOTAL, 기타 제외) · VINA 생산/검사 실적 · VINA WORST 5. 확정 스냅샷에 `vina*` · `vinaDetailRecords` 포함
 
 ---
@@ -309,7 +312,7 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 - **고객사 부적합 현황**은 Supabase `weekly_report_customer_nc`가 원본입니다. ISSUE와 동일하게 `period_key`당 1행·빈 내용 시 행 삭제. SQL: `supabase/weekly_report_customer_nc.sql`
 - **승인서류 제출현황** · **측정현황** · **정보공유 및 대외일정**은 각각 `weekly_report_approval_docs` · `weekly_report_measurement_status` · `weekly_report_info_share`가 원본입니다. ISSUE와 동일하게 `period_key`당 1행·**`issues` jsonb**·빈 내용 시 행 삭제. SQL: `supabase/weekly_report_approval_docs.sql` 등
 - **부적합 사진**은 Storage `nonconformity-images` + DB `nonconformity_photos`에 두고, 경로 `부적합/{품번}/부적합사진/{uuid}.jpg`로 품번별 분리합니다. 품번 변경 시 파일을 이동하고 `storage_path`를 갱신합니다. SQL: `supabase/nonconformity_photos.sql`
-- **제품 사진**은 Supabase Storage(`product-photos`) + DB(`product_photos`)에 두고, WORST 주간 ISSUE·고객사 부적합·WORST 5는 품번 키로 조회만 합니다.
+- **제품 사진**은 Supabase Storage(`product-photos`) + DB(`product_photos`)에 두고, WORST 주간 ISSUE·고객사 부적합·WORST 5는 품번 키로 조회만 합니다. Storage object key는 ASCII만 허용하므로 업로드 폴더는 `sanitizeStorageFolder`로 정규화합니다(DB `product_key`는 한글 원문 유지 가능).
 - **주간 스냅샷**은 Supabase `weekly_report_snapshots`에 저장합니다. (ISSUE·고객사 부적합·사진 메타·승인서류·측정현황·정보공유·월별·WORST 5·detailRecords · **VINA 월별/실적/WORST5·vinaDetailRecords** 등 포함)
 - **관리자 로그인·변경 이력**만 서버 API(`/api/admin/*`, `/api/inspection-data/*`)를 사용합니다. 로컬은 Vite 플러그인, 배포는 Vercel Serverless입니다.
 - 브라우저 저장 공간이 부족하면 현재 메모리 분석은 유지되지만 새로고침 후 시드 데이터로 돌아갈 수 있습니다.
@@ -337,7 +340,7 @@ Excel 업로드 → 헤더 자동 인식 → 검증 → 저장.
 
 ## 문서
 
-- [화면설계서](./화면설계서.md) — UI/UX·화면·지표·메뉴 명세 (최신 V42)
+- [화면설계서](./화면설계서.md) — UI/UX·화면·지표·메뉴 명세 (최신 V43)
 
 ---
 
