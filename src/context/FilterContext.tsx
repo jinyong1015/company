@@ -4,9 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
+import { useLocation } from 'react-router-dom'
 import { periodPresets } from '../data/seedData'
 import type { AnalysisGroupId } from '../lib/groups'
 import { clearAllPageViewState } from '../lib/pageViewState'
@@ -173,14 +175,52 @@ function clearStoredFilters() {
   }
 }
 
+/**
+ * 메뉴 스코프 키.
+ * 품번/검사자/성형작업자 목록↔세부페이지는 같은 키 → 조회조건 유지.
+ * 그 외 메뉴로 이동하면 키가 바뀌어 조회조건을 초기화한다.
+ */
+export function filterScopeKey(pathname: string): string {
+  const path = pathname.replace(/\/+$/, '') || '/'
+
+  // 팝업 창 — 메인 화면 조회조건에 영향 주지 않음
+  if (path.includes('ai-chatbot-popup')) return 'ai-chatbot-popup'
+
+  if (path.startsWith('/vina/products')) return 'vina-products'
+  if (path.startsWith('/vina/inspectors')) return 'vina-inspectors'
+  if (path.startsWith('/products')) return 'products'
+  if (path.startsWith('/inspectors')) return 'inspectors'
+  if (path.startsWith('/workers')) return 'workers'
+
+  if (path === '/vina' || path.startsWith('/vina/')) {
+    const seg = path.slice('/vina'.length).replace(/^\//, '').split('/')[0]
+    return seg ? `vina:${seg}` : 'vina'
+  }
+
+  if (path === '/') return 'dashboard'
+  const seg = path.split('/').filter(Boolean)[0]
+  return seg || 'dashboard'
+}
+
 const FilterContext = createContext<FilterContextValue | null>(null)
 
 export function FilterProvider({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation()
   const [filters, setFilters] = useState<FilterState>(() => loadStoredFilters() ?? cloneFilterState(initial))
+  const scopeRef = useRef(filterScopeKey(pathname))
 
   useEffect(() => {
     persistFilters(filters)
   }, [filters])
+
+  // 다른 메뉴로 이동 시에만 조회조건 초기화 (목록↔세부페이지는 유지)
+  useEffect(() => {
+    const nextScope = filterScopeKey(pathname)
+    if (nextScope === scopeRef.current) return
+    scopeRef.current = nextScope
+    clearStoredFilters()
+    setFilters(cloneFilterState(initial))
+  }, [pathname])
 
   const setAnalysisGroup = useCallback((analysisGroup: AnalysisGroupId) => {
     setFilters((prev) => ({ ...prev, analysisGroup }))

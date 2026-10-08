@@ -33,6 +33,36 @@ function rankTone(rank: number): "gold" | "silver" | "bronze" | "muted" {
   return "muted";
 }
 
+/**
+ * Y축 눈금용 짧은 표기.
+ * 검사금액처럼 10억 단위가 되면 전체 자리수 표기가 잘리므로 축만 축약한다.
+ * (막대 라벨·상세 패널은 formatValue 그대로)
+ */
+function compactAxisTick(value: number): string {
+  const n = Math.round(Number(value) || 0);
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 100_000_000) {
+    const eok = abs / 100_000_000;
+    const text =
+      eok >= 10 ? String(Math.round(eok)) : String(parseFloat(eok.toFixed(1)));
+    return `${sign}${text}억`;
+  }
+  if (abs >= 10_000) {
+    const man = abs / 10_000;
+    const text =
+      man >= 10 ? String(Math.round(man)) : String(parseFloat(man.toFixed(1)));
+    return `${sign}${text}만`;
+  }
+  return `${sign}${abs.toLocaleString("ko-KR")}`;
+}
+
+function estimateAxisWidth(labels: string[]) {
+  const longest = Math.max(1, ...labels.map((s) => s.length));
+  // 한글·숫자 혼합 기준 대략 폭
+  return Math.max(44, Math.min(112, Math.ceil(longest * 11) + 12));
+}
+
 function ChartAxisTick({
   x = 0,
   y = 0,
@@ -222,6 +252,21 @@ export function SplitTop10Panel<TRow extends SplitTop10RowBase>({
       : 36;
   const chartBottom = tiltLabels ? 64 : hasAnyPhoto ? 12 : 28;
 
+  const maxValue = useMemo(
+    () => Math.max(0, ...rows.map((r) => r.value), 0),
+    [rows],
+  );
+  /** 전체 자리 표기가 길면(대략 8자 초과) Y축만 억/만 축약 */
+  const useCompactAxis = useMemo(() => {
+    if (!(maxValue > 0)) return false;
+    return formatValue(maxValue).replace(/\s/g, "").length > 8;
+  }, [formatValue, maxValue]);
+  const axisTick = useCompactAxis ? compactAxisTick : formatValue;
+  const yAxisWidth = useMemo(() => {
+    const samples = [0, maxValue * 0.25, maxValue * 0.5, maxValue * 0.75, maxValue];
+    return estimateAxisWidth(samples.map((v) => axisTick(v)));
+  }, [axisTick, maxValue]);
+
   return (
     <Panel
       title={title}
@@ -252,7 +297,7 @@ export function SplitTop10Panel<TRow extends SplitTop10RowBase>({
                 margin={{
                   top: 36,
                   right: 16,
-                  left: 8,
+                  left: 4,
                   bottom: chartBottom,
                 }}
               >
@@ -298,8 +343,8 @@ export function SplitTop10Panel<TRow extends SplitTop10RowBase>({
                     fontSize: 11,
                     fontWeight: 600,
                   }}
-                  tickFormatter={(v) => formatValue(Number(v))}
-                  width={72}
+                  tickFormatter={(v) => axisTick(Number(v))}
+                  width={yAxisWidth}
                   axisLine={false}
                   tickLine={false}
                 />

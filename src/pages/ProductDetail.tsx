@@ -243,9 +243,11 @@ export function ProductDetail() {
     ],
   );
 
+  // VINA도 목록과 동일하게 context analytics를 재사용한다.
+  // (isVina일 때마다 analyzeRecords를 다시 돌리면 세부 진입이 버벅인다.)
   const productAnalytics = useMemo(
     () =>
-      usingSnapshot || urlDateRange || urlWorker || urlInspector || isVina
+      usingSnapshot || urlDateRange || urlWorker || urlInspector
         ? analyzeRecords(sourceRecords, effectiveFilters)
         : analytics,
     [
@@ -253,7 +255,6 @@ export function ProductDetail() {
       urlDateRange,
       urlWorker,
       urlInspector,
-      isVina,
       sourceRecords,
       effectiveFilters,
       analytics,

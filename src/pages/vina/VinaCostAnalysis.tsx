@@ -7,6 +7,7 @@ import {
 import { PageHeader } from '../../components/common/PageHeader'
 import { SortSearchBar } from '../../components/common/SortSearchBar'
 import { Pager } from '../../components/common/Pager'
+import { VinaDailyScrapCostPanels } from '../../components/vina/VinaDailyScrapCostPanels'
 import { VinaNotice } from '../../components/vina/VinaNotice'
 import { VinaSubNav } from '../../components/vina/VinaSubNav'
 import { useFilters } from '../../context/FilterContext'
@@ -16,7 +17,11 @@ import { downloadExcel } from '../../lib/download'
 import { toEntityId } from '../../lib/entityId'
 import { failRatePpm, formatPpm, formatWon, roundWon } from '../../lib/format'
 import { analysisGroupColor, normalizeProductType } from '../../lib/groups'
-import { itemMatchKey, preferDisplayItem } from '../../lib/itemMatchKey'
+import {
+  itemMatchKey,
+  preferDisplayItem,
+  sameItemMatchKey,
+} from '../../lib/itemMatchKey'
 import { buildProductDetailHref } from '../../lib/productDetailNav'
 import { loadPageViewState, savePageViewState } from '../../lib/pageViewState'
 import { getProductPhotoUrlMap } from '../../lib/productPhotos'
@@ -37,6 +42,8 @@ type VinaCostViewState = {
   pageSize: number
   topType: ProductTypeTab
   topMetric: 'scrapCost' | 'inspectCost'
+  /** 일별 불량금액 품번 선택 */
+  dailyProduct: string
 }
 
 const defaultViewState: VinaCostViewState = {
@@ -47,6 +54,7 @@ const defaultViewState: VinaCostViewState = {
   pageSize: 10,
   topType: 'all',
   topMetric: 'scrapCost',
+  dailyProduct: '',
 }
 
 const productTypeTabs: { id: ProductTypeTab; label: string }[] = [
@@ -105,6 +113,10 @@ function readViewState(): VinaCostViewState {
         : defaultViewState.pageSize,
     topType,
     topMetric,
+    dailyProduct:
+      typeof stored.dailyProduct === 'string'
+        ? stored.dailyProduct
+        : defaultViewState.dailyProduct,
   }
 }
 
@@ -206,7 +218,16 @@ export function VinaCostAnalysis() {
   const { records, hasUploadedData } = useVinaData()
   const { filters } = useFilters()
   const [view, setView] = useState<VinaCostViewState>(readViewState)
-  const { query, sortKey, asc, page, pageSize, topType, topMetric } = view
+  const {
+    query,
+    sortKey,
+    asc,
+    page,
+    pageSize,
+    topType,
+    topMetric,
+    dailyProduct,
+  } = view
 
   useEffect(() => {
     savePageViewState(VIEW_STATE_KEY, view)
@@ -226,6 +247,32 @@ export function VinaCostAnalysis() {
     () => aggregateProductCosts(scopedRecords),
     [scopedRecords],
   )
+
+  const dailyProductOptions = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const r of scopedRecords) {
+      const name = r.product?.trim()
+      if (!name) continue
+      const key = itemMatchKey(name) || name
+      const list = map.get(key) ?? []
+      list.push(name)
+      map.set(key, list)
+    }
+    return [...map.values()]
+      .map((names) => preferDisplayItem(names))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'ko'))
+  }, [scopedRecords])
+
+  // 조회조건 변경으로 선택 품번이 사라지면 초기화
+  useEffect(() => {
+    if (!dailyProduct) return
+    const stillThere = dailyProductOptions.some((p) =>
+      sameItemMatchKey(p, dailyProduct),
+    )
+    if (!stillThere) patchView({ dailyProduct: '' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dailyProductOptions, dailyProduct])
 
   const typeTabCounts = useMemo(() => {
     const counts: Record<ProductTypeTab, number> = {
@@ -409,6 +456,14 @@ export function VinaCostAnalysis() {
                 value: (row) => formatPpm(row.product.failRate),
               },
             ]}
+          />
+
+          <VinaDailyScrapCostPanels
+            records={scopedRecords}
+            filters={filters}
+            productOptions={dailyProductOptions}
+            selectedProduct={dailyProduct}
+            onSelectProduct={(product) => patchView({ dailyProduct: product })}
           />
 
           <SortSearchBar

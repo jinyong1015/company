@@ -57,6 +57,34 @@ function selectedColumnClass(isSelected: boolean) {
   return 'weekly-selected-column'
 }
 
+/** "26.07" → "2026-07" (표기·키가 어긋난 스냅샷 대비) */
+function monthKeyFromLabel(monthLabel: string): string | null {
+  const m = /^(\d{2})\.(\d{2})$/.exec(monthLabel.trim())
+  if (!m) return null
+  return `20${m[1]}-${m[2]}`
+}
+
+function normalizeMonthKey(raw?: string | null): string | null {
+  if (!raw) return null
+  const trimmed = raw.trim()
+  if (/^\d{4}-\d{2}$/.test(trimmed)) return trimmed
+  const fromLabel = monthKeyFromLabel(trimmed)
+  if (fromLabel) return fromLabel
+  // YYYY-MM-DD 등
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 7)
+  return null
+}
+
+/** 선택 비교용 — monthLabel이 있으면 라벨 기준(표시와 일치), 없으면 monthKey */
+function canonicalMonthKey(m: {
+  monthKey: string
+  monthLabel: string
+}): string | null {
+  const fromLabel = monthKeyFromLabel(m.monthLabel)
+  if (fromLabel) return fromLabel
+  return normalizeMonthKey(m.monthKey)
+}
+
 const metrics = [
   { id: 'failRate' as const, label: '부적합률' },
   { id: 'qty' as const, label: '검수량' },
@@ -130,6 +158,11 @@ function MonthlyTrendBody({
   const groups = orgs
   const rowAccent = rowAccentMap(orgs)
   const legendOrder = [...orgs.map((o) => o.id), 'total']
+  const selectedKey = normalizeMonthKey(selectedMonthKey)
+  // 동일 키가 중복이어도 한 열만 하이라이트 (표시 라벨 기준)
+  const selectedMonthIndex = selectedKey
+    ? view.months.findIndex((m) => canonicalMonthKey(m) === selectedKey)
+    : -1
 
   const chartHeight = large ? 'min(52vh, 520px)' : '380px'
   const tickSize = large ? 12 : 11
@@ -264,11 +297,11 @@ function MonthlyTrendBody({
                 <th className="sticky left-0 z-20 min-w-[148px] bg-slate-50 px-3 py-3 font-semibold whitespace-nowrap text-ink shadow-[4px_0_8px_-4px_rgba(15,23,42,0.12)]">
                   구분
                 </th>
-                {view.months.map((m) => {
-                  const isSelected = m.monthKey === selectedMonthKey
+                {view.months.map((m, monthIndex) => {
+                  const isSelected = monthIndex === selectedMonthIndex
                   return (
                     <th
-                      key={m.monthKey}
+                      key={`${m.monthKey}-${monthIndex}`}
                       className={`min-w-[5.5rem] px-2.5 py-3 text-right font-semibold whitespace-nowrap transition-colors ${
                         isSelected
                           ? `${selectedColumnClass(true)} text-ink`
@@ -278,7 +311,10 @@ function MonthlyTrendBody({
                       }`}
                       onClick={
                         onMonthSelect
-                          ? () => onMonthSelect(m.monthKey)
+                          ? () =>
+                              onMonthSelect(
+                                canonicalMonthKey(m) ?? m.monthKey,
+                              )
                           : undefined
                       }
                     >
@@ -329,12 +365,15 @@ function MonthlyTrendBody({
                         <span>{row.label}</span>
                       </span>
                     </td>
-                    {view.months.map((m) => {
-                      const isSelected = m.monthKey === selectedMonthKey
-                      const value = row.values[m.monthKey] ?? 0
+                    {view.months.map((m, monthIndex) => {
+                      const isSelected = monthIndex === selectedMonthIndex
+                      const value =
+                        row.values[m.monthKey] ??
+                        row.values[canonicalMonthKey(m) ?? ''] ??
+                        0
                       return (
                         <td
-                          key={m.monthKey}
+                          key={`${m.monthKey}-${monthIndex}`}
                           className={`num min-w-[5.5rem] px-2.5 py-3 text-right whitespace-nowrap transition-colors ${cellText} ${
                             isSelected ? selectedColumnClass(true) : ''
                           } ${
@@ -348,7 +387,10 @@ function MonthlyTrendBody({
                           }`}
                           onClick={
                             onMonthSelect
-                              ? () => onMonthSelect(m.monthKey)
+                              ? () =>
+                                  onMonthSelect(
+                                    canonicalMonthKey(m) ?? m.monthKey,
+                                  )
                               : undefined
                           }
                         >

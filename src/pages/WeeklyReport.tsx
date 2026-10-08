@@ -590,13 +590,25 @@ export function WeeklyReport() {
       const { year: y, month: m } = parseMonthKey(monthKey)
       const defaultWeek = findDefaultWeek(records, y, m)
       const range = getWeekDateRange(y, m, defaultWeek)
+      // 상단 월 변경 시 확정본 고정 해제 — 월별 하이라이트·VINA 표가 선택 월과 맞춰지도록
+      clearingSnapshotRef.current = true
+      setActiveSnapshot(null)
+      setSearchParams(
+        (prev) => {
+          if (!prev.get('snapshotId')) return prev
+          const next = new URLSearchParams(prev)
+          next.delete('snapshotId')
+          return next
+        },
+        { replace: true },
+      )
       setSelectedMonthKey(monthKey)
       setWeek(defaultWeek)
       setPeriodMode('week')
       setRangeStart(range.startDate)
       setRangeEnd(range.endDate)
     },
-    [records],
+    [records, setSearchParams],
   )
 
   // 데이터 재업로드 등으로 선택 월에 실적이 없어진 경우에만 최신 데이터 월로 이동.
@@ -821,6 +833,11 @@ export function WeeklyReport() {
       }
       if (result.record.payload.vinaMetric) {
         setVinaMetric(result.record.payload.vinaMetric)
+      }
+      // 상단 월 선택·하이라이트를 확정본 저장 월과 동기화
+      const snapMonth = result.record.payload.selectedMonthKey?.trim()
+      if (snapMonth && /^\d{4}-\d{2}$/.test(snapMonth)) {
+        setSelectedMonthKey(snapMonth)
       }
       // URL에 snapshotId 유지 (상세 복귀용)
       setSearchParams(
@@ -1285,8 +1302,6 @@ export function WeeklyReport() {
     : vinaRecords.length > 0
   const hasAnyVinaSection =
     hasShownVinaMonthly || hasShownVinaProduction || hasShownVinaWorst5
-  const shownSelectedMonthKey =
-    activeSnapshot?.payload.selectedMonthKey ?? selectedMonthKey
 
   const vinaWorst5LinkRange = useMemo(() => {
     if (viewingSnapshot && activeSnapshot) {
@@ -1577,7 +1592,7 @@ export function WeeklyReport() {
               view={shownMonthlyView}
               metric={metric}
               onMetricChange={setMetric}
-              selectedMonthKey={shownSelectedMonthKey}
+              selectedMonthKey={selectedMonthKey}
             />
 
             <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -1674,7 +1689,7 @@ export function WeeklyReport() {
                     view={shownVinaMonthlyView}
                     metric={vinaMetric}
                     onMetricChange={setVinaMetric}
-                    selectedMonthKey={shownSelectedMonthKey}
+                    selectedMonthKey={selectedMonthKey}
                     title="VINA 월별 현황"
                     descriptionPrefix="VINA 데이터 · 제품유형 기준 · "
                     orgs={VINA_MONTHLY_ORGS}
