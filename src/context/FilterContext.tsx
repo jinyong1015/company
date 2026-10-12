@@ -177,8 +177,8 @@ function clearStoredFilters() {
 
 /**
  * 메뉴 스코프 키.
- * 품번/검사자/성형작업자 목록↔세부페이지는 같은 키 → 조회조건 유지.
- * 그 외 메뉴로 이동하면 키가 바뀌어 조회조건을 초기화한다.
+ * 품번/검사자/성형작업자 목록↔세부페이지는 같은 키 → 상세 필터까지 유지.
+ * 그 외 메뉴로 이동하면 상세 다중 필터만 비운다. (분석 그룹·조회기간은 유지)
  */
 export function filterScopeKey(pathname: string): string {
   const path = pathname.replace(/\/+$/, '') || '/'
@@ -213,13 +213,16 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     persistFilters(filters)
   }, [filters])
 
-  // 다른 메뉴로 이동 시에만 조회조건 초기화 (목록↔세부페이지는 유지)
+  // 다른 메뉴로 이동 시 상세 다중 필터만 초기화 — 분석 그룹·조회기간은 유지
   useEffect(() => {
     const nextScope = filterScopeKey(pathname)
     if (nextScope === scopeRef.current) return
     scopeRef.current = nextScope
-    clearStoredFilters()
-    setFilters(cloneFilterState(initial))
+    setFilters((prev) => {
+      const next = cloneFilterState(prev)
+      for (const key of multiKeys) next[key] = []
+      return next
+    })
   }, [pathname])
 
   const setAnalysisGroup = useCallback((analysisGroup: AnalysisGroupId) => {
