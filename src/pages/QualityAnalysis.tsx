@@ -173,7 +173,7 @@ export function QualityAnalysis() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="품질 분석" />
+      <PageHeader title="불량 현황" />
 
       <section className="quality-drilldown">
         <header className="quality-drilldown-rail">

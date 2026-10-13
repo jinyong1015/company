@@ -185,7 +185,7 @@ export function VinaQualityAnalysis() {
   return (
     <div className="space-y-5">
       <VinaSubNav />
-      <PageHeader title="VINA 품질 분석" />
+      <PageHeader title="VINA 불량 현황" />
       <VinaNotice />
 
       {loading ? (

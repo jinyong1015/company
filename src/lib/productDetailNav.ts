@@ -10,6 +10,7 @@ export type ProductDetailFromId =
   | 'dashboard'
   | 'products'
   | 'quality'
+  | 'daily-analysis'
   | 'workers'
   | 'inspectors'
   | 'cost'
@@ -18,6 +19,7 @@ export type ProductDetailFromId =
   | 'compare'
   | 'vina-products'
   | 'vina-quality'
+  | 'vina-daily-analysis'
   | 'vina-inspectors'
   | 'vina-cost'
   | 'vina-ai'
@@ -27,7 +29,8 @@ export const PRODUCT_DETAIL_FROM_LABELS: Record<ProductDetailFromId, string> = {
   'weekly-report': '주간업무 보고',
   dashboard: '대시보드',
   products: '품번 분석',
-  quality: '품질 분석',
+  quality: '불량 현황',
+  'daily-analysis': '일간 현황',
   workers: '성형작업자 분석',
   inspectors: '검사자 분석',
   cost: '비용 분석',
@@ -35,7 +38,8 @@ export const PRODUCT_DETAIL_FROM_LABELS: Record<ProductDetailFromId, string> = {
   ai: 'AI 질문',
   compare: '스마트 비교',
   'vina-products': 'VINA 품번 분석',
-  'vina-quality': 'VINA 품질 분석',
+  'vina-quality': 'VINA 불량 현황',
+  'vina-daily-analysis': 'VINA 일간 현황',
   'vina-inspectors': 'VINA 검사자 분석',
   'vina-cost': 'VINA 비용 분석',
   'vina-ai': 'AI 질문 (VINA)',
@@ -47,6 +51,7 @@ export const PRODUCT_DETAIL_FROM_PATHS: Record<ProductDetailFromId, string> = {
   dashboard: '/',
   products: '/products',
   quality: '/quality',
+  'daily-analysis': '/daily-analysis',
   workers: '/workers',
   inspectors: '/inspectors',
   cost: '/costs',
@@ -55,6 +60,7 @@ export const PRODUCT_DETAIL_FROM_PATHS: Record<ProductDetailFromId, string> = {
   compare: '/compare',
   'vina-products': '/vina/products',
   'vina-quality': '/vina/quality',
+  'vina-daily-analysis': '/vina/daily-analysis',
   'vina-inspectors': '/vina/inspectors',
   'vina-cost': '/vina/costs',
   'vina-ai': '/vina/products',
@@ -80,6 +86,7 @@ export function parseProductDetailFrom(
     value === 'dashboard' ||
     value === 'products' ||
     value === 'quality' ||
+    value === 'daily-analysis' ||
     value === 'workers' ||
     value === 'inspectors' ||
     value === 'cost' ||
@@ -88,6 +95,7 @@ export function parseProductDetailFrom(
     value === 'compare' ||
     value === 'vina-products' ||
     value === 'vina-quality' ||
+    value === 'vina-daily-analysis' ||
     value === 'vina-inspectors' ||
     value === 'vina-cost' ||
     value === 'vina-ai' ||

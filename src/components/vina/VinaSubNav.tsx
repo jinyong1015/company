@@ -2,7 +2,8 @@ import { NavLink } from 'react-router-dom'
 
 const items = [
   { to: '/vina', label: 'VINA 분석', end: true },
-  { to: '/vina/quality', label: '품질 분석', end: false },
+  { to: '/vina/quality', label: '불량 현황', end: false },
+  { to: '/vina/daily-analysis', label: '일간 현황', end: false },
   { to: '/vina/products', label: '품번 분석', end: false },
   { to: '/vina/inspectors', label: '검사자 분석', end: false },
   { to: '/vina/equipment', label: '설비 분석', end: false },

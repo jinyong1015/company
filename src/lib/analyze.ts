@@ -1078,17 +1078,17 @@ export function filterRecords(
   records: InspectionRecord[],
   filters: FilterState,
   analyzableOnly = false,
-  options?: { ignoreAnalysisGroup?: boolean },
+  options?: { ignoreAnalysisGroup?: boolean; ignorePeriod?: boolean },
 ) {
   const base = analyzableOnly ? records.filter(isAnalyzable) : records;
   const groupId = options?.ignoreAnalysisGroup
     ? "all"
     : filters.analysisGroup;
   const grouped = base.filter((r) => matchesAnalysisGroup(r, groupId));
+  const multi = applyMultiFilters(grouped, filters);
+  if (options?.ignorePeriod) return multi;
   const { start, end } = resolvePeriodRange(filters);
-  return applyMultiFilters(grouped, filters).filter((r) =>
-    inRange(r.date, start, end),
-  );
+  return multi.filter((r) => inRange(r.date, start, end));
 }
 
 /** 기간 필터 기준 추이. 올해·긴 기간은 월별, 그 외는 일별. */

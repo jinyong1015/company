@@ -9,6 +9,7 @@ import { SettingsModal } from './components/admin/SettingsModal'
 import { Dashboard } from './pages/Dashboard'
 import { InspectionData } from './pages/InspectionData'
 import { QualityAnalysis } from './pages/QualityAnalysis'
+import { DailyAnalysis } from './pages/DailyAnalysis'
 import { InspectorAnalysis } from './pages/InspectorAnalysis'
 import { InspectorDetail } from './pages/InspectorDetail'
 import { WorkerAnalysis } from './pages/WorkerAnalysis'
@@ -26,6 +27,7 @@ import { AiAsk } from './pages/AiAsk'
 import { WeeklyReport } from './pages/WeeklyReport'
 import { VinaAnalysis } from './pages/vina/VinaAnalysis'
 import { VinaQualityAnalysis } from './pages/vina/VinaQualityAnalysis'
+import { VinaDailyAnalysis } from './pages/vina/VinaDailyAnalysis'
 import { VinaManage } from './pages/vina/VinaManage'
 import { VinaProductAnalysis } from './pages/vina/VinaProductAnalysis'
 import { VinaProductDetail } from './pages/vina/VinaProductDetail'
@@ -52,6 +54,7 @@ export default function App() {
                   <Route element={<Layout />}>
                     <Route index element={<Dashboard />} />
                     <Route path="quality" element={<QualityAnalysis />} />
+                    <Route path="daily-analysis" element={<DailyAnalysis />} />
                     <Route path="inspectors" element={<InspectorAnalysis />} />
                     <Route path="inspectors/:id" element={<InspectorDetail />} />
                     <Route path="workers" element={<WorkerAnalysis />} />
@@ -92,8 +95,16 @@ export default function App() {
                     <Route
                       path="vina/quality"
                       element={
-                        <StaffRouteGate title="VINA 품질 분석">
+                        <StaffRouteGate title="VINA 불량 현황">
                           <VinaQualityAnalysis />
+                        </StaffRouteGate>
+                      }
+                    />
+                    <Route
+                      path="vina/daily-analysis"
+                      element={
+                        <StaffRouteGate title="VINA 일간 현황">
+                          <VinaDailyAnalysis />
                         </StaffRouteGate>
                       }
                     />

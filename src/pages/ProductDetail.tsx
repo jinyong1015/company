@@ -788,7 +788,7 @@ function ProductDetailBody({
         </Panel>
         <Panel
           title="불량 유형별 발생량"
-          description="품질 분석과 동일한 색상 · 원그래프"
+          description="불량 현황과 동일한 색상 · 원그래프"
         >
           <div className="detail-chart-frame detail-chart-frame-pie">
             <DefectPieChart data={defects} />

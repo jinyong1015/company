@@ -3,6 +3,7 @@ import {
   Activity,
   Boxes,
   CalendarRange,
+  ChevronDown,
   ClipboardList,
   Coins,
   Factory,
@@ -10,12 +11,14 @@ import {
   GitCompare,
   Globe2,
   HardHat,
+  Layers,
   LayoutDashboard,
   MoreHorizontal,
   Package,
   Plus,
   Settings,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { GlobalFilterSection } from "../filters/GlobalFilterSection";
@@ -23,7 +26,33 @@ import { VinaFilterSection } from "../filters/VinaFilterSection";
 import { useAdmin } from "../../context/AdminContext";
 import { AiChatbot } from "../ai/AiChatbot";
 
-const nav = [
+type NavLeaf = {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  end?: boolean;
+  group: "main" | "분석" | "인사이트";
+};
+
+type NavEntry = NavLeaf & {
+  children?: NavLeaf[];
+};
+
+const qualityAnalysisChildren: NavLeaf[] = [
+  { to: "/products", label: "품번 분석", icon: Package, group: "분석" },
+  { to: "/molds", label: "금형 분석", icon: Boxes, group: "분석" },
+  { to: "/equipment", label: "설비 분석", icon: Factory, group: "분석" },
+  { to: "/inspectors", label: "검사자 분석", icon: Users, group: "분석" },
+  {
+    to: "/workers",
+    label: "성형작업자 분석",
+    icon: HardHat,
+    group: "분석",
+  },
+  { to: "/costs", label: "비용 분석", icon: Coins, group: "분석" },
+];
+
+const nav: NavEntry[] = [
   {
     to: "/",
     label: "대시보드",
@@ -31,12 +60,6 @@ const nav = [
     end: true,
     group: "main",
   },
-  { to: "/quality", label: "품질 분석", icon: Activity, group: "분석" },
-  { to: "/inspectors", label: "검사자 분석", icon: Users, group: "분석" },
-  { to: "/products", label: "품번 분석", icon: Package, group: "분석" },
-  { to: "/molds", label: "금형 분석", icon: Boxes, group: "분석" },
-  { to: "/equipment", label: "설비 분석", icon: Factory, group: "분석" },
-  { to: "/costs", label: "비용 분석", icon: Coins, group: "분석" },
   {
     to: "/vina",
     label: "VINA 분석",
@@ -44,18 +67,26 @@ const nav = [
     group: "분석",
   },
   {
-    to: "/workers",
-    label: "성형작업자 분석",
-    icon: HardHat,
-    group: "인사이트",
+    to: "/products",
+    label: "품질 분석",
+    icon: Layers,
+    group: "분석",
+    children: qualityAnalysisChildren,
   },
-  { to: "/compare", label: "스마트 비교", icon: GitCompare, group: "인사이트" },
+  {
+    to: "/daily-analysis",
+    label: "일간 현황",
+    icon: CalendarRange,
+    group: "분석",
+  },
+  { to: "/quality", label: "불량 현황", icon: Activity, group: "분석" },
   {
     to: "/weekly-report",
     label: "주간업무 보고",
     icon: CalendarRange,
-    group: "인사이트",
+    group: "분석",
   },
+  { to: "/compare", label: "스마트 비교", icon: GitCompare, group: "인사이트" },
   { to: "/data", label: "검사 DATA", icon: ClipboardList, group: "인사이트" },
   {
     to: "/error-data",
@@ -95,23 +126,30 @@ function isPathActive(pathname: string, to: string) {
     : pathname === to || pathname.startsWith(`${to}/`);
 }
 
+function isEntryActive(pathname: string, item: NavEntry) {
+  if (item.children?.length) {
+    return item.children.some((child) => isPathActive(pathname, child.to));
+  }
+  return isPathActive(pathname, item.to);
+}
+
 function TopNavigation() {
   const { pathname } = useLocation();
   const { isStaff, openLogin } = useAdmin();
   const navigationRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const qualityRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(primaryNav.length);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [qualityOpen, setQualityOpen] = useState(false);
 
-  const guardStaffNav = (
-    event: MouseEvent,
-    to: string,
-  ) => {
+  const guardStaffNav = (event: MouseEvent, to: string) => {
     if (!isStaffOnlyPath(to) || isStaff) return;
     event.preventDefault();
     openLogin("manager");
     setMoreOpen(false);
+    setQualityOpen(false);
   };
 
   useEffect(() => {
@@ -150,18 +188,27 @@ function TopNavigation() {
 
   useEffect(() => {
     setMoreOpen(false);
+    setQualityOpen(false);
   }, [pathname]);
 
   useEffect(() => {
-    if (!moreOpen) return;
+    if (!moreOpen && !qualityOpen) return;
 
     const onPointerDown = (event: PointerEvent) => {
-      if (!dropdownRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        !moreRef.current?.contains(target) &&
+        !qualityRef.current?.contains(target)
+      ) {
         setMoreOpen(false);
+        setQualityOpen(false);
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMoreOpen(false);
+      if (event.key === "Escape") {
+        setMoreOpen(false);
+        setQualityOpen(false);
+      }
     };
 
     document.addEventListener("pointerdown", onPointerDown);
@@ -170,12 +217,13 @@ function TopNavigation() {
       document.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [moreOpen]);
+  }, [moreOpen, qualityOpen]);
 
   const visibleItems = primaryNav.slice(0, visibleCount);
-  const overflowItems = [...primaryNav.slice(visibleCount), ...insightNav];
+  const overflowPrimary = primaryNav.slice(visibleCount);
+  const overflowItems = [...overflowPrimary, ...insightNav];
   const moreIsActive = overflowItems.some((item) =>
-    isPathActive(pathname, item.to),
+    isEntryActive(pathname, item),
   );
 
   const chipClass = (isActive: boolean) =>
@@ -186,24 +234,84 @@ function TopNavigation() {
     }`;
 
   const renderChipContent = (
-    item: (typeof nav)[number],
+    item: NavLeaf,
     iconSize = 17,
-    inDropdown = false,
+    showChevron = false,
+    chevronOpen = false,
   ) => {
     const Icon = item.icon;
     return (
       <>
-        <span
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
-            inDropdown
-              ? "bg-accent-soft text-accent"
-              : "bg-accent-soft text-accent"
-          }`}
-        >
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
           <Icon size={iconSize} aria-hidden="true" />
         </span>
         <span>{item.label}</span>
+        {showChevron ? (
+          <ChevronDown
+            size={16}
+            aria-hidden="true"
+            className={`transition ${chevronOpen ? "rotate-180" : ""}`}
+          />
+        ) : null}
       </>
+    );
+  };
+
+  const renderMenuLink = (item: NavLeaf) => (
+    <NavLink
+      key={item.to}
+      to={item.to}
+      end={item.end}
+      role="menuitem"
+      className={({ isActive }) =>
+        `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+          isActive
+            ? "bg-accent-soft font-semibold text-accent"
+            : "text-ink hover:bg-canvas"
+        }`
+      }
+      onClick={(event) => guardStaffNav(event, item.to)}
+    >
+      {renderChipContent(item, 16)}
+    </NavLink>
+  );
+
+  const renderQualityDropdown = (inBar: boolean) => {
+    const qualityItem = primaryNav.find((item) => item.children?.length);
+    if (!qualityItem?.children?.length) return null;
+    const active = isEntryActive(pathname, qualityItem);
+
+    return (
+      <div
+        ref={inBar ? qualityRef : undefined}
+        className="relative shrink-0"
+      >
+        <button
+          type="button"
+          className={chipClass(active)}
+          aria-label="품질 분석 하위 메뉴"
+          aria-haspopup="menu"
+          aria-expanded={qualityOpen}
+          onClick={() => {
+            setQualityOpen((open) => !open);
+            setMoreOpen(false);
+          }}
+        >
+          {renderChipContent(qualityItem, 17, true, qualityOpen)}
+        </button>
+
+        {qualityOpen && inBar ? (
+          <div
+            role="menu"
+            className="absolute left-0 top-[calc(100%+0.6rem)] z-50 w-56 overflow-hidden rounded-2xl border border-line bg-surface p-2 shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+          >
+            <p className="px-3 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+              품질 분석
+            </p>
+            {qualityItem.children.map((child) => renderMenuLink(child))}
+          </div>
+        ) : null}
+      </div>
     );
   };
 
@@ -213,26 +321,33 @@ function TopNavigation() {
       className="top-nav-shell relative min-w-0 rounded-[1.6rem] p-2"
     >
       <div ref={navigationRef} className="flex min-w-0 items-center gap-2">
-        {visibleItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className={({ isActive }) => chipClass(isActive)}
-            onClick={(event) => guardStaffNav(event, item.to)}
-          >
-            {renderChipContent(item)}
-          </NavLink>
-        ))}
+        {visibleItems.map((item) =>
+          item.children?.length ? (
+            <div key={item.label}>{renderQualityDropdown(true)}</div>
+          ) : (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className={({ isActive }) => chipClass(isActive)}
+              onClick={(event) => guardStaffNav(event, item.to)}
+            >
+              {renderChipContent(item)}
+            </NavLink>
+          ),
+        )}
 
-        <div ref={dropdownRef} className="relative shrink-0">
+        <div ref={moreRef} className="relative shrink-0">
           <button
             type="button"
             className={chipClass(moreIsActive)}
             aria-label="더 많은 메뉴"
             aria-haspopup="menu"
             aria-expanded={moreOpen}
-            onClick={() => setMoreOpen((open) => !open)}
+            onClick={() => {
+              setMoreOpen((open) => !open);
+              setQualityOpen(false);
+            }}
           >
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-accent">
               <MoreHorizontal size={20} aria-hidden="true" />
@@ -246,28 +361,20 @@ function TopNavigation() {
               className="absolute right-0 top-[calc(100%+0.6rem)] z-50 w-56 overflow-hidden rounded-2xl border border-line bg-surface p-2 shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
             >
               <p className="px-3 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-                {visibleCount < primaryNav.length
-                  ? "메뉴 · Insight"
-                  : "Insight"}
+                {overflowPrimary.length ? "메뉴 · Insight" : "Insight"}
               </p>
-              {overflowItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  role="menuitem"
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
-                      isActive
-                        ? "bg-accent-soft font-semibold text-accent"
-                        : "text-ink hover:bg-canvas"
-                    }`
-                  }
-                  onClick={(event) => guardStaffNav(event, item.to)}
-                >
-                  {renderChipContent(item, 16, true)}
-                </NavLink>
-              ))}
+              {overflowItems.map((item) =>
+                item.children?.length ? (
+                  <div key={item.label} className="py-1">
+                    <p className="px-3 pb-1 pt-1.5 text-[11px] font-semibold text-muted">
+                      {item.label}
+                    </p>
+                    {item.children.map((child) => renderMenuLink(child))}
+                  </div>
+                ) : (
+                  renderMenuLink(item)
+                ),
+              )}
             </div>
           )}
         </div>
@@ -280,11 +387,11 @@ function TopNavigation() {
       >
         {primaryNav.map((item) => (
           <span
-            key={item.to}
+            key={item.label}
             data-measure-nav-item
             className={chipClass(false)}
           >
-            {renderChipContent(item)}
+            {renderChipContent(item, 17, Boolean(item.children?.length))}
           </span>
         ))}
         <span data-measure-more className={chipClass(false)}>
@@ -376,11 +483,12 @@ export function Layout() {
         </div>
       </header>
 
-      <main className="content-shell space-y-4 px-4 py-5 sm:px-5 sm:py-6 lg:px-8">
+      <main className="content-shell px-4 py-5 sm:px-5 lg:px-8">
         {showLegacyFilters ? <GlobalFilterSection /> : null}
         {showVinaFilters ? <VinaFilterSection /> : null}
         <Outlet />
       </main>
+
       <AiChatbot />
     </div>
   );
