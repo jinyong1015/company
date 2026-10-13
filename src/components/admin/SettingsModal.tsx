@@ -6,6 +6,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import {
+  Briefcase,
   Check,
   Eye,
   EyeOff,
@@ -13,6 +14,7 @@ import {
   LogOut,
   Moon,
   Palette,
+  Shield,
   ShieldCheck,
   Sun,
   X,
@@ -170,8 +172,7 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
         <div>
           <h3 className="settings-section-title">실무자 / 관리자 로그인</h3>
           <p className="settings-panel-lead">
-            역할을 선택한 뒤 비밀번호를 입력해 주세요. 주간업무 보고·데이터
-            업로드는 실무자 또는 관리자만 이용할 수 있습니다.
+            역할을 선택한 뒤 비밀번호를 입력해 주세요.
           </p>
         </div>
       </div>
@@ -185,33 +186,63 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
         }}
       >
         <div
-          className="flex gap-2 rounded-xl border border-line bg-canvas/60 p-1"
+          className="settings-role-switch"
           role="tablist"
           aria-label="로그인 역할"
         >
           {(
             [
-              { id: 'manager' as const, label: '실무자' },
-              { id: 'admin' as const, label: '관리자' },
+              {
+                id: 'manager' as const,
+                label: '실무자',
+                hint: '업무 권한',
+                Icon: Briefcase,
+              },
+              {
+                id: 'admin' as const,
+                label: '관리자',
+                hint: '전체 권한',
+                Icon: Shield,
+              },
             ] as const
-          ).map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              role="tab"
-              aria-selected={loginRole === opt.id}
-              className={clsx(
-                'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition',
-                loginRole === opt.id
-                  ? 'bg-surface text-ink shadow-sm'
-                  : 'text-muted hover:text-ink',
-              )}
-              onClick={() => setLoginRole(opt.id)}
-              disabled={submitting}
-            >
-              {opt.label}
-            </button>
-          ))}
+          ).map((opt) => {
+            const selected = loginRole === opt.id
+            const Icon = opt.Icon
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                className={clsx(
+                  'settings-role-option',
+                  selected && 'settings-role-option-active',
+                  selected &&
+                    (opt.id === 'manager'
+                      ? 'settings-role-option-manager'
+                      : 'settings-role-option-admin'),
+                )}
+                onClick={() => setLoginRole(opt.id)}
+                disabled={submitting}
+              >
+                <span className="settings-role-option-icon" aria-hidden>
+                  <Icon size={18} strokeWidth={2.25} />
+                </span>
+                <span className="settings-role-option-text">
+                  <span className="settings-role-option-label">{opt.label}</span>
+                  <span className="settings-role-option-hint">{opt.hint}</span>
+                </span>
+                {selected ? (
+                  <Check
+                    className="settings-role-option-check"
+                    size={16}
+                    strokeWidth={2.5}
+                    aria-hidden
+                  />
+                ) : null}
+              </button>
+            )
+          })}
         </div>
 
         <label className="settings-field">
@@ -308,7 +339,7 @@ function AdminStatusPanel() {
               ? '관리자 권한이 활성화되어 있습니다.'
               : role === 'manager'
                 ? '실무자 권한이 활성화되어 있습니다. (검사 DATA 수정·사진 삭제는 관리자만)'
-                : '주간업무 보고·데이터 업로드는 실무자 또는 관리자 로그인이 필요합니다.'}
+                : '권한이 필요한 기능은 로그인 후 이용할 수 있습니다.'}
           </p>
         </div>
       </div>
