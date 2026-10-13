@@ -2,18 +2,24 @@ import {
   createContext,
   useCallback,
   useContext,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from 'react'
+import { useLocation } from 'react-router-dom'
 import { analyzeRecords, emptyAnalytics } from '../lib/analyze'
 import { normalizeProductType } from '../lib/groups'
 import { parseInspectionExcel } from '../lib/excel'
 import { seedRecords } from '../data/seedData'
 import type { Analytics, InspectionRecord, UploadResult } from '../types'
 import { useFilters } from './FilterContext'
+
+function isVinaPath(pathname: string) {
+  return pathname === '/vina' || pathname.startsWith('/vina/')
+}
 
 export interface PendingUpload {
   fileName: string
@@ -184,7 +190,10 @@ function getInitialData(): { records: InspectionRecord[]; meta: DataMeta } {
 }
 
 export function DataProvider({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation()
+  const onVinaRoute = isVinaPath(pathname)
   const { filters, resetFilters } = useFilters()
+  const deferredFilters = useDeferredValue(filters)
   const [initial] = useState(getInitialData)
   const [records, setRecords] = useState<InspectionRecord[]>(() => initial.records)
   const [meta, setMeta] = useState<DataMeta>(() => initial.meta)
@@ -248,9 +257,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [records, meta])
 
   const analytics = useMemo(() => {
+    // VINA 화면에서는 MES 집계를 쓰지 않음 — 탭 전환 시 이중 재집계 방지
+    if (onVinaRoute) return emptyAnalytics()
     if (!records.length) return emptyAnalytics()
-    return analyzeRecords(records, filters)
-  }, [records, filters])
+    return analyzeRecords(records, deferredFilters)
+  }, [onVinaRoute, records, deferredFilters])
 
   const commitRecords = useCallback((parsed: InspectionRecord[], fileName: string, uploadResult: UploadResult) => {
     const nextMeta: DataMeta = {

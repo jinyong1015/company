@@ -3,6 +3,7 @@ import {
   startTransition,
   useCallback,
   useContext,
+  useDeferredValue,
   useEffect,
   useMemo,
   useRef,
@@ -174,10 +175,12 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
     VINA_ITEM_MAP_REVISION,
   ])
 
+  // 탭 전환·입력 중 UI가 먼저 그려지도록 필터 집계는 deferred
+  const deferredFilters = useDeferredValue(filters)
   const analytics = useMemo(() => {
     if (!onVinaRoute || !records.length) return emptyAnalytics()
-    return analyzeRecords(records, vinaFilters(filters))
-  }, [onVinaRoute, records, filters])
+    return analyzeRecords(records, vinaFilters(deferredFilters))
+  }, [onVinaRoute, records, deferredFilters])
 
   const commitRecords = useCallback(
     async (

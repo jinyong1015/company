@@ -178,6 +178,7 @@ function clearStoredFilters() {
 /**
  * 메뉴 스코프 키.
  * 품번/검사자/성형작업자 목록↔세부페이지는 같은 키 → 상세 필터까지 유지.
+ * VINA 전 탭은 동일 스코프 → 탭만 바꿔도 필터·analyzeRecords가 다시 돌지 않음.
  * 그 외 메뉴로 이동하면 상세 다중 필터만 비운다. (분석 그룹·조회기간은 유지)
  */
 export function filterScopeKey(pathname: string): string {
@@ -186,16 +187,12 @@ export function filterScopeKey(pathname: string): string {
   // 팝업 창 — 메인 화면 조회조건에 영향 주지 않음
   if (path.includes('ai-chatbot-popup')) return 'ai-chatbot-popup'
 
-  if (path.startsWith('/vina/products')) return 'vina-products'
-  if (path.startsWith('/vina/inspectors')) return 'vina-inspectors'
+  // VINA: 하위 탭·품번/검사자 상세까지 한 스코프 (탭 전환 렉 방지)
+  if (path === '/vina' || path.startsWith('/vina/')) return 'vina'
+
   if (path.startsWith('/products')) return 'products'
   if (path.startsWith('/inspectors')) return 'inspectors'
   if (path.startsWith('/workers')) return 'workers'
-
-  if (path === '/vina' || path.startsWith('/vina/')) {
-    const seg = path.slice('/vina'.length).replace(/^\//, '').split('/')[0]
-    return seg ? `vina:${seg}` : 'vina'
-  }
 
   if (path === '/') return 'dashboard'
   const seg = path.split('/').filter(Boolean)[0]
@@ -219,6 +216,9 @@ export function FilterProvider({ children }: { children: ReactNode }) {
     if (nextScope === scopeRef.current) return
     scopeRef.current = nextScope
     setFilters((prev) => {
+      // 이미 비어 있으면 같은 참조 유지 → analyzeRecords 재실행 방지
+      const hasMulti = multiKeys.some((key) => prev[key].length > 0)
+      if (!hasMulti) return prev
       const next = cloneFilterState(prev)
       for (const key of multiKeys) next[key] = []
       return next
