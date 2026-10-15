@@ -7,6 +7,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { useAdmin } from '../../context/AdminContext'
 import { useData } from '../../context/DataContext'
 import {
   answerQuestion,
@@ -46,9 +47,9 @@ function messageTime() {
   }).format(new Date())
 }
 
-function loadStoredChat(): StoredChat {
+function loadStoredChat(storageKey: string): StoredChat {
   try {
-    const raw = localStorage.getItem(CHAT_STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey)
     if (!raw) return { messages: [], context: null }
     const parsed = JSON.parse(raw) as Partial<StoredChat>
     return {
@@ -62,7 +63,9 @@ function loadStoredChat(): StoredChat {
 
 export function AiChatbot({ popupMode = false }: { popupMode?: boolean }) {
   const { records, analytics } = useData()
-  const storedChat = useRef(loadStoredChat())
+  const { role, canAccessVina } = useAdmin()
+  const storageKey = `${CHAT_STORAGE_KEY}-${role ?? 'signed-out'}`
+  const storedChat = useRef(loadStoredChat(storageKey))
   const [open, setOpen] = useState(popupMode)
   const [input, setInput] = useState('')
   const [messages, setMessages] = useState<ChatMessage[]>(
@@ -105,13 +108,13 @@ export function AiChatbot({ popupMode = false }: { popupMode?: boolean }) {
     if (!popupMode) return
     try {
       localStorage.setItem(
-        CHAT_STORAGE_KEY,
+        storageKey,
         JSON.stringify({ messages, context } satisfies StoredChat),
       )
     } catch {
       // 저장 공간을 사용할 수 없어도 현재 창의 대화는 계속 유지합니다.
     }
-  }, [messages, context, popupMode])
+  }, [messages, context, popupMode, storageKey])
 
   const ask = (question: string) => {
     const text = question.trim()
@@ -120,10 +123,12 @@ export function AiChatbot({ popupMode = false }: { popupMode?: boolean }) {
     void (async () => {
       // VINA/VN/베트남 키워드가 있을 때만 엔진이 사용. 없으면 로드해도 무시됨.
       let vinaRecords: typeof records = []
-      try {
-        vinaRecords = await loadVinaRecords()
-      } catch {
-        vinaRecords = []
+      if (canAccessVina) {
+        try {
+          vinaRecords = await loadVinaRecords()
+        } catch {
+          vinaRecords = []
+        }
       }
       const answer = answerQuestion(text, analytics, records, context, {
         vinaRecords,

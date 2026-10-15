@@ -45,7 +45,10 @@ function safeEqual(a: Buffer, b: Buffer): boolean {
 }
 
 async function verifyViaSupabaseRpc(
-  rpcName: 'verify_admin_password' | 'verify_manager_password',
+  rpcName:
+    | 'verify_admin_password'
+    | 'verify_manager_password'
+    | 'verify_vina_password',
   password: string,
 ): Promise<boolean | null> {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null
@@ -124,18 +127,45 @@ export async function verifyManagerPassword(password: string): Promise<boolean> 
   return verifyViaEnvHash(password)
 }
 
-export type AuthLoginRole = 'manager' | 'admin'
+/** VINA 비밀번호 검증. Supabase 전용이며 선택적으로 서버 해시를 폴백으로 쓴다. */
+export async function verifyVinaPassword(password: string): Promise<boolean> {
+  if (!password || !password.trim()) return false
+
+  const supabaseResult = await verifyViaSupabaseRpc(
+    'verify_vina_password',
+    password,
+  )
+  if (supabaseResult === true) return true
+  if (supabaseResult === false) return false
+
+  const configuredHash = process.env.VINA_PASSWORD_HASH?.trim()
+  if (!configuredHash) return false
+  const parts = parsePasswordHash(configuredHash)
+  if (!parts) return false
+  const derived = await hashWithSalt(password, parts.salt)
+  return safeEqual(derived, parts.hash)
+}
+
+export type AuthLoginRole = 'manager' | 'admin' | 'vina'
 
 export async function verifyRolePassword(
   role: AuthLoginRole,
   password: string,
 ): Promise<boolean> {
   if (role === 'manager') return verifyManagerPassword(password)
+  if (role === 'vina') return verifyVinaPassword(password)
   return verifyAdminPassword(password)
 }
 
-export function isAdminPasswordConfigured(): boolean {
+export function isRolePasswordConfigured(role: AuthLoginRole): boolean {
   // Supabase 기본 설정이 있으면 항상 로그인 시도 가능
   if (SUPABASE_URL && SUPABASE_ANON_KEY) return true
+  if (role === 'manager') {
+    return Boolean(
+      process.env.MANAGER_PASSWORD_HASH?.trim() ||
+        process.env.ADMIN_PASSWORD_HASH?.trim(),
+    )
+  }
+  if (role === 'vina') return Boolean(process.env.VINA_PASSWORD_HASH?.trim())
   return Boolean(process.env.ADMIN_PASSWORD_HASH?.trim())
 }

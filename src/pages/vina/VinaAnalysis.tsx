@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import {
   SplitTop10Panel,
@@ -90,59 +89,7 @@ function vinaTypeColor(typeId: string) {
   return '#94a3b8'
 }
 
-function GroupSwitchEffect({
-  label,
-  color,
-  onDone,
-}: {
-  label: string
-  color: string
-  onDone: () => void
-}) {
-  useEffect(() => {
-    const reduce =
-      typeof window !== 'undefined' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    const t = window.setTimeout(onDone, reduce ? 200 : 480)
-    return () => window.clearTimeout(t)
-  }, [onDone, label])
-
-  return createPortal(
-    <div
-      className="group-switch-backdrop"
-      role="status"
-      aria-live="polite"
-      aria-label={`${label} 분석 그룹으로 전환`}
-    >
-      <div className="group-switch-card">
-        <span
-          className="group-switch-ring"
-          style={{ ['--group-switch-color' as string]: color }}
-          aria-hidden
-        >
-          <span
-            className="group-switch-dot"
-            style={{ backgroundColor: color }}
-          />
-        </span>
-        <p className="group-switch-kicker">VINA 분석 그룹 전환</p>
-        <p className="group-switch-label">{label}</p>
-        <p className="group-switch-hint">품번 TOP10에 반영됩니다</p>
-      </div>
-    </div>,
-    document.body,
-  )
-}
-
-function VinaGroupComparison({
-  summaries,
-  selectedGroupId,
-  onSelectGroup,
-}: {
-  summaries: GroupSummary[]
-  selectedGroupId: string
-  onSelectGroup: (id: string) => void
-}) {
+function VinaGroupComparison({ summaries }: { summaries: GroupSummary[] }) {
   const total = summaries.find((g) => g.id === 'all')
   const subgroups = summaries.filter((g) => g.id !== 'all')
   const totalQty = total?.qty ?? 0
@@ -152,16 +99,6 @@ function VinaGroupComparison({
       .filter((g) => g.failRate > 0 && g.failRate === maxFailRate)
       .map((g) => g.id),
   )
-  const [switchEffect, setSwitchEffect] = useState<{
-    id: string
-    label: string
-    color: string
-  } | null>(null)
-
-  const selectGroup = (id: string, label: string, color: string) => {
-    setSwitchEffect({ id, label, color })
-    onSelectGroup(id)
-  }
 
   const sealSummary = subgroups.find((g) =>
     matchesProductTypeTab(g.label, 'seal'),
@@ -176,15 +113,6 @@ function VinaGroupComparison({
 
   return (
     <div className="group-compare">
-      {switchEffect ? (
-        <GroupSwitchEffect
-          key={switchEffect.id + switchEffect.label}
-          label={switchEffect.label}
-          color={switchEffect.color}
-          onDone={() => setSwitchEffect(null)}
-        />
-      ) : null}
-
       <div className="group-compare-share">
         <div className="group-compare-share-head">
           <p className="group-compare-share-title">검수량 비중</p>
@@ -198,74 +126,43 @@ function VinaGroupComparison({
           aria-label="VINA 제품유형별 검수량 비중"
         >
           {sealShare > 0 && sealSummary ? (
-            <button
-              type="button"
-              onClick={() =>
-                selectGroup(
-                  sealSummary.id,
-                  sealSummary.label,
-                  vinaTypeColor(sealSummary.id),
-                )
-              }
+            <div
               className="group-compare-share-seg"
               style={{
                 width: `${sealShare}%`,
                 backgroundColor: vinaTypeColor(sealSummary.id),
-                opacity:
-                  selectedGroupId !== 'all' &&
-                  selectedGroupId !== sealSummary.id
-                    ? 0.32
-                    : 1,
               }}
-              title={`${sealSummary.label} ${sealShare}% · 클릭하여 전환`}
+              title={`${sealSummary.label} ${sealShare}%`}
             >
               {sealShare >= 12 ? (
                 <span className="group-compare-share-seg-label">
                   SEAL {sealShare}%
                 </span>
               ) : null}
-            </button>
+            </div>
           ) : null}
           {grommetShare > 0 && grommetSummary ? (
-            <button
-              type="button"
-              onClick={() =>
-                selectGroup(
-                  grommetSummary.id,
-                  grommetSummary.label,
-                  vinaTypeColor(grommetSummary.id),
-                )
-              }
+            <div
               className="group-compare-share-seg"
               style={{
                 width: `${grommetShare}%`,
                 backgroundColor: vinaTypeColor(grommetSummary.id),
-                opacity:
-                  selectedGroupId !== 'all' &&
-                  selectedGroupId !== grommetSummary.id
-                    ? 0.32
-                    : 1,
               }}
-              title={`${grommetSummary.label} ${grommetShare}% · 클릭하여 전환`}
+              title={`${grommetSummary.label} ${grommetShare}%`}
             >
               {grommetShare >= 12 ? (
                 <span className="group-compare-share-seg-label">
                   GROMMET {grommetShare}%
                 </span>
               ) : null}
-            </button>
+            </div>
           ) : null}
         </div>
       </div>
 
-      <div
-        className="group-compare-grid"
-        role="listbox"
-        aria-label="VINA 분석 그룹"
-      >
+      <div className="group-compare-grid" aria-label="VINA 분석 그룹">
         {summaries.map((g) => {
           const isTotal = g.id === 'all'
-          const isSelected = selectedGroupId === g.id
           const color = vinaTypeColor(g.id)
           const share = isTotal ? 100 : qtySharePct(g.qty, totalQty)
           const failBarPct =
@@ -275,18 +172,12 @@ function VinaGroupComparison({
           const isWorst = worstFailIds.has(g.id)
 
           return (
-            <button
+            <div
               key={g.id}
-              type="button"
-              role="option"
-              aria-selected={isSelected}
-              className="group-compare-card"
-              data-selected={isSelected ? 'true' : undefined}
+              className="group-compare-card group-compare-card--static"
               data-total={isTotal ? 'true' : undefined}
               data-worst={isWorst ? 'true' : undefined}
               style={{ ['--group-color' as string]: color }}
-              onClick={() => selectGroup(g.id, g.label, color)}
-              title={`${g.label} 분석 그룹으로 전환`}
             >
               <div className="group-compare-card-head">
                 <span className="group-compare-swatch" aria-hidden />
@@ -297,11 +188,6 @@ function VinaGroupComparison({
                   </span>
                 </div>
                 <div className="group-compare-badges">
-                  {isSelected ? (
-                    <span className="group-compare-badge group-compare-badge--selected">
-                      선택
-                    </span>
-                  ) : null}
                   {isWorst ? (
                     <span className="group-compare-badge group-compare-badge--worst">
                       부적합률↑
@@ -355,7 +241,7 @@ function VinaGroupComparison({
                   </strong>
                 </div>
               </div>
-            </button>
+            </div>
           )
         })}
       </div>
@@ -584,7 +470,6 @@ export function VinaAnalysis() {
   const { analytics, records, hasUploadedData, loading } = useVinaData()
   const { filters, setCustomDateRange } = useFilters()
   const { dashboardTop10Products } = analytics
-  const [selectedGroupId, setSelectedGroupId] = useState('all')
   const [productSort, setProductSort] = useState<ProductSortId>('fail')
   const [monthlyMetric, setMonthlyMetric] =
     useState<WeeklyReportMetric>('failRate')
@@ -625,24 +510,6 @@ export function VinaAnalysis() {
     [scoped],
   )
 
-  // 선택된 그룹이 데이터에 없으면 전체로 복귀
-  useEffect(() => {
-    if (!groupSummaries.some((g) => g.id === selectedGroupId)) {
-      setSelectedGroupId('all')
-    }
-  }, [groupSummaries, selectedGroupId])
-
-  const groupLabel =
-    groupSummaries.find((g) => g.id === selectedGroupId)?.label ?? '전체'
-
-  const groupScopedProducts = useMemo(() => {
-    if (selectedGroupId === 'all') return dashboardTop10Products
-    return dashboardTop10Products.filter((p) => {
-      const type = normalizeProductType(p.type) || p.type || '미지정'
-      return type === selectedGroupId
-    })
-  }, [dashboardTop10Products, selectedGroupId])
-
   return (
     <div className="space-y-5">
       <VinaSubNav />
@@ -667,6 +534,22 @@ export function VinaAnalysis() {
         </div>
       ) : (
         <>
+          <section className="card dash-linked min-w-0">
+            <div className="dash-linked-section">
+              <header className="dash-linked-head">
+                <div className="min-w-0">
+                  <h2 className="text-[15px] font-semibold text-ink">
+                    VINA 분석 그룹 비교
+                  </h2>
+                  <p className="mt-0.5 text-sm text-muted">
+                    제품유형(종류) 기준 · 기존 검사 데이터와 분리
+                  </p>
+                </div>
+              </header>
+              <VinaGroupComparison summaries={groupSummaries} />
+            </div>
+          </section>
+
           <MonthlyTrendSection
             view={monthlyView}
             metric={monthlyMetric}
@@ -678,32 +561,11 @@ export function VinaAnalysis() {
             orgs={VINA_MONTHLY_ORGS}
           />
 
-          <section className="card dash-linked min-w-0">
-            <div className="dash-linked-section">
-              <header className="dash-linked-head">
-                <div className="min-w-0">
-                  <h2 className="text-[15px] font-semibold text-ink">
-                    VINA 분석 그룹 비교
-                  </h2>
-                  <p className="mt-0.5 text-sm text-muted">
-                    제품유형(종류) 기준 · 행을 누르면 해당 그룹으로 전환 · 기존
-                    검사 데이터와 분리
-                  </p>
-                </div>
-              </header>
-              <VinaGroupComparison
-                summaries={groupSummaries}
-                selectedGroupId={selectedGroupId}
-                onSelectGroup={setSelectedGroupId}
-              />
-            </div>
-          </section>
-
           <VinaProductTop10
-            products={groupScopedProducts}
+            products={dashboardTop10Products}
             sort={productSort}
             onSortChange={setProductSort}
-            groupLabel={groupLabel}
+            groupLabel="전체"
           />
         </>
       )}

@@ -78,10 +78,10 @@ function safeEqual(a, b) {
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
 }
-async function verifyViaSupabase(password) {
+async function verifyViaSupabaseRpc(rpcName, password) {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/verify_admin_password`, {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${rpcName}`, {
       method: "POST",
       headers: {
         apikey: SUPABASE_ANON_KEY,
@@ -92,13 +92,13 @@ async function verifyViaSupabase(password) {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      console.warn("[admin-auth] supabase verify failed", res.status, text.slice(0, 200));
+      console.warn(`[admin-auth] ${rpcName} failed`, res.status, text.slice(0, 200));
       return null;
     }
     const data = await res.json();
     return data === true;
   } catch (err) {
-    console.warn("[admin-auth] supabase verify error", err);
+    console.warn(`[admin-auth] ${rpcName} error`, err);
     return null;
   }
 }
@@ -112,13 +112,56 @@ async function verifyViaEnvHash(password) {
 }
 async function verifyAdminPassword(password) {
   if (!password || !password.trim()) return false;
-  const supabaseResult = await verifyViaSupabase(password);
+  const supabaseResult = await verifyViaSupabaseRpc("verify_admin_password", password);
   if (supabaseResult === true) return true;
   if (supabaseResult === false) return false;
   return verifyViaEnvHash(password);
 }
-function isAdminPasswordConfigured() {
+async function verifyManagerPassword(password) {
+  if (!password || !password.trim()) return false;
+  const supabaseResult = await verifyViaSupabaseRpc(
+    "verify_manager_password",
+    password
+  );
+  if (supabaseResult === true) return true;
+  if (supabaseResult === false) return false;
+  const managerHash = process.env.MANAGER_PASSWORD_HASH?.trim();
+  if (managerHash) {
+    const parts = parsePasswordHash(managerHash);
+    if (!parts) return false;
+    const derived = await hashWithSalt(password, parts.salt);
+    return safeEqual(derived, parts.hash);
+  }
+  return verifyViaEnvHash(password);
+}
+async function verifyVinaPassword(password) {
+  if (!password || !password.trim()) return false;
+  const supabaseResult = await verifyViaSupabaseRpc(
+    "verify_vina_password",
+    password
+  );
+  if (supabaseResult === true) return true;
+  if (supabaseResult === false) return false;
+  const configuredHash = process.env.VINA_PASSWORD_HASH?.trim();
+  if (!configuredHash) return false;
+  const parts = parsePasswordHash(configuredHash);
+  if (!parts) return false;
+  const derived = await hashWithSalt(password, parts.salt);
+  return safeEqual(derived, parts.hash);
+}
+async function verifyRolePassword(role, password) {
+  if (role === "manager") return verifyManagerPassword(password);
+  if (role === "vina") return verifyVinaPassword(password);
+  return verifyAdminPassword(password);
+}
+function isRolePasswordConfigured(role) {
   if (SUPABASE_URL && SUPABASE_ANON_KEY) return true;
+  if (role === "manager") {
+    return Boolean(
+      process.env.MANAGER_PASSWORD_HASH?.trim() || process.env.ADMIN_PASSWORD_HASH?.trim()
+    );
+  }
+  if (role === "vina") return Boolean(process.env.VINA_PASSWORD_HASH?.trim());
   return Boolean(process.env.ADMIN_PASSWORD_HASH?.trim());
 }
 
@@ -127,6 +170,9 @@ import { createHmac, randomBytes as randomBytes2, timingSafeEqual as timingSafeE
 var ADMIN_SESSION_COOKIE = "qa_admin_session";
 var ADMIN_IDLE_MS = 30 * 60 * 1e3;
 var ADMIN_ABSOLUTE_MS = 8 * 60 * 60 * 1e3;
+function isAuthRole(value) {
+  return value === "user" || value === "manager" || value === "admin" || value === "vina";
+}
 function getSessionSecret() {
   const secret = process.env.ADMIN_SESSION_SECRET?.trim();
   if (secret) return secret;
@@ -154,7 +200,7 @@ function decodeSession(token) {
     const payload = JSON.parse(
       Buffer.from(body, "base64url").toString("utf8")
     );
-    if (typeof payload.sid !== "string" || typeof payload.iat !== "number" || typeof payload.exp !== "number" || typeof payload.lastActivity !== "number") {
+    if (typeof payload.sid !== "string" || typeof payload.iat !== "number" || typeof payload.exp !== "number" || typeof payload.lastActivity !== "number" || !isAuthRole(payload.role)) {
       return null;
     }
     return payload;
@@ -162,13 +208,17 @@ function decodeSession(token) {
     return null;
   }
 }
-function createSessionPayload(now = Date.now()) {
+function createSessionPayload(role, now = Date.now()) {
   return {
     sid: randomBytes2(16).toString("hex"),
     iat: now,
     exp: now + ADMIN_ABSOLUTE_MS,
-    lastActivity: now
+    lastActivity: now,
+    role
   };
+}
+function sessionRole(payload) {
+  return payload.role;
 }
 function isSessionValid(payload, now = Date.now()) {
   if (!payload) return false;
@@ -223,6 +273,13 @@ function requireAdminFromCookie(cookieHeader) {
       message: "\uAD00\uB9AC\uC790 \uAD8C\uD55C\uC774 \uC5C6\uC5B4 \uAC80\uC0AC DATA\uB97C \uC218\uC815\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."
     };
   }
+  if (sessionRole(payload) !== "admin") {
+    return {
+      ok: false,
+      status: 403,
+      message: "\uAD00\uB9AC\uC790 \uAD8C\uD55C\uC774 \uC5C6\uC5B4 \uAC80\uC0AC DATA\uB97C \uC218\uC815\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."
+    };
+  }
   return { ok: true, session: payload };
 }
 
@@ -255,23 +312,51 @@ async function handleAdminRoute(req) {
   const { pathname, cookieHeader, searchParams } = req;
   if (pathname === "/api/admin/login" && method === "POST") {
     try {
-      if (!isAdminPasswordConfigured()) {
-        return fail(503, "\uAD00\uB9AC\uC790 \uBE44\uBC00\uBC88\uD638\uAC00 \uC11C\uBC84\uC5D0 \uC124\uC815\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
-      }
       const body = asRecord(req.body);
       const password = typeof body.password === "string" ? body.password : "";
+      const roleRaw = typeof body.role === "string" ? body.role.trim() : "admin";
+      if (roleRaw !== "user" && roleRaw !== "manager" && roleRaw !== "admin" && roleRaw !== "vina") {
+        return fail(400, "\uC62C\uBC14\uB978 \uC811\uADFC \uC720\uD615\uC744 \uC120\uD0DD\uD574 \uC8FC\uC138\uC694.");
+      }
+      const role = roleRaw;
+      if (role === "user") {
+        const session2 = createSessionPayload(role);
+        return ok(
+          {
+            ok: true,
+            role,
+            message: "\uAE30\uBCF8 \uC0AC\uC6A9\uC790\uB85C \uB85C\uADF8\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4.",
+            expiresAt: session2.exp
+          },
+          buildSetCookieHeader(
+            encodeSession(session2),
+            Math.floor(ADMIN_ABSOLUTE_MS / 1e3)
+          )
+        );
+      }
+      if (!isRolePasswordConfigured(role)) {
+        const label = role === "vina" ? "VINA" : role === "manager" ? "\uC2E4\uBB34\uC790" : "\uAD00\uB9AC\uC790";
+        return fail(503, `${label} \uBE44\uBC00\uBC88\uD638\uAC00 \uC11C\uBC84\uC5D0 \uC124\uC815\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.`);
+      }
       if (!password.trim()) {
-        return fail(400, "\uAD00\uB9AC\uC790 \uBE44\uBC00\uBC88\uD638\uB97C \uC785\uB825\uD574 \uC8FC\uC138\uC694.");
+        return fail(
+          400,
+          role === "manager" ? "\uC2E4\uBB34\uC790 \uBE44\uBC00\uBC88\uD638\uB97C \uC785\uB825\uD574 \uC8FC\uC138\uC694." : role === "vina" ? "VINA \uBE44\uBC00\uBC88\uD638\uB97C \uC785\uB825\uD574 \uC8FC\uC138\uC694." : "\uAD00\uB9AC\uC790 \uBE44\uBC00\uBC88\uD638\uB97C \uC785\uB825\uD574 \uC8FC\uC138\uC694."
+        );
       }
-      const valid = await verifyAdminPassword(password);
+      const valid = await verifyRolePassword(role, password);
       if (!valid) {
-        return fail(401, "\uAD00\uB9AC\uC790 \uBE44\uBC00\uBC88\uD638\uAC00 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.");
+        return fail(
+          401,
+          role === "manager" ? "\uC2E4\uBB34\uC790 \uBE44\uBC00\uBC88\uD638\uAC00 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4." : role === "vina" ? "VINA \uBE44\uBC00\uBC88\uD638\uAC00 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4." : "\uAD00\uB9AC\uC790 \uBE44\uBC00\uBC88\uD638\uAC00 \uC62C\uBC14\uB974\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."
+        );
       }
-      const session = createSessionPayload();
+      const session = createSessionPayload(role);
       return ok(
         {
           ok: true,
-          message: "\uAD00\uB9AC\uC790 \uBAA8\uB4DC\uB85C \uB85C\uADF8\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4.",
+          role,
+          message: role === "manager" ? "\uC2E4\uBB34\uC790 \uBAA8\uB4DC\uB85C \uB85C\uADF8\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4." : role === "vina" ? "VINA \uBAA8\uB4DC\uB85C \uB85C\uADF8\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4." : "\uAD00\uB9AC\uC790 \uBAA8\uB4DC\uB85C \uB85C\uADF8\uC778\uB418\uC5C8\uC2B5\uB2C8\uB2E4.",
           expiresAt: session.exp
         },
         buildSetCookieHeader(
@@ -292,14 +377,16 @@ async function handleAdminRoute(req) {
     if (!isSessionValid(payload)) {
       return {
         status: 200,
-        body: { authenticated: false },
+        body: { authenticated: false, role: null },
         setCookie: token ? buildClearCookieHeader() : void 0
       };
     }
     const refreshed = touchSession(payload);
+    const role = sessionRole(refreshed);
     return ok(
       {
         authenticated: true,
+        role,
         expiresAt: refreshed.exp,
         sessionId: refreshed.sid
       },

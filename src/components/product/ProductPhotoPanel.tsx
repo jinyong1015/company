@@ -105,7 +105,7 @@ export function ProductPhotoPanel({ productKey }: { productKey: string }) {
   const onDelete = async () => {
     if (!canDeleteProductPhoto) {
       openLogin('admin')
-      pushToast('사진 삭제는 관리자만 가능합니다.', 'info')
+      pushToast('사진 삭제 권한이 필요합니다.', 'info')
       return
     }
     if (!photo) return

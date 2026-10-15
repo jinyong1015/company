@@ -3,6 +3,7 @@ import {
   useId,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import {
@@ -10,6 +11,7 @@ import {
   Check,
   Eye,
   EyeOff,
+  Globe2,
   Lock,
   LogOut,
   Moon,
@@ -19,7 +21,11 @@ import {
   Sun,
   X,
 } from 'lucide-react'
-import { useAdmin, type SettingsTab } from '../../context/AdminContext'
+import {
+  useAdmin,
+  type LoginRole,
+  type SettingsTab,
+} from '../../context/AdminContext'
 import { useToast } from '../../context/ToastContext'
 import { getInitialTheme, saveTheme, type ColorTheme } from '../../lib/theme'
 
@@ -124,9 +130,11 @@ function DisplayModePanel() {
 function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
   const { login, preferredLoginRole } = useAdmin()
   const { pushToast } = useToast()
-  const [loginRole, setLoginRole] = useState<'manager' | 'admin'>(
-    preferredLoginRole,
-  )
+  type PasswordRole = Exclude<LoginRole, 'user'>
+  const preferredPasswordRole: PasswordRole =
+    preferredLoginRole === 'user' ? 'manager' : preferredLoginRole
+  const [loginRole, setLoginRole] =
+    useState<PasswordRole>(preferredPasswordRole)
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -134,8 +142,8 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setLoginRole(preferredLoginRole)
-  }, [preferredLoginRole])
+    setLoginRole(preferredPasswordRole)
+  }, [preferredPasswordRole])
 
   useEffect(() => {
     const t = window.setTimeout(() => inputRef.current?.focus(), 40)
@@ -170,7 +178,7 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
           <Lock size={18} strokeWidth={2} />
         </div>
         <div>
-          <h3 className="settings-section-title">실무자 / 관리자 로그인</h3>
+          <h3 className="settings-section-title">권한 변경 로그인</h3>
           <p className="settings-panel-lead">
             역할을 선택한 뒤 비밀번호를 입력해 주세요.
           </p>
@@ -197,12 +205,21 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
                 label: '실무자',
                 hint: '업무 권한',
                 Icon: Briefcase,
+                color: '#059669',
               },
               {
                 id: 'admin' as const,
                 label: '관리자',
                 hint: '전체 권한',
                 Icon: Shield,
+                color: '#7c3aed',
+              },
+              {
+                id: 'vina' as const,
+                label: 'VINA',
+                hint: 'VINA 전용',
+                Icon: Globe2,
+                color: '#ea580c',
               },
             ] as const
           ).map((opt) => {
@@ -217,11 +234,8 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
                 className={clsx(
                   'settings-role-option',
                   selected && 'settings-role-option-active',
-                  selected &&
-                    (opt.id === 'manager'
-                      ? 'settings-role-option-manager'
-                      : 'settings-role-option-admin'),
                 )}
+                style={{ '--role': opt.color } as CSSProperties}
                 onClick={() => setLoginRole(opt.id)}
                 disabled={submitting}
               >
@@ -247,7 +261,11 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
 
         <label className="settings-field">
           <span className="settings-field-label">
-            {loginRole === 'manager' ? '실무자 비밀번호' : '관리자 비밀번호'}
+            {loginRole === 'manager'
+              ? '실무자 비밀번호'
+              : loginRole === 'vina'
+                ? 'VINA 비밀번호'
+                : '관리자 비밀번호'}
           </span>
           <div className="admin-password-wrap">
             <input
@@ -263,6 +281,8 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
               placeholder={
                 loginRole === 'manager'
                   ? '실무자 비밀번호'
+                  : loginRole === 'vina'
+                    ? 'VINA 비밀번호'
                   : '관리자 비밀번호'
               }
               disabled={submitting}
@@ -310,7 +330,17 @@ function AdminLoginForm({ onCancel }: { onCancel: () => void }) {
 }
 
 function AdminStatusPanel() {
-  const { isAdmin, isStaff, role, setAdminPanel, logout } = useAdmin()
+  const {
+    isAdmin,
+    isStaff,
+    role,
+    canAccessVina,
+    canManageVinaData,
+    canUploadProductPhoto,
+    canDeleteProductPhoto,
+    setAdminPanel,
+    logout,
+  } = useAdmin()
   const { pushToast } = useToast()
 
   const statusLabel =
@@ -318,7 +348,9 @@ function AdminStatusPanel() {
       ? '관리자 로그인 중'
       : role === 'manager'
         ? '실무자 로그인 중'
-        : '일반 사용자'
+        : role === 'vina'
+          ? 'VINA 로그인 중'
+          : '기본 사용자 로그인 중'
 
   return (
     <div className="settings-panel">
@@ -326,7 +358,7 @@ function AdminStatusPanel() {
         <div
           className={clsx(
             'settings-panel-icon',
-            isStaff && 'settings-panel-icon-admin',
+            role !== 'user' && 'settings-panel-icon-admin',
           )}
           aria-hidden="true"
         >
@@ -339,7 +371,9 @@ function AdminStatusPanel() {
               ? '관리자 권한이 활성화되어 있습니다.'
               : role === 'manager'
                 ? '실무자 권한이 활성화되어 있습니다. (검사 DATA 수정·사진 삭제는 관리자만)'
-                : '권한이 필요한 기능은 로그인 후 이용할 수 있습니다.'}
+                : role === 'vina'
+                  ? 'VINA 분석과 VINA 데이터 관리 권한이 활성화되어 있습니다.'
+                  : '기본 조회 권한이 활성화되어 있습니다.'}
           </p>
         </div>
       </div>
@@ -347,7 +381,7 @@ function AdminStatusPanel() {
       <div
         className={clsx(
           'settings-status-card',
-          isStaff ? 'settings-status-card-on' : 'settings-status-card-off',
+          role !== 'user' ? 'settings-status-card-on' : 'settings-status-card-off',
         )}
       >
         <div className="settings-status-top">
@@ -355,13 +389,17 @@ function AdminStatusPanel() {
           <span
             className={clsx(
               'settings-status-badge',
-              isStaff ? 'settings-status-badge-on' : 'settings-status-badge-off',
+              role !== 'user'
+                ? 'settings-status-badge-on'
+                : 'settings-status-badge-off',
             )}
           >
             <span
               className={clsx(
                 'settings-status-dot',
-                isStaff ? 'settings-status-dot-on' : 'settings-status-dot-off',
+                role !== 'user'
+                  ? 'settings-status-dot-on'
+                  : 'settings-status-dot-off',
               )}
               aria-hidden="true"
             />
@@ -369,21 +407,33 @@ function AdminStatusPanel() {
           </span>
         </div>
         <ul className="settings-capability-list">
-          <li data-allowed="true">분석 화면 · 기본 데이터 조회</li>
+          <li data-allowed={role !== 'vina' ? 'true' : 'false'}>
+            기존 검사 DATA 분석 · 기본 데이터 조회
+          </li>
           <li data-allowed={isStaff ? 'true' : 'false'}>
             주간업무 보고 · 데이터 업로드
           </li>
           <li data-allowed={isStaff ? 'true' : 'false'}>
             고객사 부적합 · 승인서류 · 측정현황 · 정보공유 · WORST 주간 ISSUE 작성/수정
           </li>
-          <li data-allowed={isStaff ? 'true' : 'false'}>품번 사진 업로드·변경</li>
-          <li data-allowed={isAdmin ? 'true' : 'false'}>품번 사진 삭제</li>
+          <li data-allowed={canUploadProductPhoto ? 'true' : 'false'}>
+            허용된 분석 영역의 품번 사진 업로드·변경
+          </li>
+          <li data-allowed={canDeleteProductPhoto ? 'true' : 'false'}>
+            허용된 분석 영역의 품번 사진 삭제
+          </li>
           <li data-allowed={isAdmin ? 'true' : 'false'}>검사 DATA 행 수정 · 변경 이력</li>
+          <li data-allowed={canAccessVina ? 'true' : 'false'}>
+            VINA 분석 · 상세 조회
+          </li>
+          <li data-allowed={canManageVinaData ? 'true' : 'false'}>
+            VINA 데이터 업로드 · 관리
+          </li>
         </ul>
       </div>
 
       <div className="settings-admin-actions">
-        {isStaff ? (
+        {role ? (
           <button
             type="button"
             className="btn settings-logout-btn"
@@ -394,7 +444,11 @@ function AdminStatusPanel() {
                   pushToast(
                     role === 'manager'
                       ? '실무자 모드가 종료되었습니다.'
-                      : '관리자 모드가 종료되었습니다.',
+                      : role === 'admin'
+                        ? '관리자 모드가 종료되었습니다.'
+                        : role === 'vina'
+                          ? 'VINA 모드가 종료되었습니다.'
+                          : '로그아웃되었습니다.',
                     'info',
                   )
                 }
@@ -411,7 +465,7 @@ function AdminStatusPanel() {
             onClick={() => setAdminPanel('login')}
           >
             <Lock size={16} />
-            실무자 / 관리자 로그인
+            권한 로그인
           </button>
         )}
       </div>
@@ -424,7 +478,7 @@ export function SettingsModal() {
     settingsOpen,
     settingsTab,
     adminPanel,
-    isStaff,
+    role,
     setSettingsTab,
     setAdminPanel,
     closeSettings,
@@ -551,7 +605,9 @@ export function SettingsModal() {
             >
               <ShieldCheck size={15} strokeWidth={2} aria-hidden="true" />
               권한
-              {isStaff ? <span className="settings-tab-dot" aria-hidden="true" /> : null}
+              {role && role !== 'user' ? (
+                <span className="settings-tab-dot" aria-hidden="true" />
+              ) : null}
             </button>
           </div>
         </div>

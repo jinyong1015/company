@@ -3,6 +3,7 @@ import { PageHeader } from "../components/common/PageHeader";
 import { Panel } from "../components/common/Panel";
 import { AiAnswerBlocks } from "../components/ai/AiAnswerCharts";
 import { useData } from "../context/DataContext";
+import { useAdmin } from "../context/AdminContext";
 import {
   answerQuestion,
   type AiAnswer,
@@ -20,6 +21,7 @@ const samples = [
 
 export function AiAsk() {
   const { records, analytics } = useData();
+  const { canAccessVina } = useAdmin();
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<{ q: string; a: AiAnswer }[]>([]);
   const [context, setContext] = useState<AiConversationContext | null>(null);
@@ -29,10 +31,12 @@ export function AiAsk() {
     if (!text) return;
     void (async () => {
       let vinaRecords = [] as typeof records;
-      try {
-        vinaRecords = await loadVinaRecords();
-      } catch {
-        vinaRecords = [];
+      if (canAccessVina) {
+        try {
+          vinaRecords = await loadVinaRecords();
+        } catch {
+          vinaRecords = [];
+        }
       }
       const a = answerQuestion(text, analytics, records, context, {
         vinaRecords,

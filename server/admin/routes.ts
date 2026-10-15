@@ -1,8 +1,7 @@
 import { appendChangeLog, listChangeLogs } from './audit.ts'
 import {
-  isAdminPasswordConfigured,
+  isRolePasswordConfigured,
   verifyRolePassword,
-  type AuthLoginRole,
 } from './password.ts'
 import {
   ADMIN_ABSOLUTE_MS,
@@ -80,19 +79,45 @@ export async function handleAdminRoute(
 
   if (pathname === '/api/admin/login' && method === 'POST') {
     try {
-      if (!isAdminPasswordConfigured()) {
-        return fail(503, '관리자 비밀번호가 서버에 설정되지 않았습니다.')
-      }
       const body = asRecord(req.body)
       const password = typeof body.password === 'string' ? body.password : ''
       const roleRaw = typeof body.role === 'string' ? body.role.trim() : 'admin'
-      const role: AuthLoginRole =
-        roleRaw === 'manager' ? 'manager' : 'admin'
+      if (
+        roleRaw !== 'user' &&
+        roleRaw !== 'manager' &&
+        roleRaw !== 'admin' &&
+        roleRaw !== 'vina'
+      ) {
+        return fail(400, '올바른 접근 유형을 선택해 주세요.')
+      }
+      const role = roleRaw
+      if (role === 'user') {
+        const session = createSessionPayload(role)
+        return ok(
+          {
+            ok: true,
+            role,
+            message: '기본 사용자로 로그인되었습니다.',
+            expiresAt: session.exp,
+          },
+          buildSetCookieHeader(
+            encodeSession(session),
+            Math.floor(ADMIN_ABSOLUTE_MS / 1000),
+          ),
+        )
+      }
+      if (!isRolePasswordConfigured(role)) {
+        const label =
+          role === 'vina' ? 'VINA' : role === 'manager' ? '실무자' : '관리자'
+        return fail(503, `${label} 비밀번호가 서버에 설정되지 않았습니다.`)
+      }
       if (!password.trim()) {
         return fail(
           400,
           role === 'manager'
             ? '실무자 비밀번호를 입력해 주세요.'
+            : role === 'vina'
+              ? 'VINA 비밀번호를 입력해 주세요.'
             : '관리자 비밀번호를 입력해 주세요.',
         )
       }
@@ -102,6 +127,8 @@ export async function handleAdminRoute(
           401,
           role === 'manager'
             ? '실무자 비밀번호가 올바르지 않습니다.'
+            : role === 'vina'
+              ? 'VINA 비밀번호가 올바르지 않습니다.'
             : '관리자 비밀번호가 올바르지 않습니다.',
         )
       }
@@ -113,6 +140,8 @@ export async function handleAdminRoute(
           message:
             role === 'manager'
               ? '실무자 모드로 로그인되었습니다.'
+              : role === 'vina'
+                ? 'VINA 모드로 로그인되었습니다.'
               : '관리자 모드로 로그인되었습니다.',
           expiresAt: session.exp,
         },

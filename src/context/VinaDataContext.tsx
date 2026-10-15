@@ -29,6 +29,7 @@ import {
   VINA_ITEM_MAP_REVISION,
 } from '../lib/vinaItemNormalize'
 import { useFilters, type FilterState } from './FilterContext'
+import { useAdmin } from './AdminContext'
 
 /**
  * VINA 전용 데이터 영역.
@@ -79,6 +80,7 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
   const { pathname } = useLocation()
   const onVinaRoute = isVinaPath(pathname)
   const { filters } = useFilters()
+  const { canAccessVina, canManageVinaData } = useAdmin()
 
   const [meta, setMeta] = useState<VinaDataMeta>(() => loadVinaMeta())
   /** IndexedDB에서 읽은 원본(규칙 재적용 전) */
@@ -102,7 +104,7 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
   }, [meta, records])
 
   useEffect(() => {
-    if (!onVinaRoute || hydrated) return
+    if (!onVinaRoute || !canAccessVina || hydrated) return
     let cancelled = false
     void (async () => {
       try {
@@ -126,7 +128,7 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [onVinaRoute, hydrated])
+  }, [onVinaRoute, canAccessVina, hydrated])
 
   // 규칙 반영으로 바뀐 내용을 IndexedDB·meta에 저장 (새로고침 후에도 경고 제거 유지)
   useEffect(() => {
@@ -188,6 +190,9 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
       fileName: string,
       uploadResult: UploadResult,
     ) => {
+      if (!canManageVinaData) {
+        throw new Error('VINA 데이터 관리 권한이 없습니다.')
+      }
       const reconciled = reconcileVinaMappedItems(parsed)
       const syncedResult =
         syncVinaUploadResultItemUnmapped(uploadResult, reconciled) ??
@@ -218,11 +223,14 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
         }
       })
     },
-    [],
+    [canManageVinaData],
   )
 
   const uploadExcel = useCallback(
     async (file: File) => {
+      if (!canManageVinaData) {
+        throw new Error('VINA 데이터 업로드 권한이 없습니다.')
+      }
       setUploading(true)
       setUploadError(null)
       try {
@@ -267,21 +275,21 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
         setUploading(false)
       }
     },
-    [commitRecords],
+    [canManageVinaData, commitRecords],
   )
 
   const confirmUpload = useCallback(() => {
-    if (!pending || pending.uploadResult.blocked) return
+    if (!canManageVinaData || !pending || pending.uploadResult.blocked) return
     void commitRecords(pending.records, pending.fileName, pending.uploadResult)
-  }, [pending, commitRecords])
+  }, [canManageVinaData, pending, commitRecords])
 
   const confirmExcludeErrors = useCallback(() => {
-    if (!pending) return
+    if (!canManageVinaData || !pending) return
     void commitRecords(pending.records, pending.fileName, {
       ...pending.uploadResult,
       blocked: false,
     })
-  }, [pending, commitRecords])
+  }, [canManageVinaData, pending, commitRecords])
 
   const discardPending = useCallback(() => {
     setPending(null)
@@ -289,6 +297,10 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const clearVinaData = useCallback(() => {
+    if (!canManageVinaData) {
+      setUploadError('VINA 데이터 관리 권한이 없습니다.')
+      return
+    }
     const nextMeta: VinaDataMeta = {
       fileName: null,
       lastUpdated: nowStamp(),
@@ -306,9 +318,10 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
       // ignore
     }
     void clearVinaRecords()
-  }, [])
+  }, [canManageVinaData])
 
   const updateRecord = useCallback((next: InspectionRecord) => {
+    if (!canManageVinaData) return
     setRawRecords((prev) => {
       const updated = prev.map((r) => (r.id === next.id ? next : r))
       setMeta((prevMeta) => {
@@ -321,7 +334,7 @@ export function VinaDataProvider({ children }: { children: ReactNode }) {
       })
       return updated
     })
-  }, [])
+  }, [canManageVinaData])
 
   // pending 미리보기도 최신 규칙 반영
   const displayPending = useMemo(() => {

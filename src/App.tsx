@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { FilterProvider } from './context/FilterContext'
 import { DataProvider } from './context/DataContext'
 import { VinaDataProvider } from './context/VinaDataContext'
@@ -40,162 +40,118 @@ import { VinaData } from './pages/vina/VinaData'
 import { VinaErrorData } from './pages/vina/VinaErrorData'
 import { AiChatbot } from './components/ai/AiChatbot'
 import { StaffRouteGate } from './components/admin/StaffRouteGate'
+import { AccessGate } from './components/admin/AccessLogin'
+import {
+  MainRouteGate,
+  RoleFallback,
+  VinaRouteGate,
+} from './components/admin/RouteAccess'
 
 export default function App() {
   return (
     <BrowserRouter>
       <FilterProvider>
         <DataProvider>
-          <VinaDataProvider>
-            <AdminProvider>
+          <AdminProvider>
+            <VinaDataProvider>
               <ToastProvider>
-                <Routes>
-                  <Route path="ai-chatbot-popup" element={<AiChatbot popupMode />} />
-                  <Route element={<Layout />}>
-                    <Route index element={<Dashboard />} />
-                    <Route path="quality" element={<QualityAnalysis />} />
-                    <Route path="daily-analysis" element={<DailyAnalysis />} />
-                    <Route path="inspectors" element={<InspectorAnalysis />} />
-                    <Route path="inspectors/:id" element={<InspectorDetail />} />
-                    <Route path="workers" element={<WorkerAnalysis />} />
-                    <Route path="workers/:id" element={<WorkerDetail />} />
-                    <Route path="products" element={<ProductAnalysis />} />
-                    <Route path="products/:id" element={<ProductDetail />} />
-                    <Route path="molds" element={<MoldAnalysis />} />
-                    <Route path="equipment" element={<EquipmentAnalysis />} />
-                    <Route path="costs" element={<CostAnalysis />} />
-                    <Route path="compare" element={<SmartCompare />} />
-                    <Route path="data" element={<InspectionData />} />
-                    <Route path="error-data" element={<ErrorData />} />
+                <AccessGate>
+                  <Routes>
                     <Route
-                      path="manage"
+                      path="ai-chatbot-popup"
                       element={
-                        <StaffRouteGate title="데이터 업로드">
-                          <DataManagement />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route path="quality-data" element={<DataQuality />} />
-                    <Route
-                      path="weekly-report"
-                      element={
-                        <StaffRouteGate title="주간업무 보고">
-                          <WeeklyReport />
-                        </StaffRouteGate>
+                        <MainRouteGate>
+                          <AiChatbot popupMode />
+                        </MainRouteGate>
                       }
                     />
                     <Route
-                      path="vina"
                       element={
-                        <StaffRouteGate title="VINA 분석">
-                          <VinaAnalysis />
-                        </StaffRouteGate>
+                        <MainRouteGate>
+                          <Layout />
+                        </MainRouteGate>
                       }
-                    />
+                    >
+                      <Route index element={<Dashboard />} />
+                      <Route path="quality" element={<QualityAnalysis />} />
+                      <Route path="daily-analysis" element={<DailyAnalysis />} />
+                      <Route path="inspectors" element={<InspectorAnalysis />} />
+                      <Route path="inspectors/:id" element={<InspectorDetail />} />
+                      <Route path="workers" element={<WorkerAnalysis />} />
+                      <Route path="workers/:id" element={<WorkerDetail />} />
+                      <Route path="products" element={<ProductAnalysis />} />
+                      <Route path="products/:id" element={<ProductDetail />} />
+                      <Route path="molds" element={<MoldAnalysis />} />
+                      <Route path="equipment" element={<EquipmentAnalysis />} />
+                      <Route path="costs" element={<CostAnalysis />} />
+                      <Route path="compare" element={<SmartCompare />} />
+                      <Route path="data" element={<InspectionData />} />
+                      <Route path="error-data" element={<ErrorData />} />
+                      <Route
+                        path="manage"
+                        element={
+                          <StaffRouteGate title="데이터 업로드">
+                            <DataManagement />
+                          </StaffRouteGate>
+                        }
+                      />
+                      <Route path="quality-data" element={<DataQuality />} />
+                      <Route
+                        path="weekly-report"
+                        element={
+                          <StaffRouteGate title="주간업무 보고">
+                            <WeeklyReport />
+                          </StaffRouteGate>
+                        }
+                      />
+                      <Route path="ai" element={<AiAsk />} />
+                    </Route>
                     <Route
-                      path="vina/quality"
                       element={
-                        <StaffRouteGate title="VINA 불량 현황">
-                          <VinaQualityAnalysis />
-                        </StaffRouteGate>
+                        <VinaRouteGate>
+                          <Layout />
+                        </VinaRouteGate>
                       }
-                    />
-                    <Route
-                      path="vina/daily-analysis"
-                      element={
-                        <StaffRouteGate title="VINA 일간 현황">
-                          <VinaDailyAnalysis />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route
-                      path="vina/manage"
-                      element={
-                        <StaffRouteGate title="VINA 데이터 업로드">
-                          <VinaManage />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route
-                      path="vina/products"
-                      element={
-                        <StaffRouteGate title="VINA 품번 분석">
-                          <VinaProductAnalysis />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route
-                      path="vina/products/:id"
-                      element={
-                        <StaffRouteGate title="VINA 품번 상세">
-                          <VinaProductDetail />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route
-                      path="vina/inspectors"
-                      element={
-                        <StaffRouteGate title="VINA 검사자 분석">
-                          <VinaInspectorAnalysis />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route
-                      path="vina/inspectors/:id"
-                      element={
-                        <StaffRouteGate title="VINA 검사자 상세">
-                          <VinaInspectorDetail />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route
-                      path="vina/equipment"
-                      element={
-                        <StaffRouteGate title="VINA 설비 분석">
-                          <VinaEquipmentAnalysis />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route
-                      path="vina/costs"
-                      element={
-                        <StaffRouteGate title="VINA 비용 분석">
-                          <VinaCostAnalysis />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route
-                      path="vina/compare"
-                      element={
-                        <StaffRouteGate title="VINA 스마트 비교">
-                          <VinaSmartCompare />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route
-                      path="vina/data"
-                      element={
-                        <StaffRouteGate title="VINA 검사 DATA">
-                          <VinaData />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route
-                      path="vina/error-data"
-                      element={
-                        <StaffRouteGate title="VINA 오류 DATA">
-                          <VinaErrorData />
-                        </StaffRouteGate>
-                      }
-                    />
-                    <Route path="ai" element={<AiAsk />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                  </Route>
-                </Routes>
-                <SettingsModal />
+                    >
+                      <Route path="vina" element={<VinaAnalysis />} />
+                      <Route path="vina/quality" element={<VinaQualityAnalysis />} />
+                      <Route
+                        path="vina/daily-analysis"
+                        element={<VinaDailyAnalysis />}
+                      />
+                      <Route path="vina/manage" element={<VinaManage />} />
+                      <Route
+                        path="vina/products"
+                        element={<VinaProductAnalysis />}
+                      />
+                      <Route
+                        path="vina/products/:id"
+                        element={<VinaProductDetail />}
+                      />
+                      <Route
+                        path="vina/inspectors"
+                        element={<VinaInspectorAnalysis />}
+                      />
+                      <Route
+                        path="vina/inspectors/:id"
+                        element={<VinaInspectorDetail />}
+                      />
+                      <Route
+                        path="vina/equipment"
+                        element={<VinaEquipmentAnalysis />}
+                      />
+                      <Route path="vina/costs" element={<VinaCostAnalysis />} />
+                      <Route path="vina/compare" element={<VinaSmartCompare />} />
+                      <Route path="vina/data" element={<VinaData />} />
+                      <Route path="vina/error-data" element={<VinaErrorData />} />
+                    </Route>
+                    <Route path="*" element={<RoleFallback />} />
+                  </Routes>
+                  <SettingsModal />
+                </AccessGate>
               </ToastProvider>
-            </AdminProvider>
-          </VinaDataProvider>
+            </VinaDataProvider>
+          </AdminProvider>
         </DataProvider>
       </FilterProvider>
     </BrowserRouter>

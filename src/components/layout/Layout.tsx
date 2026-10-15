@@ -135,16 +135,30 @@ function isEntryActive(pathname: string, item: NavEntry) {
 
 function TopNavigation() {
   const { pathname } = useLocation();
-  const { isStaff, openLogin } = useAdmin();
+  const { role, isStaff, canAccessVina, openLogin } = useAdmin();
+  const isVinaRole = role === "vina";
+  const allowedPrimaryNav = isVinaRole
+    ? primaryNav.filter((item) => isVinaPath(item.to))
+    : primaryNav;
+  const allowedInsightNav = isVinaRole ? [] : insightNav;
+  const showMoreMenu = !isVinaRole;
   const navigationRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const qualityRef = useRef<HTMLDivElement>(null);
-  const [visibleCount, setVisibleCount] = useState(primaryNav.length);
+  const [visibleCount, setVisibleCount] = useState(allowedPrimaryNav.length);
   const [moreOpen, setMoreOpen] = useState(false);
   const [qualityOpen, setQualityOpen] = useState(false);
 
   const guardStaffNav = (event: MouseEvent, to: string) => {
+    if (isVinaPath(to)) {
+      if (canAccessVina) return;
+      event.preventDefault();
+      openLogin("vina");
+      setMoreOpen(false);
+      setQualityOpen(false);
+      return;
+    }
     if (!isStaffOnlyPath(to) || isStaff) return;
     event.preventDefault();
     openLogin("manager");
@@ -161,6 +175,12 @@ function TopNavigation() {
       const itemWidths = Array.from(
         measure.querySelectorAll<HTMLElement>("[data-measure-nav-item]"),
       ).map((item) => item.getBoundingClientRect().width);
+
+      if (!showMoreMenu) {
+        setVisibleCount(itemWidths.length);
+        return;
+      }
+
       const moreWidth =
         measure
           .querySelector<HTMLElement>("[data-measure-more]")
@@ -184,7 +204,7 @@ function TopNavigation() {
     const observer = new ResizeObserver(updateVisibleCount);
     observer.observe(navigation);
     return () => observer.disconnect();
-  }, []);
+  }, [allowedPrimaryNav.length, showMoreMenu]);
 
   useEffect(() => {
     setMoreOpen(false);
@@ -219,9 +239,9 @@ function TopNavigation() {
     };
   }, [moreOpen, qualityOpen]);
 
-  const visibleItems = primaryNav.slice(0, visibleCount);
-  const overflowPrimary = primaryNav.slice(visibleCount);
-  const overflowItems = [...overflowPrimary, ...insightNav];
+  const visibleItems = allowedPrimaryNav.slice(0, visibleCount);
+  const overflowPrimary = allowedPrimaryNav.slice(visibleCount);
+  const overflowItems = [...overflowPrimary, ...allowedInsightNav];
   const moreIsActive = overflowItems.some((item) =>
     isEntryActive(pathname, item),
   );
@@ -277,7 +297,7 @@ function TopNavigation() {
   );
 
   const renderQualityDropdown = (inBar: boolean) => {
-    const qualityItem = primaryNav.find((item) => item.children?.length);
+    const qualityItem = allowedPrimaryNav.find((item) => item.children?.length);
     if (!qualityItem?.children?.length) return null;
     const active = isEntryActive(pathname, qualityItem);
 
@@ -337,47 +357,49 @@ function TopNavigation() {
           ),
         )}
 
-        <div ref={moreRef} className="relative shrink-0">
-          <button
-            type="button"
-            className={chipClass(moreIsActive)}
-            aria-label="더 많은 메뉴"
-            aria-haspopup="menu"
-            aria-expanded={moreOpen}
-            onClick={() => {
-              setMoreOpen((open) => !open);
-              setQualityOpen(false);
-            }}
-          >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-accent">
-              <MoreHorizontal size={20} aria-hidden="true" />
-            </span>
-            <span className="hidden sm:inline">더보기</span>
-          </button>
-
-          {moreOpen && (
-            <div
-              role="menu"
-              className="absolute right-0 top-[calc(100%+0.6rem)] z-50 w-56 overflow-hidden rounded-2xl border border-line bg-surface p-2 shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+        {showMoreMenu ? (
+          <div ref={moreRef} className="relative shrink-0">
+            <button
+              type="button"
+              className={chipClass(moreIsActive)}
+              aria-label="더 많은 메뉴"
+              aria-haspopup="menu"
+              aria-expanded={moreOpen}
+              onClick={() => {
+                setMoreOpen((open) => !open);
+                setQualityOpen(false);
+              }}
             >
-              <p className="px-3 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-                {overflowPrimary.length ? "메뉴 · Insight" : "Insight"}
-              </p>
-              {overflowItems.map((item) =>
-                item.children?.length ? (
-                  <div key={item.label} className="py-1">
-                    <p className="px-3 pb-1 pt-1.5 text-[11px] font-semibold text-muted">
-                      {item.label}
-                    </p>
-                    {item.children.map((child) => renderMenuLink(child))}
-                  </div>
-                ) : (
-                  renderMenuLink(item)
-                ),
-              )}
-            </div>
-          )}
-        </div>
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-accent">
+                <MoreHorizontal size={20} aria-hidden="true" />
+              </span>
+              <span className="hidden sm:inline">더보기</span>
+            </button>
+
+            {moreOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-[calc(100%+0.6rem)] z-50 w-56 overflow-hidden rounded-2xl border border-line bg-surface p-2 shadow-[0_18px_48px_rgba(15,23,42,0.18)]"
+              >
+                <p className="px-3 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+                  {overflowPrimary.length ? "메뉴 · Insight" : "Insight"}
+                </p>
+                {overflowItems.map((item) =>
+                  item.children?.length ? (
+                    <div key={item.label} className="py-1">
+                      <p className="px-3 pb-1 pt-1.5 text-[11px] font-semibold text-muted">
+                        {item.label}
+                      </p>
+                      {item.children.map((child) => renderMenuLink(child))}
+                    </div>
+                  ) : (
+                    renderMenuLink(item)
+                  ),
+                )}
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       <div
@@ -385,7 +407,7 @@ function TopNavigation() {
         aria-hidden="true"
         className="pointer-events-none fixed -left-[9999px] top-0 flex invisible items-center gap-2"
       >
-        {primaryNav.map((item) => (
+        {allowedPrimaryNav.map((item) => (
           <span
             key={item.label}
             data-measure-nav-item
@@ -394,12 +416,14 @@ function TopNavigation() {
             {renderChipContent(item, 17, Boolean(item.children?.length))}
           </span>
         ))}
-        <span data-measure-more className={chipClass(false)}>
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <MoreHorizontal size={20} />
+        {showMoreMenu ? (
+          <span data-measure-more className={chipClass(false)}>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-soft text-accent">
+              <MoreHorizontal size={20} />
+            </span>
+            <span className="hidden sm:inline">더보기</span>
           </span>
-          <span className="hidden sm:inline">더보기</span>
-        </span>
+        ) : null}
       </div>
     </nav>
   );
@@ -417,7 +441,10 @@ export function Layout() {
       <header className="sticky top-0 z-30 border-b border-line bg-surface/95 shadow-sm backdrop-blur">
         <div className="content-shell px-4 py-3 sm:px-5 lg:px-8">
           <div className="flex min-h-[68px] items-center gap-4">
-            <Link to="/" className="flex shrink-0 items-center gap-2.5">
+            <Link
+              to={role === "vina" ? "/vina" : "/"}
+              className="flex shrink-0 items-center gap-2.5"
+            >
               <img
                 src="/hyundai-logo.png"
                 alt="Hyundai Corporation"
@@ -438,19 +465,21 @@ export function Layout() {
             </div>
 
             <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-              <Link
-                to="/manage"
-                className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-surface px-3.5 text-sm font-medium text-ink shadow-sm transition hover:border-accent/40 hover:bg-accent-soft"
-                onClick={(event) => {
-                  if (!isStaff) {
-                    event.preventDefault();
-                    openLogin("manager");
-                  }
-                }}
-              >
-                <Plus size={16} />
-                <span className="hidden md:inline">데이터 업로드</span>
-              </Link>
+              {role !== "vina" ? (
+                <Link
+                  to="/manage"
+                  className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-surface px-3.5 text-sm font-medium text-ink shadow-sm transition hover:border-accent/40 hover:bg-accent-soft"
+                  onClick={(event) => {
+                    if (!isStaff) {
+                      event.preventDefault();
+                      openLogin("manager");
+                    }
+                  }}
+                >
+                  <Plus size={16} />
+                  <span className="hidden md:inline">데이터 업로드</span>
+                </Link>
+              ) : null}
               <button
                 type="button"
                 onClick={() => openSettings("display")}
@@ -460,19 +489,23 @@ export function Layout() {
                     ? "설정 (관리자 모드)"
                     : role === "manager"
                       ? "설정 (실무자 모드)"
-                      : "설정"
+                      : role === "vina"
+                        ? "설정 (VINA 모드)"
+                        : "설정"
                 }
                 title="설정"
               >
                 <Settings size={16} />
                 <span className="hidden md:inline">설정</span>
-                {isStaff ? (
+                {role !== "user" ? (
                   <span
                     className="header-settings-admin-dot"
                     title={
                       role === "manager"
                         ? "실무자 로그인 중"
-                        : "관리자 로그인 중"
+                        : role === "admin"
+                          ? "관리자 로그인 중"
+                          : "VINA 로그인 중"
                     }
                     aria-hidden="true"
                   />
@@ -489,7 +522,7 @@ export function Layout() {
         <Outlet />
       </main>
 
-      <AiChatbot />
+      {role !== "vina" ? <AiChatbot /> : null}
     </div>
   );
 }

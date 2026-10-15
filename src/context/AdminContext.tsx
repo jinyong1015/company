@@ -11,16 +11,16 @@ import { AdminAuthError } from '../lib/admin/errors'
 
 export type SettingsTab = 'display' | 'admin'
 export type AdminPanelView = 'status' | 'login'
-/** 세션 역할 — 비로그인(user)은 role=null */
-export type StaffRole = 'manager' | 'admin'
-export type LoginRole = StaffRole
+/** 명시적인 로그인 역할. 비로그인 상태만 null이다. */
+export type AccessRole = 'user' | 'manager' | 'admin' | 'vina'
+export type LoginRole = AccessRole
 
 type AdminContextValue = {
   ready: boolean
   /** @deprecated 호환용 — isAdmin과 동일. 실무자는 false */
   isAdmin: boolean
-  /** 관리자 로그인 중 */
-  role: StaffRole | null
+  isAuthenticated: boolean
+  role: AccessRole | null
   /** 실무자 또는 관리자 */
   isStaff: boolean
   /** 주간보고·데이터 업로드 접근 */
@@ -49,7 +49,7 @@ type AdminContextValue = {
   login: (
     password: string,
     role?: LoginRole,
-  ) => Promise<{ ok: boolean; message: string; role?: StaffRole }>
+  ) => Promise<{ ok: boolean; message: string; role?: AccessRole }>
   logout: () => Promise<boolean>
   refreshSession: () => Promise<boolean>
   setHasUnsavedEdits: (value: boolean) => void
@@ -58,15 +58,25 @@ type AdminContextValue = {
 
 const AdminContext = createContext<AdminContextValue | null>(null)
 
-function roleLabel(role: StaffRole | null) {
+function isAccessRole(value: unknown): value is AccessRole {
+  return (
+    value === 'user' ||
+    value === 'manager' ||
+    value === 'admin' ||
+    value === 'vina'
+  )
+}
+
+function roleLabel(role: AccessRole | null) {
   if (role === 'admin') return '관리자'
   if (role === 'manager') return '실무자'
-  return '사용자'
+  if (role === 'vina') return 'VINA'
+  return '기본 사용자'
 }
 
 export function AdminProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
-  const [role, setRole] = useState<StaffRole | null>(null)
+  const [role, setRole] = useState<AccessRole | null>(null)
   const [hasUnsavedEdits, setHasUnsavedEdits] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('display')
@@ -76,6 +86,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = role === 'admin'
   const isStaff = role === 'manager' || role === 'admin'
+  const isAuthenticated = role !== null
 
   const refreshSession = useCallback(async () => {
     try {
@@ -84,17 +95,8 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         authenticated?: boolean
         role?: string | null
       }
-      if (data.authenticated && data.role === 'manager') {
-        setRole('manager')
-        return true
-      }
-      if (data.authenticated && data.role === 'admin') {
-        setRole('admin')
-        return true
-      }
-      // 구버전 세션(role 없음)은 관리자로 취급
-      if (data.authenticated) {
-        setRole('admin')
+      if (data.authenticated && isAccessRole(data.role)) {
+        setRole(data.role)
         return true
       }
       setRole(null)
@@ -117,7 +119,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
   }, [refreshSession])
 
   useEffect(() => {
-    if (!isStaff) return
+    if (!isAuthenticated) return
     const onVisibility = () => {
       if (document.visibilityState === 'visible') {
         void refreshSession()
@@ -131,7 +133,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
       window.clearInterval(timer)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [isStaff, refreshSession])
+  }, [isAuthenticated, refreshSession])
 
   const openSettings = useCallback((tab: SettingsTab = 'display') => {
     setSettingsTab(tab)
@@ -151,7 +153,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     setSettingsOpen(true)
   }, [])
 
-  const login = useCallback(async (password: string, loginRole: LoginRole = 'admin') => {
+  const login = useCallback(async (password = '', loginRole: LoginRole = 'admin') => {
     try {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
@@ -173,8 +175,10 @@ export function AdminProvider({ children }: { children: ReactNode }) {
         role?: string
       }
       if (res.ok && data?.ok) {
-        const nextRole: StaffRole =
-          data.role === 'manager' ? 'manager' : 'admin'
+        if (!isAccessRole(data.role)) {
+          return { ok: false, message: '서버가 올바르지 않은 역할을 반환했습니다.' }
+        }
+        const nextRole = data.role
         setRole(nextRole)
         setAdminPanel('status')
         return {
@@ -191,7 +195,9 @@ export function AdminProvider({ children }: { children: ReactNode }) {
           data?.message ??
           (loginRole === 'manager'
             ? '실무자 비밀번호가 올바르지 않습니다.'
-            : '관리자 비밀번호가 올바르지 않습니다.'),
+            : loginRole === 'vina'
+              ? 'VINA 비밀번호가 올바르지 않습니다.'
+              : '관리자 비밀번호가 올바르지 않습니다.'),
       }
     } catch {
       return {
@@ -215,6 +221,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     setRole(null)
     setHasUnsavedEdits(false)
     setAdminPanel('status')
+    setSettingsOpen(false)
     return true
   }, [hasUnsavedEdits])
 
@@ -227,14 +234,15 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     () => ({
       ready,
       isAdmin,
+      isAuthenticated,
       role,
       isStaff,
       canAccessStaffMenus: isStaff,
       canEditWeeklyContent: isStaff,
-      canUploadProductPhoto: isStaff,
-      canDeleteProductPhoto: isAdmin,
-      canAccessVina: isStaff,
-      canManageVinaData: isAdmin,
+      canUploadProductPhoto: isStaff || role === 'vina',
+      canDeleteProductPhoto: isAdmin || role === 'vina',
+      canAccessVina: isStaff || role === 'vina',
+      canManageVinaData: isStaff || role === 'vina',
       hasUnsavedEdits,
       settingsOpen,
       settingsTab,
@@ -254,6 +262,7 @@ export function AdminProvider({ children }: { children: ReactNode }) {
     [
       ready,
       isAdmin,
+      isAuthenticated,
       role,
       isStaff,
       hasUnsavedEdits,

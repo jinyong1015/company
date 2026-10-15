@@ -12,11 +12,19 @@ export type AdminSessionPayload = {
   iat: number
   exp: number
   lastActivity: number
-  /** 실무자 | 관리자. 구버전 쿠키에는 없을 수 있음 → admin으로 취급 */
-  role?: 'manager' | 'admin'
+  role: AuthRole
 }
 
-export type AuthRole = 'manager' | 'admin'
+export type AuthRole = 'user' | 'manager' | 'admin' | 'vina'
+
+export function isAuthRole(value: unknown): value is AuthRole {
+  return (
+    value === 'user' ||
+    value === 'manager' ||
+    value === 'admin' ||
+    value === 'vina'
+  )
+}
 
 function getSessionSecret(): string {
   const secret = process.env.ADMIN_SESSION_SECRET?.trim()
@@ -54,7 +62,8 @@ export function decodeSession(token: string | undefined | null): AdminSessionPay
       typeof payload.sid !== 'string' ||
       typeof payload.iat !== 'number' ||
       typeof payload.exp !== 'number' ||
-      typeof payload.lastActivity !== 'number'
+      typeof payload.lastActivity !== 'number' ||
+      !isAuthRole(payload.role)
     ) {
       return null
     }
@@ -65,7 +74,7 @@ export function decodeSession(token: string | undefined | null): AdminSessionPay
 }
 
 export function createSessionPayload(
-  role: AuthRole = 'admin',
+  role: AuthRole,
   now = Date.now(),
 ): AdminSessionPayload {
   return {
@@ -78,7 +87,7 @@ export function createSessionPayload(
 }
 
 export function sessionRole(payload: AdminSessionPayload): AuthRole {
-  return payload.role === 'manager' ? 'manager' : 'admin'
+  return payload.role
 }
 
 export function isSessionValid(
@@ -160,7 +169,7 @@ export function requireAdminFromCookie(cookieHeader: string | undefined):
   return { ok: true, session: payload }
 }
 
-/** 실무자 또는 관리자 세션 */
+/** 기존 검사 DATA 실무자 또는 관리자 세션 */
 export function requireStaffFromCookie(cookieHeader: string | undefined):
   | { ok: true; session: AdminSessionPayload; role: AuthRole }
   | { ok: false; status: 401 | 403; message: string } {
@@ -173,5 +182,13 @@ export function requireStaffFromCookie(cookieHeader: string | undefined):
       message: '실무자 또는 관리자 로그인이 필요합니다.',
     }
   }
-  return { ok: true, session: payload, role: sessionRole(payload) }
+  const role = sessionRole(payload)
+  if (role !== 'manager' && role !== 'admin') {
+    return {
+      ok: false,
+      status: 403,
+      message: '실무자 또는 관리자 로그인이 필요합니다.',
+    }
+  }
+  return { ok: true, session: payload, role }
 }
