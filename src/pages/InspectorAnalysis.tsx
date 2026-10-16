@@ -19,7 +19,13 @@ import {
   plantSiteOf,
 } from '../lib/groups'
 import type { InspectorRow } from '../types'
-import { failRatePpm, formatPpm, formatWon } from '../lib/format'
+import {
+  failRatePpm,
+  formatEa,
+  formatPpm,
+  formatUph,
+  formatWon,
+} from '../lib/format'
 
 const VIEW_STATE_KEY = 'inspector-analysis'
 const ALL_PLANTS = ''
@@ -387,7 +393,7 @@ export function InspectorAnalysis() {
         metrics={[
           {
             label: '검수량',
-            value: (row) => row.inspector.qty.toLocaleString('ko-KR'),
+            value: (row) => formatEa(row.inspector.qty),
           },
           {
             label: '부적합률',
@@ -395,7 +401,7 @@ export function InspectorAnalysis() {
           },
           {
             label: 'UPH',
-            value: (row) => row.inspector.uph.toLocaleString('ko-KR'),
+            value: (row) => formatUph(row.inspector.uph),
           },
           {
             label: '폐기비용',
@@ -464,16 +470,16 @@ export function InspectorAnalysis() {
                         {row.name}
                       </Link>
                     </td>
-                    <td className="num px-2 py-3">{row.qty.toLocaleString()}</td>
-                    <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
+                    <td className="num px-2 py-3">{formatEa(row.qty)}</td>
+                    <td className="num px-2 py-3">{formatEa(row.fail)}</td>
                     <td className="num px-2 py-3">{formatPpm(row.failRate)}</td>
-                    <td className="num px-2 py-3">{row.uph}</td>
+                    <td className="num px-2 py-3">{formatUph(row.uph)}</td>
                   </tr>
                   {openId === row.id && (
                     <tr>
                       <td colSpan={6} className="bg-canvas/60 px-4 py-3">
                         <p className="mb-2 text-xs text-muted">
-                          {row.name} 품번별 검사량 · 전체 {row.qty.toLocaleString()} EA
+                          {row.name} 품번별 검사량 · 전체 {formatEa(row.qty)}
                         </p>
                         <table className="w-full text-sm">
                           <thead>
@@ -489,10 +495,12 @@ export function InspectorAnalysis() {
                             {row.products.map((p) => (
                               <tr key={p.product}>
                                 <td className="py-1">{p.product}</td>
-                                <td className="num py-1">{p.qty.toLocaleString()}</td>
-                                <td className="num py-1">{p.fail.toLocaleString()}</td>
+                                <td className="num py-1">{formatEa(p.qty)}</td>
+                                <td className="num py-1">{formatEa(p.fail)}</td>
                                 <td className="num py-1">{formatPpm(p.failRate)}</td>
-                                <td className="num py-1 font-semibold">{p.uph}</td>
+                                <td className="num py-1 font-semibold">
+                                  {formatUph(p.uph)}
+                                </td>
                               </tr>
                             ))}
                           </tbody>

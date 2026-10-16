@@ -144,9 +144,9 @@ export function DefectPieChart({ data }: { data: DefectType[] }) {
   }
 
   return (
-    <div className="flex h-full min-h-[240px] w-full flex-col gap-2.5 sm:flex-row sm:items-center">
-      <div className="min-h-0 min-w-0 flex-1 basis-[58%]">
-        <ResponsiveContainer width="100%" height="100%" minHeight={220}>
+    <div className="flex h-full min-h-[240px] w-full flex-col gap-3">
+      <div className="mx-auto h-[200px] w-full max-w-[240px] shrink-0 sm:h-[220px]">
+        <ResponsiveContainer width="100%" height="100%">
           <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
             <Pie
               data={chartData}
@@ -183,7 +183,7 @@ export function DefectPieChart({ data }: { data: DefectType[] }) {
           </PieChart>
         </ResponsiveContainer>
       </div>
-      <ul className="max-h-full min-w-0 flex-1 basis-[42%] space-y-1.5 overflow-y-auto pr-1 text-xs sm:pl-1">
+      <ul className="min-w-0 space-y-1.5 overflow-y-auto pr-0.5 text-xs">
         {chartData.map((d, i) => (
           <li
             key={d.name}

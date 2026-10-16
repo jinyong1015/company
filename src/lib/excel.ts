@@ -467,6 +467,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     productTypeMissing: 0,
     equipmentMissing: 0,
     moldMissing: 0,
+    moldSubtotal: 0,
     lotMissing: 0,
     naValue: 0,
     error: 0,
@@ -580,6 +581,10 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
       quality.moldMissing += 1
       issues.push('금형번호 누락')
       warning = true
+    } else if (moldNo.includes('[소계]')) {
+      quality.moldSubtotal += 1
+      issues.push('금형번호 [소계]')
+      blocking = true
     }
     if (!lot) {
       quality.lotMissing += 1
@@ -689,6 +694,7 @@ export async function parseInspectionExcel(file: File): Promise<ParseExcelResult
     { label: '검수량 0 (부적합 있음)', count: quality.zeroQtyWithFail, severity: 'warn' },
     { label: '설비 누락', count: quality.equipmentMissing, severity: 'warn' },
     { label: '금형번호 누락', count: quality.moldMissing, severity: 'warn' },
+    { label: '금형번호 [소계]', count: quality.moldSubtotal, severity: 'error' },
     { label: 'LOT 누락', count: quality.lotMissing, severity: 'warn' },
   ]
 

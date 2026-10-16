@@ -58,6 +58,16 @@ export function formatWonSuffix(n: number | undefined | null) {
   return `${roundWon(n).toLocaleString('ko-KR')}원`
 }
 
+/** 검수량·합격수량·부적합수량 등 */
+export function formatEa(n: number | undefined | null) {
+  return `${Math.round(Number(n) || 0).toLocaleString('ko-KR')} EA`
+}
+
+/** 시간당 검사량(UPH) */
+export function formatUph(n: number | undefined | null) {
+  return `${Math.round(Number(n) || 0).toLocaleString('ko-KR')} EA/h`
+}
+
 /** 위험 ≥ 20,000 ppm (2%), 주의 ≥ 13,000 ppm (1.3%) */
 export function statusByPpm(rate: number) {
   if (rate >= 20_000) return '위험' as const

@@ -59,9 +59,13 @@ export function recomputeInspectionRecord(
     issues.push('설비 누락')
     if (rowClass === 'ok') rowClass = 'warn'
   }
-  if (!draft.moldNo?.trim() || draft.moldNo === '-') {
+  const moldNo = draft.moldNo?.trim() ?? ''
+  if (!moldNo || moldNo === '-') {
     issues.push('금형번호 누락')
     if (rowClass === 'ok') rowClass = 'warn'
+  } else if (moldNo.includes('[소계]')) {
+    issues.push('금형번호 [소계]')
+    rowClass = 'error'
   }
 
   const duration =

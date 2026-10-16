@@ -35,7 +35,13 @@ import {
 import { useDetailInspectionData } from '../hooks/useDetailInspectionData'
 import { useWeeklySnapshotSourceRecords } from '../hooks/useWeeklySnapshotSourceRecords'
 import { useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react'
-import { failRatePpm, formatPpm, formatWon } from '../lib/format'
+import {
+  failRatePpm,
+  formatEa,
+  formatPpm,
+  formatUph,
+  formatWon,
+} from '../lib/format'
 import type { ProductBreakdown } from '../types'
 
 function InspectorDetailBackNav({
@@ -444,7 +450,7 @@ export function InspectorDetail() {
               부적합 <strong className="num">{formatPpm(p.failRate ?? 0)}</strong>
             </span>
             <span>
-              UPH <strong className="num">{(p.uph ?? 0).toLocaleString()}</strong>
+              UPH <strong className="num">{formatUph(p.uph ?? 0)}</strong>
             </span>
           </span>
         )}
@@ -452,14 +458,14 @@ export function InspectorDetail() {
 
       <DetailKpiStrip
         items={[
-          { label: '검수량', value: qty.toLocaleString(), tone: 'accent', icon: Package },
+          { label: '검수량', value: formatEa(qty), tone: 'accent', icon: Package },
           {
             label: '부적합률',
             value: formatPpm(failRate),
             tone: failRate > 0 ? 'danger' : 'default',
             icon: AlertTriangle,
           },
-          { label: 'UPH', value: String(uph), tone: 'accent', icon: Gauge },
+          { label: 'UPH', value: formatUph(uph), tone: 'accent', icon: Gauge },
           { label: '폐기비용', value: formatWon(scrapCost), tone: 'warn', icon: Coins },
         ]}
       />
@@ -777,10 +783,10 @@ export function InspectorDetail() {
                       {p.product}
                     </Link>
                   </td>
-                  <td className="num">{p.qty.toLocaleString()}</td>
-                  <td className="num">{p.fail.toLocaleString()}</td>
+                  <td className="num">{formatEa(p.qty)}</td>
+                  <td className="num">{formatEa(p.fail)}</td>
                   <td className="num">{formatPpm(p.failRate)}</td>
-                  <td className="num font-semibold">{p.uph}</td>
+                  <td className="num font-semibold">{formatUph(p.uph)}</td>
                 </tr>
               ))}
               {!selectedStats.length && (

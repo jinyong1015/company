@@ -35,7 +35,12 @@ import {
 } from '../lib/productDetailNav'
 import { useWeeklySnapshotSourceRecords } from '../hooks/useWeeklySnapshotSourceRecords'
 import { useMemo, useState, useEffect, useLayoutEffect, useRef } from 'react'
-import { failRatePpm, formatPpmAsPercent, formatWon } from '../lib/format'
+import {
+  failRatePpm,
+  formatEa,
+  formatPpmAsPercent,
+  formatWon,
+} from '../lib/format'
 import type { ProductBreakdown } from '../types'
 
 function WorkerDetailBackNav({
@@ -405,10 +410,10 @@ export function WorkerDetail() {
 
       <DetailKpiStrip
         items={[
-          { label: '실적수량', value: qty.toLocaleString(), tone: 'accent', icon: Package },
+          { label: '실적수량', value: formatEa(qty), tone: 'accent', icon: Package },
           {
             label: '부적합수량',
-            value: fail.toLocaleString(),
+            value: formatEa(fail),
             tone: fail > 0 ? 'danger' : 'default',
             icon: PackageX,
           },

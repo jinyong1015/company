@@ -14,7 +14,14 @@ import { useVinaData } from '../../context/VinaDataContext'
 import { filterRecords } from '../../lib/analyze'
 import { downloadExcel } from '../../lib/download'
 import { toEntityId } from '../../lib/entityId'
-import { failRatePpm, formatPpm, formatWon, formatWonSuffix } from '../../lib/format'
+import {
+  failRatePpm,
+  formatEa,
+  formatPpm,
+  formatUph,
+  formatWon,
+  formatWonSuffix,
+} from '../../lib/format'
 import {
   PLANT_SITE_TABS,
   analysisGroupColor,
@@ -402,7 +409,7 @@ export function VinaInspectorAnalysis() {
             metrics={[
               {
                 label: '검수량',
-                value: (row) => row.inspector.qty.toLocaleString('ko-KR'),
+                value: (row) => formatEa(row.inspector.qty),
               },
               {
                 label: '부적합률',
@@ -410,7 +417,7 @@ export function VinaInspectorAnalysis() {
               },
               {
                 label: 'UPH',
-                value: (row) => row.inspector.uph.toLocaleString('ko-KR'),
+                value: (row) => formatUph(row.inspector.uph),
               },
               {
                 label: '폐기비용',

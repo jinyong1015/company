@@ -5541,6 +5541,14 @@ select {
   object-fit: contain;
   padding: 0.75rem;
 }
+
+/* 품번 사진 공통 톤: 밝기 +40% / 대비 -20% */
+.product-photo-tone,
+.detail-photo-img,
+.dash-top10-axis-photo img,
+.dash-top10-detail-photo img {
+  filter: brightness(1.4) contrast(0.8);
+}
 .detail-photo-empty {
   display: flex;
   flex-direction: column;
@@ -5744,12 +5752,13 @@ select {
 }
 .detail-chart-frame-pie {
   display: flex;
-  height: 268px;
+  min-height: 268px;
+  height: auto;
   flex-direction: column;
   padding: 0.65rem 0.55rem 0.55rem;
 }
 .detail-chart-frame-pie > * {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
 }
 

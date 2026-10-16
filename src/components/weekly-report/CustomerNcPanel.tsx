@@ -65,7 +65,7 @@ function ProductThumb({
       <img
         src={url}
         alt={`${productKey} 제품 사진`}
-        className="max-h-full max-w-full object-contain"
+        className="product-photo-tone max-h-full max-w-full object-contain"
         loading="lazy"
       />
     </div>

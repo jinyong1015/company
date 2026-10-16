@@ -13,7 +13,7 @@ import { toEntityId } from '../lib/entityId'
 import { loadPageViewState, savePageViewState } from '../lib/pageViewState'
 import { buildProductDetailHref } from '../lib/productDetailNav'
 import type { EquipmentRow } from '../types'
-import { formatPpm } from '../lib/format'
+import { formatEa, formatPpm, formatUph } from '../lib/format'
 
 const VIEW_STATE_KEY = 'equipment-analysis'
 
@@ -158,16 +158,16 @@ export function EquipmentAnalysis() {
                     className="cursor-pointer border-b border-line/70 hover:bg-canvas"
                   >
                     <td className="px-2 py-3 font-medium text-accent">{row.name}</td>
-                    <td className="num px-2 py-3">{row.qty.toLocaleString()}</td>
-                    <td className="num px-2 py-3">{row.fail.toLocaleString()}</td>
+                    <td className="num px-2 py-3">{formatEa(row.qty)}</td>
+                    <td className="num px-2 py-3">{formatEa(row.fail)}</td>
                     <td className="num px-2 py-3">{formatPpm(row.failRate)}</td>
-                    <td className="num px-2 py-3">{row.uph}</td>
+                    <td className="num px-2 py-3">{formatUph(row.uph)}</td>
                   </tr>
                   {openId === row.id && (
                     <tr>
                       <td colSpan={5} className="bg-canvas/60 px-4 py-3">
                         <p className="mb-2 text-xs text-muted">
-                          {row.name} 품번별 검사량 · 전체 {row.qty.toLocaleString()} EA
+                          {row.name} 품번별 검사량 · 전체 {formatEa(row.qty)}
                         </p>
                         <table className="w-full text-sm">
                           <thead>
@@ -193,8 +193,8 @@ export function EquipmentAnalysis() {
                                     {p.product}
                                   </Link>
                                 </td>
-                                <td className="num py-1">{p.qty.toLocaleString()}</td>
-                                <td className="num py-1">{p.fail.toLocaleString()}</td>
+                                <td className="num py-1">{formatEa(p.qty)}</td>
+                                <td className="num py-1">{formatEa(p.fail)}</td>
                                 <td className="num py-1">{formatPpm(p.failRate)}</td>
                               </tr>
                             ))}

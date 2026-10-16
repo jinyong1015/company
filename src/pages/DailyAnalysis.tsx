@@ -364,6 +364,7 @@ function ProductTopBarAxisTick({
       />
       {url ? (
         <image
+          className="product-photo-tone"
           href={url}
           xlinkHref={url}
           x={imgX + 2}

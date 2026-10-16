@@ -148,6 +148,7 @@ function ProductAxisTick({
               src={url}
               alt=""
               title={product}
+              className="product-photo-tone"
               style={{
                 maxWidth: '100%',
                 maxHeight: '100%',

@@ -70,9 +70,11 @@ import {
 } from "../lib/productDetailNav";
 import {
   failRatePpm,
+  formatEa,
   formatPercent,
   formatPpm,
   formatPpmAsPercent,
+  formatUph,
   formatWonSuffix,
   statusByPpm,
 } from "../lib/format";
@@ -587,19 +589,19 @@ function ProductDetailBody({
           items={[
             {
               label: "검사량",
-              value: qty.toLocaleString(),
+              value: formatEa(qty),
               tone: "accent",
               icon: Package,
             },
             {
               label: "합격수량",
-              value: pass.toLocaleString(),
+              value: formatEa(pass),
               tone: "ok",
               icon: CheckCircle2,
             },
             {
               label: "부적합수량",
-              value: fail.toLocaleString(),
+              value: formatEa(fail),
               tone: fail > 0 ? "danger" : "default",
               icon: PackageX,
             },
@@ -616,7 +618,7 @@ function ProductDetailBody({
             },
             {
               label: "UPH",
-              value: String(uph),
+              value: formatUph(uph),
               tone: "accent",
               icon: Gauge,
             },
@@ -630,45 +632,40 @@ function ProductDetailBody({
         />
       </div>
 
-      <ResponsiveGrid variant="split">
-        <Panel
-          title="기간별 부적합률 추이"
-          description={`${isMonthlyTrend ? "월별" : "일별"} ${
-            trendMetric === "qty" ? "검수량" : "폐기비용"
-          }과 부적합률을 함께 비교합니다.`}
-          actions={
-            <div
-              role="group"
-              aria-label="차트 조회 기준"
-              className="detail-seg"
-            >
-              {[
-                { id: "qty" as const, label: "검수량" },
-                { id: "scrapCost" as const, label: "폐기비용" },
-              ].map((metric) => (
-                <button
-                  key={metric.id}
-                  type="button"
-                  aria-pressed={trendMetric === metric.id}
-                  onClick={() => setTrendMetric(metric.id)}
-                  className={`detail-seg-btn${
-                    trendMetric === metric.id ? " is-active" : ""
-                  }`}
-                >
-                  {metric.label}
-                </button>
-              ))}
-            </div>
-          }
-        >
-          <div className="detail-chart-frame">
-            <div className="h-[268px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
-                  data={trendData}
-                  margin={{ top: 22, right: 6, left: 4, bottom: 4 }}
-                  barCategoryGap="28%"
-                >
+      <Panel
+        title="기간별 부적합률 추이"
+        description={`${isMonthlyTrend ? "월별" : "일별"} ${
+          trendMetric === "qty" ? "검수량" : "폐기비용"
+        }과 부적합률을 함께 비교합니다.`}
+        actions={
+          <div role="group" aria-label="차트 조회 기준" className="detail-seg">
+            {[
+              { id: "qty" as const, label: "검수량" },
+              { id: "scrapCost" as const, label: "폐기비용" },
+            ].map((metric) => (
+              <button
+                key={metric.id}
+                type="button"
+                aria-pressed={trendMetric === metric.id}
+                onClick={() => setTrendMetric(metric.id)}
+                className={`detail-seg-btn${
+                  trendMetric === metric.id ? " is-active" : ""
+                }`}
+              >
+                {metric.label}
+              </button>
+            ))}
+          </div>
+        }
+      >
+        <div className="detail-chart-frame">
+          <div className="h-[268px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                data={trendData}
+                margin={{ top: 22, right: 6, left: 4, bottom: 4 }}
+                barCategoryGap="28%"
+              >
                   <CartesianGrid
                     stroke="#e8eef5"
                     strokeDasharray="3 6"
@@ -787,7 +784,9 @@ function ProductDetailBody({
               </span>
             </div>
           </div>
-        </Panel>
+      </Panel>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,7fr)]">
         <Panel
           title="불량 유형별 발생량"
           description="불량 현황과 동일한 색상 · 원그래프"
@@ -796,17 +795,16 @@ function ProductDetailBody({
             <DefectPieChart data={defects} />
           </div>
         </Panel>
-      </ResponsiveGrid>
 
-      <Panel
-        title="불량 내역 상세"
-        description="유형을 선택하면 아래 설비·금형 비중이 바로 바뀝니다."
-        className="transition-[border-color,box-shadow] duration-200"
-        style={{
-          borderColor: selectedDefectColor,
-          boxShadow: `0 0 0 1px color-mix(in srgb, ${selectedDefectColor} 35%, transparent)`,
-        }}
-      >
+        <Panel
+          title="불량 내역 상세"
+          description="유형을 선택하면 아래 설비·금형 비중이 바로 바뀝니다."
+          className="transition-[border-color,box-shadow] duration-200 min-w-0"
+          style={{
+            borderColor: selectedDefectColor,
+            boxShadow: `0 0 0 1px color-mix(in srgb, ${selectedDefectColor} 35%, transparent)`,
+          }}
+        >
         {defects.length ? (
           <>
             <div
@@ -1054,7 +1052,8 @@ function ProductDetailBody({
               : "전체 기준 설비·금형 DATA가 없습니다."}
           </p>
         ) : null}
-      </Panel>
+        </Panel>
+      </div>
 
       <ResponsiveGrid variant="split">
         {(
@@ -1185,11 +1184,11 @@ function ProductDetailBody({
                     </Link>
                   </td>
                   <td>{row.team}</td>
-                  <td className="num">{row.qty.toLocaleString()}</td>
-                  <td className="num">{row.pass.toLocaleString()}</td>
-                  <td className="num">{row.fail.toLocaleString()}</td>
+                  <td className="num">{formatEa(row.qty)}</td>
+                  <td className="num">{formatEa(row.pass)}</td>
+                  <td className="num">{formatEa(row.fail)}</td>
                   <td className="num">{row.minutes.toLocaleString()}</td>
-                  <td className="num font-semibold">{row.uph}</td>
+                  <td className="num font-semibold">{formatUph(row.uph)}</td>
                   <td>
                     <DetailDefectChips summary={row.defectSummary} />
                   </td>
